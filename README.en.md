@@ -8,11 +8,11 @@ A Windows anime player with AI upscaling, RIFE frame interpolation, online/local
 
 ## Features
 
-- **AI upscaling and interpolation**: multiple-model processing chains, RIFE interpolation, adjustable multipliers and custom profiles activated by resolution and frame rate.
-- **Downloads on demand**: the manager detects your GPU and recommends components; models and GPU components can also be selected manually. The player package contains no models.
-- **Danmaku**: parallel route search and automatic matching; supports local XML, speed, font size, opacity, display area, type filters and blocked words.
-- **Bangumi sync**: browser authorization, cover art, ratings and episode watch status; separate playback thresholds for automatic collection and watched-episode updates, plus manual individual and cumulative progress updates.
-- **Playback and subtitles**: local files, network video, playlists, resume, chapters, audio-track selection and dual subtitles.
+- **AI upscaling and interpolation**: improve image quality and playback smoothness.
+- **Downloads on demand**: download models and GPU components.
+- **Danmaku**: online and local comments.
+- **Bangumi sync**: sync collections and watch progress.
+- **Playback and subtitles**: local and network videos, playlists and subtitles.
 
 ## Installation
 

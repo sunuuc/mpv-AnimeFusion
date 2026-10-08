@@ -31,7 +31,7 @@ python tools/standalone/build.py stage
 - `tools/standalone`：依赖、编译、打包与发布工具。
 - `app/build-info/standalone`：发行包中的构建来源、文件校验值与验证报告。
 
-工作流仅手动触发。待发布改动先写入 `CHANGELOG.md` 的 `Unreleased`；发布时确定版本号，发布说明读取该版本的更新记录。旧版本保留。
+工作流仅手动触发。待发布改动先写入 `CHANGELOG.md` 的 `Unreleased`；发布时确定版本号，发布页正文读取 `docs/release-features.md` 的简短功能介绍。旧版本保留。
 
 ## Bangumi 授权
 
