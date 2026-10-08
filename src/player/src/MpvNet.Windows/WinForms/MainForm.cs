@@ -1,8 +1,9 @@
-﻿
+
 using System.Drawing;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Windows.Threading;
 using System.Text.RegularExpressions;
@@ -44,6 +45,10 @@ public partial class MainForm : Form
     bool _wasMaximized;
     bool _maxSizeSet;
     bool _isCursorVisible = true;
+    bool _shutdownStarted;
+    bool _shutdownCompleted;
+    bool _inputMediaKeys = true;
+    bool _windowDragging = true;
 
     public MainForm()
     {
@@ -69,6 +74,7 @@ public partial class MainForm : Form
             GuiCommand.Current.ShowMenu += GuiCommand_ShowMenu;
 
             Player.Init(Handle, true);
+            Bangumi.BangumiPlayback.Initialize();
 
             Player.ObserveProperty("window-maximized", PropChangeWindowMaximized); // bool methods not working correctly
             Player.ObserveProperty("window-minimized", PropChangeWindowMinimized); // bool methods not working correctly
@@ -79,6 +85,8 @@ public partial class MainForm : Form
             Player.ObservePropertyBool("keepaspect-window", value => Player.KeepaspectWindow = value);
             Player.ObservePropertyBool("ontop", PropChangeOnTop);
             Player.ObservePropertyBool("title-bar", PropChangeTitleBar);
+            Player.ObservePropertyBool("input-media-keys", value => _inputMediaKeys = value);
+            Player.ObservePropertyBool("window-dragging", value => _windowDragging = value);
 
             Player.ObservePropertyString("sid", PropChangeSid);
             Player.ObservePropertyString("aid", PropChangeAid);
@@ -156,10 +164,16 @@ public partial class MainForm : Form
 
     void Player_ClientMessage(string[] args)
     {
+        if (_shutdownStarted)
+            return;
+
         if (Command.Current.Commands.ContainsKey(args[0]))
             Command.Current.Commands[args[0]].Invoke(new ArraySegment<string>(args, 1, args.Length - 1));
         else if (GuiCommand.Current.Commands.ContainsKey(args[0]))
-            BeginInvoke(() => GuiCommand.Current.Commands[args[0]].Invoke(new ArraySegment<string>(args, 1, args.Length - 1)));
+            BeginInvoke(() => {
+                if (!_shutdownStarted)
+                    GuiCommand.Current.Commands[args[0]].Invoke(new ArraySegment<string>(args, 1, args.Length - 1));
+            });
     }
 
     void Player_PlaylistPosChanged(int pos)
@@ -174,6 +188,9 @@ public partial class MainForm : Form
             return;
 
         BeginInvoke(() => {
+            if (_shutdownStarted)
+                return;
+
             SetSize(
                 (int)(Player.VideoSize.Width * scale),
                 (int)Math.Floor(Player.VideoSize.Height * scale),
@@ -185,6 +202,9 @@ public partial class MainForm : Form
 
     void Player_VideoSizeChanged(Size value) => BeginInvoke(() =>
     {
+        if (_shutdownStarted)
+            return;
+
         if (!KeepSize())
             SetFormPosAndSize();
     });
@@ -192,6 +212,9 @@ public partial class MainForm : Form
     void GuiCommand_ScaleWindow(float scale)
     {
         BeginInvoke(() => {
+            if (_shutdownStarted)
+                return;
+
             int w, h;
 
             if (KeepSize())
@@ -212,6 +235,9 @@ public partial class MainForm : Form
     void GuiCommand_MoveWindow(string direction)
     {
         BeginInvoke(() => {
+            if (_shutdownStarted)
+                return;
+
             Screen screen = Screen.FromControl(this);
             Rectangle workingArea = GetWorkingArea(Handle, screen.WorkingArea);
 
@@ -240,6 +266,9 @@ public partial class MainForm : Form
     void GuiCommand_WindowScaleNet(float scale)
     {
         BeginInvoke(() => {
+            if (_shutdownStarted)
+                return;
+
             SetSize(
                 (int)(Player.VideoSize.Width * scale),
                 (int)Math.Floor(Player.VideoSize.Height * scale),
@@ -251,7 +280,7 @@ public partial class MainForm : Form
     void GuiCommand_ShowMenu()
     {
         BeginInvoke(() => {
-            if (IsMouseInOsc())
+            if (_shutdownStarted || IsMouseInOsc())
                 return;
 
             ShowCursor();
@@ -534,6 +563,9 @@ public partial class MainForm : Form
 
     void SetFormPosAndSize(bool force = false, bool checkAutofit = true, bool load = false)
     {
+        if (_shutdownStarted)
+            return;
+
         if (!force)
         {
             if (WindowState != FormWindowState.Normal)
@@ -636,6 +668,9 @@ public partial class MainForm : Form
 
     void SetSize(int width, int height, Screen screen, bool checkAutofit = true, bool load = false)
     {
+        if (_shutdownStarted)
+            return;
+
         Rectangle workingArea = GetWorkingArea(Handle, screen.WorkingArea);
 
         int maxHeight = workingArea.Height - (Height - ClientSize.Height) - 2;
@@ -761,6 +796,9 @@ public partial class MainForm : Form
 
     public void CycleFullscreen(bool enabled)
     {
+        if (_shutdownStarted)
+            return;
+
         _lastCycleFullscreen = Environment.TickCount;
         Player.Fullscreen = enabled;
 
@@ -923,6 +961,9 @@ public partial class MainForm : Form
 
     void SetTitleInternal()
     {
+        if (_shutdownStarted || !Player.IsQuitNeeded)
+            return;
+
         string? title = Title;
 
         if (title == "${filename}" && Player.Path.ContainsEx("://"))
@@ -931,7 +972,7 @@ public partial class MainForm : Form
         string text = Player.Expand(title);
 
         if (text == "(unavailable)" || Player.PlaylistPos == -1)
-            text = "AnimeVE";
+            text = "mpv-AnimeFusion";
 
         Text = text;
     }
@@ -979,7 +1020,7 @@ public partial class MainForm : Form
                 return;
 
             if (value.EndsWith("} - mpv"))
-                value = value.Replace("} - mpv", "} - AnimeVE");
+                value = value.Replace("} - mpv", "} - mpv-AnimeFusion");
 
             _title = value;
         }
@@ -987,6 +1028,12 @@ public partial class MainForm : Form
 
     protected override void WndProc(ref Message m)
     {
+        if (_shutdownStarted || !Player.IsQuitNeeded)
+        {
+            base.WndProc(ref m);
+            return;
+        }
+
         switch (m.Msg)
         {
             case 0x0007: // WM_SETFOCUS
@@ -1052,11 +1099,9 @@ public partial class MainForm : Form
             case 0x319: // WM_APPCOMMAND
                 {
                     string? key = MpvHelp.WM_APPCOMMAND_to_mpv_key((int)(m.LParam.ToInt64() >> 16 & ~0xf000));
-                    bool inputMediaKeys = Player.GetPropertyBool("input-media-keys");
-
-                    if (key != null && inputMediaKeys)
+                    if (key != null && _inputMediaKeys)
                     {
-                        Player.Command("keypress " + key);
+                        Player.CommandVAsync("keypress", key);
                         m.Result = new IntPtr(1);
                         return;
                     }
@@ -1069,7 +1114,8 @@ public partial class MainForm : Form
                 if (Environment.TickCount - _lastCycleFullscreen > 500)
                 {
                     Point pos = PointToClient(Cursor.Position);
-                    Player.Command($"mouse {pos.X} {pos.Y}");
+                    Player.CommandVAsync("mouse", pos.X.ToString(CultureInfo.InvariantCulture),
+                        pos.Y.ToString(CultureInfo.InvariantCulture));
                 }
 
                 if (IsCursorPosDifferent(_lastCursorPosition))
@@ -1078,7 +1124,8 @@ public partial class MainForm : Form
             case 0x203: // WM_LBUTTONDBLCLK
                 {
                     Point pos = PointToClient(Cursor.Position);
-                    Player.Command($"mouse {pos.X} {pos.Y} 0 double");
+                    Player.CommandVAsync("mouse", pos.X.ToString(CultureInfo.InvariantCulture),
+                        pos.Y.ToString(CultureInfo.InvariantCulture), "0", "double");
                 }
                 break;
             case 0x2E0: // WM_DPICHANGED
@@ -1268,7 +1315,7 @@ public partial class MainForm : Form
 
     void UpdateProgressBar()
     {
-        if (Player.TaskbarProgress && _taskbar != null)
+        if (!_shutdownStarted && Player.TaskbarProgress && _taskbar != null)
             _taskbar.SetValue(Player.GetPropertyDouble("time-pos", false), Player.Duration.TotalSeconds);
     }
 
@@ -1291,6 +1338,9 @@ public partial class MainForm : Form
 
         BeginInvoke(() =>
         {
+            if (_shutdownStarted)
+                return;
+
             Player.WindowMaximized = Player.GetPropertyBool("window-maximized");
 
             if (Player.WindowMaximized && WindowState != FormWindowState.Maximized)
@@ -1307,6 +1357,9 @@ public partial class MainForm : Form
 
         BeginInvoke(() =>
         {
+            if (_shutdownStarted)
+                return;
+
             Player.WindowMinimized = Player.GetPropertyBool("window-minimized");
 
             if (Player.WindowMinimized && WindowState != FormWindowState.Minimized)
@@ -1332,6 +1385,9 @@ public partial class MainForm : Form
         Player.Border = enabled;
 
         BeginInvoke(() => {
+            if (_shutdownStarted)
+                return;
+
             if (!IsFullscreen)
             {
                 if (Player.Border && FormBorderStyle == FormBorderStyle.None)
@@ -1351,6 +1407,9 @@ public partial class MainForm : Form
         Player.TitleBar = enabled;
 
         BeginInvoke(() => {
+            if (_shutdownStarted)
+                return;
+
             SetSize(ClientSize.Width, ClientSize.Height, Screen.FromControl(this), false);
             Height += 1;
             Height -= 1;
@@ -1410,7 +1469,7 @@ public partial class MainForm : Form
                 _wasMaximized = false;
         }
 
-        if (WasShown)
+        if (WasShown && !_shutdownStarted)
         {
             if (WindowState == FormWindowState.Minimized)
                 Player.SetPropertyBool("window-minimized", true);
@@ -1424,17 +1483,39 @@ public partial class MainForm : Form
         }
     }
 
-    protected override void OnFormClosing(FormClosingEventArgs e)
+    protected override async void OnFormClosing(FormClosingEventArgs e)
     {
         base.OnFormClosing(e);
 
-        if (Player.IsQuitNeeded)
-            Player.CommandV("quit");
+        if (e.Cancel || _shutdownCompleted)
+            return;
 
-        if (!Player.ShutdownAutoResetEvent.WaitOne(10000))
-            Msg.ShowError(_("Shutdown thread failed to complete within 10 seconds."));
+        e.Cancel = true;
+        if (_shutdownStarted)
+            return;
 
-        Player.Destroy();
+        _shutdownStarted = true;
+        CursorTimer.Stop();
+        ProgressTimer.Stop();
+        try
+        {
+            // Keep the window message pump alive while mpv releases its video
+            // output and GPU resources. Repeated close requests share this exit.
+            await Task.Run(() =>
+            {
+                if (Player.IsQuitNeeded)
+                    Player.CommandVAsync("quit");
+                Player.ShutdownAutoResetEvent.WaitOne();
+                Player.Destroy();
+            });
+            _shutdownCompleted = true;
+            Close();
+        }
+        catch (Exception ex)
+        {
+            _shutdownStarted = false;
+            Msg.ShowException(ex);
+        }
     }
 
     protected override void OnMouseDown(MouseEventArgs e)
@@ -1447,10 +1528,10 @@ public partial class MainForm : Form
     {
         base.OnMouseMove(e);
 
-        if (IsCursorPosDifferent(_mouseDownLocation) &&
+        if (!_shutdownStarted && IsCursorPosDifferent(_mouseDownLocation) &&
             WindowState == FormWindowState.Normal &&
             e.Button == MouseButtons.Left && !IsMouseInOsc() &&
-            Player.GetPropertyBool("window-dragging"))
+            _windowDragging)
         {
             var HTCAPTION = new IntPtr(2);
             var WM_NCLBUTTONDOWN = 0xA1;
@@ -1476,6 +1557,9 @@ public partial class MainForm : Form
     protected override void OnDragDrop(DragEventArgs e)
     {
         base.OnDragDrop(e);
+
+        if (_shutdownStarted)
+            return;
 
         bool append = ModifierKeys == Keys.Shift;
 

@@ -525,7 +525,7 @@
           <StackPanel Spacing="10">
             <TextBlock Text="{local:Text Key=aboutSources}" FontSize="18" FontWeight="SemiBold" />
             <TextBlock Text="{local:Text Key=aboutCurrent}" TextWrapping="Wrap" />
-            <Button Content="sunuuc/mpv-AnimeVE" Tag="https://github.com/sunuuc/mpv-AnimeVE" Click="OpenAboutLink" HorizontalAlignment="Left" />
+            <Button Content="sunuuc/mpv-AnimeFusion" Tag="https://github.com/sunuuc/mpv-AnimeFusion" Click="OpenAboutLink" HorizontalAlignment="Left" />
             <TextBlock Text="{local:Text Key=aboutUpstream}" TextWrapping="Wrap" />
             <Button Content="the-database/mpv-AnimeJaNai" Tag="https://github.com/the-database/mpv-AnimeJaNai" Click="OpenAboutLink" HorizontalAlignment="Left" />
           </StackPanel>

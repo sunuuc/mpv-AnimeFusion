@@ -80,6 +80,8 @@ public class MpvClient
                         OnSetPropertyReply();
                         break;
                     case mpv_event_id.MPV_EVENT_COMMAND_REPLY:
+                        if (evt.error < 0)
+                            HandleError((mpv_error)evt.error, "error executing async command");
                         OnCommandReply();
                         break;
                     case mpv_event_id.MPV_EVENT_START_FILE:  // triggered before MPV_EVENT_FILE_LOADED
@@ -221,27 +223,37 @@ public class MpvClient
             HandleError(err, "error executing command: " + command);
     }
 
-    public void CommandV(params string[] args)
+    public void CommandV(params string[] args) => CommandV(false, args);
+
+    public void CommandVAsync(params string[] args) => CommandV(true, args);
+
+    void CommandV(bool async, string[] args)
     {
         int count = args.Length + 1;
         IntPtr[] pointers = new IntPtr[count];
         IntPtr rootPtr = Marshal.AllocHGlobal(IntPtr.Size * count);
 
-        for (int index = 0; index < args.Length; index++)
+        mpv_error err;
+        try
         {
-            var bytes = GetUtf8Bytes(args[index]);
-            IntPtr ptr = Marshal.AllocHGlobal(bytes.Length);
-            Marshal.Copy(bytes, 0, ptr, bytes.Length);
-            pointers[index] = ptr;
+            for (int index = 0; index < args.Length; index++)
+            {
+                var bytes = GetUtf8Bytes(args[index]);
+                IntPtr ptr = Marshal.AllocHGlobal(bytes.Length);
+                pointers[index] = ptr;
+                Marshal.Copy(bytes, 0, ptr, bytes.Length);
+            }
+
+            Marshal.Copy(pointers, 0, rootPtr, count);
+            err = async ? mpv_command_async(Handle, 0, rootPtr) : mpv_command(Handle, rootPtr);
         }
+        finally
+        {
+            foreach (IntPtr ptr in pointers)
+                Marshal.FreeHGlobal(ptr);
 
-        Marshal.Copy(pointers, 0, rootPtr, count);
-        mpv_error err = mpv_command(Handle, rootPtr);
-
-        foreach (IntPtr ptr in pointers)
-            Marshal.FreeHGlobal(ptr);
-
-        Marshal.FreeHGlobal(rootPtr);
+            Marshal.FreeHGlobal(rootPtr);
+        }
 
         if (err < 0)
             HandleError(err, "error executing command: " + string.Join("\n", args));

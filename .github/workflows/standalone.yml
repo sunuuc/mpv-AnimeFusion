@@ -6,25 +6,10 @@ on:
         type: boolean
         description: Publish the verified complete package
         default: false
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/standalone.yml'
-      - 'release.json'
-      - 'src/**'
-      - 'portable_config/**'
-      - 'animejanai/**'
-      - 'tools/standalone/**'
-      - 'third_party/**'
-      - 'docs/danmaku-renderer.md'
-      - 'THIRD_PARTY_LICENSES/**'
-      - 'tools/language-r3/**'
-      - 'tests/**'
-      - 'docs/standalone.md'
 permissions:
   contents: write
 concurrency:
-  group: mpv-animeve-standalone
+  group: mpv-animefusion-standalone
   cancel-in-progress: true
 jobs:
   full:
@@ -62,8 +47,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/setup-dotnet@v4
         with: {dotnet-version: '10.x'}
+      - uses: actions/setup-node@v4
+        with: {node-version: '24'}
       - name: Prepare UI sources
         run: python tools/standalone/build.py prepare
+      - name: Verify Bangumi sync without browser or live account
+        run: dotnet run --project tests/bangumi/BangumiChecks.csproj -c Release
       - name: Verify languages and external argument parser
         run: |
           dotnet run --project player/tests/ScopedCommandLine -c Release 2>&1 | Tee-Object language-evidence/parser-tests.txt
@@ -87,7 +76,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: downloads
-          key: standalone-dependencies-${{ hashFiles('tools/standalone/dependencies.json', 'tools/standalone/libass-build-packages.json', 'tools/standalone/build_danmaku_factory.py') }}
+          key: standalone-dependencies-${{ hashFiles('tools/standalone/dependencies.json', 'tools/standalone/libass-build-packages.json', 'third_party/danmaku-factory/UPSTREAM.json') }}
       - name: Assemble player core and optional model assets
         env: {GH_TOKEN: '${{ github.token }}'}
         run: python tools/standalone/build.py stage
@@ -99,7 +88,7 @@ jobs:
           path: downloads
           key: standalone-dependencies-${{ hashFiles('tools/standalone/dependencies.json', 'tools/standalone/libass-build-packages.json', 'tools/standalone/build_danmaku_factory.py') }}
       - name: Verify optional components and model-free core
-        run: python tests/test_optional_components.py stage --updater stage/app/AnimeVEUpdater.exe --seven stage/app/7za.exe --model-assets dist
+        run: python tests/test_optional_components.py stage --updater stage/app/mpv-AnimeFusionUpdater.exe --seven stage/app/7za.exe --model-assets dist
       - name: FPS, external playlist and controller tests
         run: |
           Start-Service AudioEndpointBuilder
@@ -112,7 +101,7 @@ jobs:
         run: python tests/test_player_ui_windows.py stage complete-evidence/player_ui
       - name: Player UI online danmaku transport tests
         run: python tests/test_danmaku_online.py --mpv stage/app/mpv.exe
-      - name: Native danmaku composition, resize, lifecycle and route fallback
+      - name: DanmakuFactory package integrity
         run: python tools/standalone/test_danmaku_package.py stage complete-evidence/danmaku
       - name: Local HTTP playback and request-count regressions
         run: python tests/test_network_playback.py stage complete-evidence/network
@@ -125,7 +114,7 @@ jobs:
       - name: Package and test files extracted into an empty directory
         run: python tools/standalone/build.py package
       - name: Publish and verify public downloads
-        if: ${{ success() && ((github.event_name == 'push' && contains(github.event.head_commit.message, '[release]')) || (github.event_name == 'workflow_dispatch' && inputs.publish)) }}
+        if: ${{ success() && github.event_name == 'workflow_dispatch' && inputs.publish }}
         env: {GH_TOKEN: '${{ github.token }}'}
         run: python tools/standalone/publish.py
       - uses: actions/upload-artifact@v4
@@ -144,7 +133,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
       - uses: actions/upload-artifact@v4
-        if: ${{ success() && !(github.event_name == 'push' && contains(github.event.head_commit.message, '[release]')) && !inputs.publish }}
+        if: ${{ success() && !inputs.publish }}
         with:
           name: standalone-complete-package
           path: dist/*.7z*

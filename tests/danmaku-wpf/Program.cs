@@ -63,6 +63,7 @@ static class Program
         var choices = ((IEnumerable)Field(search, "_sources")).Cast<object>().ToArray();
         Call(search, "SourceChip_Click", new Button { DataContext = choices[2] }, new RoutedEventArgs());
         Check(((TextBlock)search.FindName("EmptyHeading")).Text == "正在搜索作品", "A route switch must not display stale failure");
+        Check(((TextBlock)search.FindName("EmptyDescription")).Text == "", "Searching must have only one status line");
         Call(search, "ApplyState", oldState.RootElement);
         Check((int)Field(search, "_selectedSearchSource") == 2, "An old route snapshot must not undo a pending switch");
         using var newState = JsonDocument.Parse("""

@@ -328,7 +328,7 @@
     "sha256": "d2ab5758336489da61c12cc5bb757da5339c4ae9001f9bb0562b4370249af814"
   },
   "MSYS2/libplacebo/LICENSE": {
-    "source": "Previously verified full distribution license inventory; mpv upstream and pinned MSYS2 runtime packages",
+    "source": "haasn/libplacebo cee9b076f2c63104ccfd497fa79c39a867293ec4 with upstream fixes e986aaf6696c8d16c428d589f3028d79224a75d2 and de357dcdd817b72e4acf81fcb0acff0a60ef5cf4; third_party/libplacebo-patches",
     "sha256": "b3aa400aca6d2ba1f0bd03bd98d03d1fe7489a3bbb26969d72016360af8a5c9d"
   },
   "MSYS2/libpng/LICENSE": {
@@ -714,5 +714,33 @@
   "Inter-OFL-1.1.txt": {
     "source": "https://raw.githubusercontent.com/rsms/inter/v4.1/LICENSE.txt",
     "sha256": "262481e844521b326f5ecd053e59b98c8b2da78c8ee1bdbb6e8174305e54935a"
+  },
+  "BangumiNet-MIT.txt": {
+    "source": "https://github.com/ajtn123/BangumiNet/blob/b3fd617e8361a65791b6ca9dd3eeb46d06bfaea4/LICENSE.txt",
+    "sha256": "252e89fc547bbc88b29d473dcc06e1ab4c5201dc532abbf180c8bf52452a2fc6"
+  },
+  "mpv_bangumi_sync-MIT.txt": {
+    "source": "https://github.com/x-Armin/mpv_bangumi_sync/blob/54d0ba89510ab0d254e1a117560820200a5f76b8/LICENSE",
+    "sha256": "3453db72f06f1a07519be982589fd71789d24f9d4cce631a6831284714a2d21a"
+  },
+  "Google-OAuth-Desktop-Apache-2.0.txt": {
+    "source": "https://github.com/googlesamples/oauth-apps-for-windows/blob/ab9373d1a470e1aecb90fb263f9daf6ebc4ff643/LICENSE",
+    "sha256": "f8544504cf6c974b7c41a2ed5c2a563cd5e6d966acfb498aef3bafe39f3c1d65"
+  },
+  "NuGet/SocketIOClient-MIT.txt": {
+    "source": "https://raw.githubusercontent.com/doghappy/socket.io-client-csharp/master/LICENSE",
+    "sha256": "e97ff25fc8529385c2a1a12a3a780f07322c32d95f2b00b5a277e7855a900fb8"
+  },
+  "NuGet/Std.UriTemplate-Apache-2.0.txt": {
+    "source": "https://raw.githubusercontent.com/std-uritemplate/std-uritemplate/main/LICENSE",
+    "sha256": "9b611dc4b830668a9228cfa797afda7e700fe55db6509cd4afaa358c0f630837"
+  },
+  "NuGet/Bangumi-dependencies.json": {
+    "source": "NuGet package metadata for BangumiNet.Api 1.2.1 and its resolved dependencies",
+    "sha256": "47cbc9c7720a60ef15d194fcd94a5207739f2df4b4b6774166870946577d0406"
+  },
+  "czy0729-Bangumi-MIT.txt": {
+    "source": "https://github.com/czy0729/Bangumi/blob/706ae6f82e5dfa14a507c796c3b90ad50ab380ec/LICENSE",
+    "sha256": "0148e4775e9800cfb49104d921b86eafb6db83f282bce1cc281ba0ddcf4bdcc7"
   }
 }

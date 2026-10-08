@@ -1,4 +1,4 @@
-"""Audited patches for the pinned AnimeJaNai mpv fork; no timing/drop-policy change."""
+"""Audited native fixes for the pinned AnimeJaNai mpv fork."""
 from pathlib import Path
 import subprocess
 import sys
@@ -155,4 +155,7 @@ static bool load_device''','''exit_label:
 }
 
 static bool load_device''')
-print('Applied native counter and same-thread COM notification lifetime fix')
+print('Applied native counter and COM lifetime fix')
+
+from apply_secondary_sub_sync import apply
+apply(root)

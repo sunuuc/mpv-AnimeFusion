@@ -32,7 +32,7 @@ def forbid(path: str, *markers: str) -> None:
 require(
     "portable_config/script-modules/player_ui_core.lua",
     "-- Player UI layout 1.3.0:",
-    "function M.layout(pw,ph,dpi,ui_scale)",
+    "function M.layout(pw,ph,dpi,ui_scale,time_width)",
     "function M.theme(accent)",
     "function M.local_media(path,opened,network)",
 )
@@ -49,12 +49,13 @@ require(
 )
 require(
     "portable_config/mpv.conf",
-    "osc=no",
+    "osc=yes",
     "blend-subtitles=no",
     "title-bar=yes",
     "window-maximized=no",
     "autofit-larger=1280x720",
 )
+require("portable_config/script-opts/osc.conf", "idlescreen=yes", "showwindowed=no", "showfullscreen=no", "windowcontrols=no")
 require(
     "portable_config/script-modules/player_ui_menu.lua",
     "settings=200",
@@ -92,12 +93,12 @@ require(
     "portable_config/scripts/player_ui.lua",
     "version='1.3.0'",
     "core.local_media(",
-    "local right={'fullscreen','settings','danmaku','sub','audio','speed'}",
+    "local right={'fullscreen','settings','danmaku','sub','audio','speed','bangumi'}",
     "local net=bool('demuxer-via-network') and o.network_speed and playing",
     "text((b.x0+b.x1)/2,b.y+1*u,14*u,core.rate(state.rate)",
     "text(0,0,22*u,os.date('%H:%M')",
-    "local title=core.title(prop('media-title',''),prop('path',''))",
-    "text(layout.margin,layout.title_y,22*u,title",
+    "local title,detail=core.title_lines(prop('media-title',''),prop('path',''))",
+    "text(layout.margin,layout.title_y,core.metrics.title_font*u,title",
     "if layout.volume then",
     "local volume_osd=mp.create_osd_overlay('ass-events');volume_osd.z=25",
     "local fraction=core.clamp(num('volume',0)/max_volume,0,1)",
@@ -113,7 +114,7 @@ forbid(
     "text(layout.w-16*u,26*u,22*u,core.rate(state.rate)",
     "媒体标题和集数",
 )
-require_setting("portable_config/mpv.conf", "osc", "no")
+require_setting("portable_config/mpv.conf", "osc", "yes")
 require("src/player/src/MpvNet/Player.cs", 'SetPropertyString("osc", "no")')
 forbid("portable_config/scripts/player_ui.lua", "osc-visibility")
 require("src/player/src/MpvNet.Windows/GuiCommand.cs", "ElementHost.EnableModelessKeyboardInterop(window)")
@@ -132,7 +133,9 @@ for input_path in ("portable_config/input.conf", "portable_config/input-animejan
         )
         if binding is None or "no-osd seek" not in binding:
             raise RuntimeError(f"{input_path} must suppress mpv's duplicate seek OSD for {key}")
-    for key in ("Up", "Down"):
+    # The original AnimeJaNai bindings are retained as the base config;
+    # the product's active input.conf owns its themed volume popup.
+    for key in (("Up", "Down") if input_path == "portable_config/input.conf" else ()):
         binding = next(
             (line for line in input_source.splitlines() if line.split()[:1] == [key]),
             None,
@@ -176,7 +179,7 @@ require(
     "private_server_config_path()",
     "if not file then file=io.open(path..'.bak','rb') end",
     "local servers=read_private_servers()",
-    "match_current=function(quiet,automatic)",
+    "match_current=function(quiet,automatic,failed_episodes)",
     "priority_fallback=true",
     "autoload_state=automatic and 'loading' or 'idle'",
     "autoload_state=attempt.automatic and (failed and 'error' or 'not-found') or 'idle'",
@@ -190,9 +193,12 @@ require(
     "episode_load_generation=episode_load_generation+1",
 )
 require("portable_config/script-modules/player_ui_danmaku_render.lua",
-    "'secondary-sub-ass-override','no'", "'sub-add',ass_path,'auto'", "'secondary-sid',track.id")
+    "DanmakuFactory.exe", "'sub-add'", "'secondary-sid'",
+    "'secondary-sub-display-sync'", "'secondary-sub-render-fps'")
+forbid("portable_config/script-modules/player_ui_danmaku_render.lua",
+    "create_osd_overlay", "add_periodic_timer")
 forbid("portable_config/scripts/player_ui_danmaku.lua",
-    "create_osd_overlay", "playback_clock", "danmaku_fps", "render_fps", "add_periodic_timer")
+    "create_osd_overlay", "playback_clock", "danmaku_fps", "add_periodic_timer")
 require(
     "portable_config/scripts/network_playback.lua",
     "version=2,events=history",
@@ -239,9 +245,9 @@ require(
 require("portable_config/script-opts/thumbfast.conf", "network=no")
 require(
     "portable_config/scripts/animejanai_slot.lua",
-    "Only an explicit TensorRT build status below",
-    "if text and text:find('Building TensorRT engine',1,true) then",
-    "not mp.get_property_bool('demuxer-via-network',false)",
+    "mp.commandv('vf-command', 'aji', 'slot', slot)",
+    "if mp.get_property_native('pause') then",
+    "mp.command('no-osd seek 0 exact')",
 )
 forbid("portable_config/scripts/animejanai_slot.lua", "if startup and desired>0 then hold_pause() end")
 require(

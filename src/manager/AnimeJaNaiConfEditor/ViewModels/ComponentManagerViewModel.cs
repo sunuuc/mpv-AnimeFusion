@@ -12,7 +12,7 @@ using System.Threading.Tasks;
 namespace AnimeJaNaiConfEditor.ViewModels
 {
     // One installable component pack (TensorRT runtime, per-GPU-generation kernels, RIFE
-    // models), as reported by `AnimeVEUpdater.exe --components --json`.
+    // models), as reported by `mpv-AnimeFusionUpdater.exe --components --json`.
     public class ComponentItem : ViewModelBase
     {
         public string Name { get; init; } = "";
@@ -47,7 +47,7 @@ namespace AnimeJaNaiConfEditor.ViewModels
     public class ComponentManagerViewModel : ViewModelBase
     {
         public static string UpdaterPath { get; } =
-            Path.Combine(MainWindowViewModel.RootDir, "app", "AnimeVEUpdater.exe");
+            Path.Combine(MainWindowViewModel.RootDir, "app", "mpv-AnimeFusionUpdater.exe");
 
         public bool UpdaterFound => File.Exists(UpdaterPath);
 
@@ -127,7 +127,7 @@ namespace AnimeJaNaiConfEditor.ViewModels
         {
             if (!UpdaterFound)
             {
-                GpuText = AnimeJaNai.Localization.UiText.T("安装目录中未找到 AnimeVEUpdater.exe，无法管理组件。");
+                GpuText = AnimeJaNai.Localization.UiText.T("安装目录中未找到 mpv-AnimeFusionUpdater.exe，无法管理组件。");
                 LoadFailed = true;
                 return;
             }

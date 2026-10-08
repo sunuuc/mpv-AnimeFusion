@@ -276,7 +276,7 @@ end
 
 options.scale_factor = math.floor(options.scale_factor)
 
-local mpv_path = options.mpv_path
+local mpv_path = options.mpv_path == "mpv" and mp.command_native({"expand-path", "~~/../app/mpv.exe"}) or options.mpv_path
 local frontend_path
 
 if mpv_path == "mpv" and os_name == "windows" then

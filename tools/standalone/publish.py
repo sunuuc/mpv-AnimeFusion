@@ -4,20 +4,6 @@ import base64,json,os,subprocess,sys,zipfile
 from build import R,H,E,DIST,REPO,META,LOCK,FONTS,sha,dump,run,api,source_release_files
 from security_verify import require_result as require_security_result
 
-def prune_previous_releases(current):
-    releases=api(f'repos/{REPO}/releases?per_page=100')
-    if current['draft'] or not any(r['id']==current['id'] for r in releases):
-        raise RuntimeError('Cannot prune releases without the verified public release')
-    removed=[]
-    for release in releases:
-        if release['id']!=current['id']:
-            api(f'repos/{REPO}/releases/{release["id"]}',method='DELETE')
-            removed.append(release['tag_name'])
-    remaining=api(f'repos/{REPO}/releases?per_page=100')
-    if len(remaining)!=1 or remaining[0]['id']!=current['id'] or remaining[0]['draft']:
-        raise RuntimeError('Release cleanup did not leave the verified public release')
-    return removed
-
 require_security_result(R/'clean-install',E/'security/results.json')
 
 run(sys.executable,H/'verify_player_sources.py')
@@ -117,13 +103,12 @@ public_assets=[]
 for file in user_assets+[sourcezip,checksums]:
     asset=next(a for a in published['assets'] if a['name']==file.name)
     digest=hashlib.sha256();count=0
-    request=urllib.request.Request(asset['browser_download_url'],headers={'User-Agent':'mpv-AnimeVE-release-verification'})
+    request=urllib.request.Request(asset['browser_download_url'],headers={'User-Agent':'mpv-AnimeFusion-release-verification'})
     with urllib.request.urlopen(request,timeout=120) as response:
         while chunk:=response.read(1024*1024):
             digest.update(chunk);count+=len(chunk)
     assert count==file.stat().st_size and digest.hexdigest()==sha(file),file.name
     public_assets.append({'name':file.name,'bytes':count,'sha256':digest.hexdigest()})
 dump(DIST/'public-downloads.json',{'passed':True,'assets':public_assets})
-removed=prune_previous_releases(published)
-dump(DIST/'publication.json',{'release_id':rel['id'],'source_commit':commit,'build_commit':head,'tag':META['tag'],'assets':assets,'removed_releases':removed})
+dump(DIST/'publication.json',{'release_id':rel['id'],'source_commit':commit,'build_commit':head,'tag':META['tag'],'assets':assets})
 print('PUBLISHED',META['tag'],commit)

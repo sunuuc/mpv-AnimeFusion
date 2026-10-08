@@ -6,13 +6,14 @@
 		<RootNamespace>MpvNet.Windows</RootNamespace>
 		<AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
 		<PublishSingleFile>false</PublishSingleFile>
-		<AssemblyName>AnimeVE</AssemblyName>
+		<AssemblyName>mpv-AnimeFusion</AssemblyName>
 		<UseWPF>true</UseWPF>
 		<UseWindowsForms>true</UseWindowsForms>
 		<ApplicationIcon>mpv-icon.ico</ApplicationIcon>
-		<FileVersion>1.2.7.0</FileVersion>
-		<AssemblyVersion>1.2.7.0</AssemblyVersion>
-		<InformationalVersion>1.2.7</InformationalVersion>
+		<FileVersion>1.3.0.0</FileVersion>
+		<AssemblyVersion>1.3.0.0</AssemblyVersion>
+		<InformationalVersion>1.3.0</InformationalVersion>
+		<AnimeFusionRepositoryRoot>$([MSBuild]::GetDirectoryNameOfFileAbove('$(MSBuildThisFileDirectory)', 'release.json'))</AnimeFusionRepositoryRoot>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -40,6 +41,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<PackageReference Include="BangumiNet.Api" />
 		<PackageReference Include="CommunityToolkit.Mvvm" />
 		<PackageReference Include="Microsoft.Xaml.Behaviors.Wpf" />
 	</ItemGroup>

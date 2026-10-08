@@ -2,7 +2,7 @@
 -- animation, seeking and presentation; this module has no frame update loop.
 return function(mp, utils, on_change)
     local M={ready=false,busy=false,count=0,track=nil,error=nil}
-    local defaults={resolution={1920,1080},displayArea=1,scrollArea=1,
+    local defaults={resolution={1920,1080},fps=60,displayArea=1,scrollArea=1,
         scrolltime=12,fixtime=5,density=0,lineSpacing=0,topMargin=0,bottomMargin=0,
         fontsize=38,fontname='Microsoft YaHei',opacity=180,outline=0,shadow=1,bold=false,
         outlineBlur=0,outlineOpacity=255,saveBlocked=true,showUsernames=false,showMsgbox=true,
@@ -10,10 +10,11 @@ return function(mp, utils, on_change)
         blockmode=utils.parse_json('[]'),statmode=utils.parse_json('[]'),
         fontSizeStrict=false,fontSizeNorm=false,blacklist='',blacklistRegex=false}
     local root=os.getenv('LOCALAPPDATA') or os.getenv('APPDATA') or os.getenv('TEMP')
-    M.config_path=root and (root..'/AnimeVE-DanmakuFactory.json') or nil
+    M.config_path=root and (root..'/mpv-AnimeFusion-DanmakuFactory.json') or nil
     local executable=mp.command_native({'expand-path','~~/../animejanai/danmaku/DanmakuFactory.exe'})
     local job,serial,ass_path,input_path,owned_input= nil,0,nil,nil,false
-    local previous_secondary,previous_style,previous_visibility
+    local previous_secondary,previous_style,previous_visibility,previous_display_sync
+    local previous_render_fps
     local playback_speed=mp.get_property_number('speed',1)
     local timeline={{t=0,rate=playback_speed}}
     local regen_timer
@@ -54,6 +55,8 @@ return function(mp, utils, on_change)
                 mp.set_property_native('secondary-sid',previous_secondary or 'no')
                 mp.set_property('secondary-sub-ass-override',previous_style or 'strip')
                 mp.set_property_bool('secondary-sub-visibility',previous_visibility~=false)
+                mp.set_property_bool('secondary-sub-display-sync',previous_display_sync or false)
+                mp.set_property_number('secondary-sub-render-fps',previous_render_fps)
             end
             mp.commandv('sub-remove',M.track)
             M.track=nil
@@ -71,8 +74,12 @@ return function(mp, utils, on_change)
                 previous_secondary=mp.get_property_native('secondary-sid','no')
                 previous_style=mp.get_property('secondary-sub-ass-override','strip')
                 previous_visibility=mp.get_property_bool('secondary-sub-visibility',true)
+                previous_display_sync=mp.get_property_bool('secondary-sub-display-sync',false)
+                previous_render_fps=mp.get_property_number('secondary-sub-render-fps',60)
                 mp.set_property('secondary-sub-ass-override','no')
                 mp.set_property_bool('secondary-sub-visibility',M.enabled~=false)
+                mp.set_property_number('secondary-sub-render-fps',M.settings.fps)
+                mp.set_property_bool('secondary-sub-display-sync',true)
                 mp.set_property_native('secondary-sid',track.id)
                 on_change()
                 break
@@ -104,7 +111,7 @@ return function(mp, utils, on_change)
         local expected=serial
         local temp=os.getenv('TEMP') or root
         if not temp then M.busy=false;M.error='本机临时目录不可用';on_change();return end
-        local output=temp..'/AnimeVE-danmaku-'..tostring(utils.getpid())..'-'..serial..'.ass'
+        local output=temp..'/mpv-AnimeFusion-danmaku-'..tostring(utils.getpid())..'-'..serial..'.ass'
         os.remove(output)
         local args={executable,'--ignore-warnings','--force','-o',output,'-i',path}
         -- Pass settings through the upstream CLI, which also supports word blocking.
@@ -144,7 +151,7 @@ return function(mp, utils, on_change)
     function M.comments(list)
         local temp=os.getenv('TEMP') or root
         if not temp then M.error='本机临时目录不可用';on_change();return end
-        local path=temp..'/AnimeVE-comments-'..tostring(utils.getpid())..'-'..(serial+1)..'.xml'
+        local path=temp..'/mpv-AnimeFusion-comments-'..tostring(utils.getpid())..'-'..(serial+1)..'.xml'
         local lines={'<?xml version="1.0" encoding="UTF-8"?><i>'}
         for _,item in ipairs(list) do
             lines[#lines+1]=string.format('<d p="%.3f,%d,25,%d,0,0,0,0">%s</d>',
@@ -170,6 +177,10 @@ return function(mp, utils, on_change)
             value=tonumber(value)
             if not value or value<1 or value>100 then return end
             values.opacity=math.floor(value*255/100+.5)
+        elseif key=='fps' then
+            value=tonumber(value)
+            if value~=30 and value~=60 and value~=90 then return end
+            values.fps=value
         elseif defaults[key]~=nil then
             values[key]=value
             if key=='blacklist' then values.blacklistRegex=false end
@@ -177,6 +188,10 @@ return function(mp, utils, on_change)
         local ok,why=write(M.config_path,utils.format_json(values))
         if not ok then M.error='无法保存弹幕设置：'..tostring(why);on_change();return end
         M.settings=values
+        if key=='fps' then
+            if M.track then mp.set_property_number('secondary-sub-render-fps',value) end
+            on_change();return
+        end
         if input_path then M.convert(input_path,owned_input) else on_change() end
     end
     function M.words()
@@ -194,7 +209,7 @@ return function(mp, utils, on_change)
                 words[#words+1]=line
             end
         end
-        local path=root..'/AnimeVE-danmaku-blocklist.txt'
+        local path=root..'/mpv-AnimeFusion-danmaku-blocklist.txt'
         local ok,why=write(path,table.concat(words,'\n'))
         if not ok then M.error='无法保存屏蔽词：'..tostring(why);on_change();return end
         M.set('blacklist',#words>0 and path or '')

@@ -261,7 +261,7 @@ public partial class DanmakuSearchWindow : Window
         else if (_pendingSearches > 0)
         {
             EmptyHeading.Text = "正在搜索作品";
-            EmptyDescription.Text = "正在并行查询已配置的弹幕线路。";
+            EmptyDescription.Text = "";
         }
         else if (_failedSearches > 0 && _respondedSearches == 0)
         {

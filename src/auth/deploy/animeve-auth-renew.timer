@@ -1,0 +1,10 @@
+[Unit]
+Description=Schedule AnimeVE HTTPS certificate renewal
+
+[Timer]
+OnCalendar=*-*-* 03,15:00:00
+RandomizedDelaySec=1800
+Persistent=true
+
+[Install]
+WantedBy=timers.target

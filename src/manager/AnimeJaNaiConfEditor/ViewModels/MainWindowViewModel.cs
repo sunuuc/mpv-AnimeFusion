@@ -134,7 +134,7 @@ namespace AnimeJaNaiConfEditor.ViewModels
         }
 
         public ComponentManagerViewModel ComponentManager { get; } = new();
-        public string ProductVersion => "mpv-AnimeVE " +
+        public string ProductVersion => "mpv-AnimeFusion " +
             (typeof(MainWindowViewModel).Assembly.GetName().Version?.ToString(3) ?? "");
 
         private int _selectedTabIndex;

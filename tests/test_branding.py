@@ -10,8 +10,8 @@ import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 META = json.loads((ROOT / 'release.json').read_text(encoding='utf-8'))
-NAME = 'AnimeVE'
-PROJECT_NAME = 'mpv-AnimeVE'
+NAME = 'mpv-AnimeFusion'
+PROJECT_NAME = 'mpv-AnimeFusion'
 ENTRY_POINTS = (NAME + '.exe', NAME + 'Manager.exe', NAME + 'Updater.exe')
 
 
@@ -25,7 +25,7 @@ class BrandingTests(unittest.TestCase):
             self.assertIn(ENTRY_POINTS[0], text)
             self.assertIn(ENTRY_POINTS[1], text)
             self.assertNotIn('AnimeJaNai-zh-CN-', text)
-        self.assertIn('https://github.com/sunuuc/mpv-AnimeVE/releases',
+        self.assertIn('https://github.com/sunuuc/mpv-AnimeFusion/releases',
                       (ROOT / 'README.md').read_text(encoding='utf-8'))
 
     def test_distribution_names_follow_project_identity(self):
@@ -97,14 +97,14 @@ class BrandingTests(unittest.TestCase):
         self.assertNotIn('aboutLicenseScope', manager)
         for key in ('aboutChanges', 'aboutDownloads'):
             self.assertNotIn(key, manager)
-        self.assertLess(manager.index('Key=aboutCurrent'),manager.index('Content="sunuuc/mpv-AnimeVE"'))
+        self.assertLess(manager.index('Key=aboutCurrent'),manager.index('Content="sunuuc/mpv-AnimeFusion"'))
         self.assertLess(manager.index('Key=aboutUpstream'),manager.index('Content="the-database/mpv-AnimeJaNai"'))
         for key in ('aboutCurrent','aboutUpstream'):
             self.assertIn(data['keys'][key],data['translations'])
         self.assertIn('RIFE',data['translations'][data['keys']['aboutUpstream']])
-        self.assertIn('mpv-AnimeVE',data['translations'][data['keys']['aboutCurrent']])
+        self.assertIn('mpv-AnimeFusion',data['translations'][data['keys']['aboutCurrent']])
         player = (ROOT / 'src/player/src/MpvNet/App.cs').read_text(encoding='utf-8')
-        self.assertIn('https://github.com/sunuuc/mpv-AnimeVE', player)
+        self.assertIn('https://github.com/sunuuc/mpv-AnimeFusion', player)
         self.assertIn('OPEN_SOURCE_NOTICES.md', player)
         for name in ('input.conf', 'input-animejanai.conf'):
             rows = (ROOT / 'portable_config' / name).read_text(encoding='utf-8').splitlines()
@@ -118,9 +118,9 @@ class BrandingTests(unittest.TestCase):
 def verify_package(folder):
     app = Path(folder).resolve()
     assert {p.name for p in app.iterdir()} == {
-        'AnimeVE.exe', 'AnimeVEManager.exe', 'app', 'docs', 'portable_config', 'animejanai'}
+        'mpv-AnimeFusion.exe', 'mpv-AnimeFusionManager.exe', 'app', 'docs', 'portable_config', 'animejanai'}
     assert not list(app.glob('*.dll'))
-    for name in ('AnimeVE', 'AnimeVEManager'):
+    for name in ('mpv-AnimeFusion', 'mpv-AnimeFusionManager'):
         assert ('app/'+name+'.dll').encode() in (app/(name+'.exe')).read_bytes()
     for name in ('LICENSE', 'OPEN_SOURCE_NOTICES.md', 'THIRD_PARTY_LICENSES'):
         assert (app/'docs'/name).exists(), name
@@ -131,7 +131,7 @@ def verify_package(folder):
     env = dict(os.environ, BRANDING_APP=str(app))
     script = '''
 $ErrorActionPreference = 'Stop'
-$names = 'AnimeVE.exe', 'AnimeVEManager.exe', 'app/AnimeVEUpdater.exe'
+$names = 'mpv-AnimeFusion.exe', 'mpv-AnimeFusionManager.exe', 'app/mpv-AnimeFusionUpdater.exe'
 $result = foreach ($name in $names) {
     $info = [Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $env:BRANDING_APP $name))
     @{name=$name;product=$info.ProductName;version=$info.ProductVersion}

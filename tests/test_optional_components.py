@@ -14,25 +14,55 @@ import io
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools/standalone'))
 from components import prepare, validate
-from build import copy_validation_reports, release_notes, download
+from build import copy_validation_reports, release_notes, download, source_release_files, clean_session_files
 
 class ComponentContracts(unittest.TestCase):
-    def test_release_page_follows_the_current_chinese_readme(self):
+    def test_bangumi_sources_and_licenses_are_packaged(self):
+        files={p.relative_to(ROOT).as_posix() for p in source_release_files(('src','tests','docs','THIRD_PARTY_LICENSES'))}
+        for name in ('src/player/src/MpvNet.Windows/Bangumi/BangumiClient.cs',
+                     'src/player/src/MpvNet.Windows/WPF/BangumiSyncWindow.xaml',
+                     'tests/bangumi/Program.cs','docs/bangumi-sources.md',
+                     'THIRD_PARTY_LICENSES/BangumiNet-MIT.txt',
+                     'THIRD_PARTY_LICENSES/czy0729-Bangumi-MIT.txt',
+                     'THIRD_PARTY_LICENSES/mpv_bangumi_sync-MIT.txt',
+                     'THIRD_PARTY_LICENSES/Google-OAuth-Desktop-Apache-2.0.txt',
+                     'THIRD_PARTY_LICENSES/NuGet/Bangumi-dependencies.json'):
+            self.assertIn(name,files)
+    def test_bangumi_personal_configuration_is_not_packaged(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp)
+            config=root/'portable_config';config.mkdir()
+            for name in ('bangumi.json','bangumi-app.json'):
+                (config/name).write_text('private-fixture',encoding='utf-8')
+            clean_session_files(root)
+            self.assertFalse((config/'bangumi.json').exists())
+            self.assertFalse((config/'bangumi-app.json').exists())
+
+    def test_release_page_contains_only_current_version_changes(self):
+        import re
         notes=release_notes()
-        readme=(ROOT/'README.md').read_text(encoding='utf-8')
-        features=readme.split('## 功能\n',1)[1].split('\n## ',1)[0].strip()+'\n'
-        self.assertEqual(notes,features)
+        version=json.loads((ROOT/'release.json').read_text(encoding='utf-8'))['version']
+        changelog=(ROOT/'CHANGELOG.md').read_text(encoding='utf-8')
+        section=re.search(
+            r'(?ms)^## \['+re.escape(version)+r'\][^\n]*\n(.*?)(?=^## |\Z)', changelog)
+        self.assertEqual(notes, section.group(1).strip()+'\n')
         self.assertNotIn('Hills Lite',notes)
         self.assertNotIn('首次',notes)
+
+    def test_release_requires_version_changes(self):
+        with tempfile.TemporaryDirectory() as temp, patch('build.R', Path(temp)):
+            (Path(temp)/'CHANGELOG.md').write_text('# Changes\n## [Unreleased]\n- Pending\n', encoding='utf-8')
+            with self.assertRaisesRegex(RuntimeError, 'Missing version changes'):
+                release_notes()
     def test_latest_build_input_is_still_hash_verified(self):
         content=b'pinned native input'
-        item={'repo':'sunuuc/mpv-AnimeVE','tag':'latest','name':'native-build-inputs.7z',
+        item={'repo':'sunuuc/mpv-AnimeFusion','tag':'latest','name':'native-build-inputs.7z',
               'sha256':hashlib.sha256(content).hexdigest()}
         with tempfile.TemporaryDirectory() as temp,patch('build.R',Path(temp)):
             with patch('build.urllib.request.urlopen',return_value=io.BytesIO(content)) as opened:
                 self.assertEqual(download(item).read_bytes(),content)
                 self.assertEqual(opened.call_args.args[0].full_url,
-                                 'https://github.com/sunuuc/mpv-AnimeVE/releases/latest/download/native-build-inputs.7z')
+                                 'https://github.com/sunuuc/mpv-AnimeFusion/releases/latest/download/native-build-inputs.7z')
             with patch('build.urllib.request.urlopen',return_value=io.BytesIO(b'damaged')) as opened:
                 self.assertEqual(download(item).read_bytes(),content)
                 opened.assert_not_called()
@@ -126,7 +156,7 @@ def verify_updater(updater, seven, live=False, model_assets=None, package=None):
             archive=root/(name+'.7z')
             subprocess.run([str(seven),'a','-t7z','-bd',str(archive),*files],cwd=root/'source',stdout=subprocess.DEVNULL,check=True)
             cache=app/'app/.component-downloads'/name;cache.mkdir(parents=True);shutil.copy2(archive,cache/'package.7z')
-            return {'name':name,'asset':archive.name,'url':'https://github.com/sunuuc/mpv-AnimeVE/releases/latest/download/'+archive.name,
+            return {'name':name,'asset':archive.name,'url':'https://github.com/sunuuc/mpv-AnimeFusion/releases/latest/download/'+archive.name,
                     'sha256':digest(archive),'bytes':archive.stat().st_size,'installed_bytes':len(content),'files':files,
                     'requires':requires,'recommended':False}
         runtime=pack('fixture-runtime',b'test runtime')
@@ -208,7 +238,7 @@ def verify_updater(updater, seven, live=False, model_assets=None, package=None):
             models=[p for p in catalog['packs'] if p['name'].startswith('upscale-model-')]
             write(catalog['packs'])
             for p in models:
-                assert p['url']=='https://github.com/sunuuc/mpv-AnimeVE/releases/latest/download/'+p['asset']
+                assert p['url']=='https://github.com/sunuuc/mpv-AnimeFusion/releases/latest/download/'+p['asset']
                 archive=model_assets/p['asset'];assert digest(archive)==p['sha256']
                 cache=app/'app/.component-downloads'/p['name'];cache.mkdir(parents=True)
                 shutil.copy2(archive,cache/'package.7z')

@@ -116,7 +116,7 @@ Config Folder
 mpv.net searches the config folder at:
 
 1. Folder defined via ANIMEVE_HOME environment variable.
-2. startup\portable_config (startup means the directory containing AnimeVE.exe)
+2. startup\portable_config (startup means the directory containing mpv-AnimeFusion.exe)
 3. `%APPDATA%\mpv.net` (`C:\Users\Username\AppData\Roaming\mpv.net`)
 
 The config folder can be easily opened with:
@@ -126,7 +126,7 @@ The config folder can be easily opened with:
 The most important files and folders in the config folder are:
 
 - `mpv.conf` file containing the mpv configuration.
-- `AnimeVE.conf` file containing the mpv.net configuration.
+- `mpv-AnimeFusion.conf` file containing the mpv.net configuration.
 - `input.conf` file containing mpv key and mouse input bindings.
 - `scripts` folder containing mpv user scripts.
 - `script-opts` folder containing user scripts configuration files.
@@ -350,7 +350,7 @@ mpv.net specific options
 
 mpv.net specific options can be found in the conf editor searching for 'mpv.net'.
 
-The options are saved in the AnimeVE.conf file.
+The options are saved in the mpv-AnimeFusion.conf file.
 
 #### --autofit-audio \<integer\>
 Initial window height in percent for audio files. Default: 70
@@ -719,7 +719,7 @@ Options that are specific to mpv.net can be found by entering _mpv.net_
 in the search field of the config editor, in the mpv.net manual they are
 documented [here](#mpvnet-specific-options).
 
-mpv.net specific options are saved in the file AnimeVE.conf and are just
+mpv.net specific options are saved in the file mpv-AnimeFusion.conf and are just
 as mpv properties available on the command line.
 
 

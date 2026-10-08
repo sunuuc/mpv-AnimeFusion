@@ -1,6 +1,6 @@
-﻿<Project>
+<Project>
 	<PropertyGroup>
-		<Product>AnimeVE</Product>
+		<Product>mpv-AnimeFusion</Product>
 		<Nullable>enable</Nullable>
 	</PropertyGroup>
 </Project>

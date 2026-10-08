@@ -1,0 +1,242 @@
+[
+  {
+    "package": "BangumiNet.Api",
+    "version": "1.2.1",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2025 aoi",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/ajtn123/BangumiNet",
+      "commit": "b3fd617e8361a65791b6ca9dd3eeb46d06bfaea4"
+    },
+    "licenseFile": "BangumiNet-MIT.txt"
+  },
+  {
+    "package": "BangumiNet.Common",
+    "version": "1.2.1",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2025 aoi",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/ajtn123/BangumiNet",
+      "commit": "b3fd617e8361a65791b6ca9dd3eeb46d06bfaea4"
+    },
+    "licenseFile": "BangumiNet-MIT.txt"
+  },
+  {
+    "package": "Microsoft.Extensions.DependencyInjection.Abstractions",
+    "version": "10.0.3",
+    "license": "MIT",
+    "copyright": "© Microsoft Corporation. All rights reserved.",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/dotnet/dotnet",
+      "commit": "c2435c3e0f46de784341ac3ed62863ce77e117b4"
+    },
+    "licenseFile": "Microsoft/.NET-runtime-MIT.txt"
+  },
+  {
+    "package": "Microsoft.Extensions.DependencyInjection",
+    "version": "10.0.3",
+    "license": "MIT",
+    "copyright": "© Microsoft Corporation. All rights reserved.",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/dotnet/dotnet",
+      "commit": "c2435c3e0f46de784341ac3ed62863ce77e117b4"
+    },
+    "licenseFile": "Microsoft/.NET-runtime-MIT.txt"
+  },
+  {
+    "package": "Microsoft.Extensions.Logging.Abstractions",
+    "version": "10.0.3",
+    "license": "MIT",
+    "copyright": "© Microsoft Corporation. All rights reserved.",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/dotnet/dotnet",
+      "commit": "c2435c3e0f46de784341ac3ed62863ce77e117b4"
+    },
+    "licenseFile": "Microsoft/.NET-runtime-MIT.txt"
+  },
+  {
+    "package": "Microsoft.Extensions.Logging",
+    "version": "10.0.3",
+    "license": "MIT",
+    "copyright": "© Microsoft Corporation. All rights reserved.",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/dotnet/dotnet",
+      "commit": "c2435c3e0f46de784341ac3ed62863ce77e117b4"
+    },
+    "licenseFile": "Microsoft/.NET-runtime-MIT.txt"
+  },
+  {
+    "package": "Microsoft.Extensions.Options",
+    "version": "10.0.3",
+    "license": "MIT",
+    "copyright": "© Microsoft Corporation. All rights reserved.",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/dotnet/dotnet",
+      "commit": "c2435c3e0f46de784341ac3ed62863ce77e117b4"
+    },
+    "licenseFile": "Microsoft/.NET-runtime-MIT.txt"
+  },
+  {
+    "package": "Microsoft.Extensions.Primitives",
+    "version": "10.0.3",
+    "license": "MIT",
+    "copyright": "© Microsoft Corporation. All rights reserved.",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/dotnet/dotnet",
+      "commit": "c2435c3e0f46de784341ac3ed62863ce77e117b4"
+    },
+    "licenseFile": "Microsoft/.NET-runtime-MIT.txt"
+  },
+  {
+    "package": "Microsoft.IO.RecyclableMemoryStream",
+    "version": "3.0.1",
+    "license": "MIT",
+    "copyright": "© Microsoft Corporation. All rights reserved.",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/Microsoft/Microsoft.IO.RecyclableMemoryStream",
+      "commit": "e29a28387da9018fa9605a1dcb3f7a0435aa9974"
+    },
+    "licenseFile": "Microsoft/.NET-runtime-MIT.txt"
+  },
+  {
+    "package": "Microsoft.Kiota.Abstractions",
+    "version": "2.0.0",
+    "license": "MIT",
+    "copyright": "© Microsoft Corporation. All rights reserved.",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/microsoft/kiota-dotnet",
+      "commit": "9d99bb1efdf7fb98b6c37dfc9a78ced5b13e321c"
+    },
+    "licenseFile": "Microsoft/.NET-runtime-MIT.txt"
+  },
+  {
+    "package": "Microsoft.Kiota.Bundle",
+    "version": "2.0.0",
+    "license": "MIT",
+    "copyright": "© Microsoft Corporation. All rights reserved.",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/microsoft/kiota-dotnet",
+      "commit": "9d99bb1efdf7fb98b6c37dfc9a78ced5b13e321c"
+    },
+    "licenseFile": "Microsoft/.NET-runtime-MIT.txt"
+  },
+  {
+    "package": "Microsoft.Kiota.Http.HttpClientLibrary",
+    "version": "2.0.0",
+    "license": "MIT",
+    "copyright": "© Microsoft Corporation. All rights reserved.",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/microsoft/kiota-dotnet",
+      "commit": "9d99bb1efdf7fb98b6c37dfc9a78ced5b13e321c"
+    },
+    "licenseFile": "Microsoft/.NET-runtime-MIT.txt"
+  },
+  {
+    "package": "Microsoft.Kiota.Serialization.Form",
+    "version": "2.0.0",
+    "license": "MIT",
+    "copyright": "© Microsoft Corporation. All rights reserved.",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/microsoft/kiota-dotnet",
+      "commit": "9d99bb1efdf7fb98b6c37dfc9a78ced5b13e321c"
+    },
+    "licenseFile": "Microsoft/.NET-runtime-MIT.txt"
+  },
+  {
+    "package": "Microsoft.Kiota.Serialization.Json",
+    "version": "2.0.0",
+    "license": "MIT",
+    "copyright": "© Microsoft Corporation. All rights reserved.",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/microsoft/kiota-dotnet",
+      "commit": "9d99bb1efdf7fb98b6c37dfc9a78ced5b13e321c"
+    },
+    "licenseFile": "Microsoft/.NET-runtime-MIT.txt"
+  },
+  {
+    "package": "Microsoft.Kiota.Serialization.Multipart",
+    "version": "2.0.0",
+    "license": "MIT",
+    "copyright": "© Microsoft Corporation. All rights reserved.",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/microsoft/kiota-dotnet",
+      "commit": "9d99bb1efdf7fb98b6c37dfc9a78ced5b13e321c"
+    },
+    "licenseFile": "Microsoft/.NET-runtime-MIT.txt"
+  },
+  {
+    "package": "Microsoft.Kiota.Serialization.Text",
+    "version": "2.0.0",
+    "license": "MIT",
+    "copyright": "© Microsoft Corporation. All rights reserved.",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/microsoft/kiota-dotnet",
+      "commit": "9d99bb1efdf7fb98b6c37dfc9a78ced5b13e321c"
+    },
+    "licenseFile": "Microsoft/.NET-runtime-MIT.txt"
+  },
+  {
+    "package": "SocketIOClient.Common",
+    "version": "4.0.0",
+    "license": "MIT",
+    "copyright": "",
+    "repository": {
+      "type": "github",
+      "url": "https://github.com/doghappy/socket.io-client-csharp",
+      "commit": "167500202fedc2801e6ee42dfe69b61d0bfc7d25"
+    },
+    "licenseFile": "NuGet/SocketIOClient-MIT.txt"
+  },
+  {
+    "package": "SocketIOClient.Serializer",
+    "version": "4.0.0.1",
+    "license": "MIT",
+    "copyright": "",
+    "repository": {
+      "type": "github",
+      "url": "https://github.com/doghappy/socket.io-client-csharp",
+      "commit": "167500202fedc2801e6ee42dfe69b61d0bfc7d25"
+    },
+    "licenseFile": "NuGet/SocketIOClient-MIT.txt"
+  },
+  {
+    "package": "SocketIOClient",
+    "version": "4.0.5",
+    "license": "MIT",
+    "copyright": "",
+    "repository": {
+      "type": "github",
+      "url": "https://github.com/doghappy/socket.io-client-csharp",
+      "commit": "9deebcfe8079164d269ec4f22ba58589366014fb"
+    },
+    "licenseFile": "NuGet/SocketIOClient-MIT.txt"
+  },
+  {
+    "package": "Std.UriTemplate",
+    "version": "2.0.8",
+    "license": "Apache-2.0",
+    "copyright": "",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/std-uritemplate/std-uritemplate",
+      "commit": "777fd8705748af55185fcc838a261cce4867ba27"
+    },
+    "licenseFile": "NuGet/Std.UriTemplate-Apache-2.0.txt"
+  }
+]

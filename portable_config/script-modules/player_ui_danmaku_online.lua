@@ -63,7 +63,7 @@ function M.request_command(url, body, options)
         '$utf8=[System.Text.UTF8Encoding]::new($false);',
         '$url=$utf8.GetString(' .. ps_b64(url) .. ');',
         '$request=[System.Net.HttpWebRequest]::Create($url);',
-        "$request.UserAgent='AnimeVE/1.1.9';",
+        "$request.UserAgent='mpv-AnimeFusion/1.1.9';",
         "$request.Timeout=" .. tostring(timeout * 1000) .. ';',
         "$request.ReadWriteTimeout=" .. tostring(timeout * 1000) .. ';',
         '[System.Net.ServicePointManager]::SecurityProtocol=[System.Net.SecurityProtocolType]::Tls12;',
@@ -236,8 +236,19 @@ end
 local CHINESE_SEASONS={'一','二','三','四','五','六','七','八','九','十','十一','十二'}
 local ROMAN_SEASONS={'Ⅰ','Ⅱ','Ⅲ','Ⅳ','Ⅴ','Ⅵ','Ⅶ','Ⅷ','Ⅸ','Ⅹ','Ⅺ','Ⅻ'}
 local ASCII_SEASONS={'I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'}
+local function title_width(value)
+    return tostring(value or ''):gsub(UTF8_CODEPOINT,function(character)
+        local a,b,c=character:byte(1,3)
+        if a==239 and b and c then
+            local code=(a-224)*4096+(b-128)*64+c-128
+            if code>=65281 and code<=65374 then return string.char(code-65248) end
+        end
+        return character=='　' and ' ' or character
+    end)
+end
+local SEASON_EPISODE='[Ss](%d+)[ ._%-]*[Ee](%d+%.?%d*)'
 local function season_marker(title)
-    for _,pattern in ipairs({'[Ss](%d+)[Ee]%d+','第%s*(%d+)%s*季',
+    for _,pattern in ipairs({SEASON_EPISODE,'第%s*(%d+)%s*季',
         '%f[%a][Ss][Ee][Aa][Ss][Oo][Nn]%s+(%d+)%f[%W]','%f[%w][Ss](%d+)%f[%W]'}) do
         local first,last,number=title:find(pattern)
         if number and tonumber(number)>0 then return tonumber(number),first,last end
@@ -260,7 +271,7 @@ local function season_marker(title)
     return nil
 end
 function M.season_number(title)
-    local number=season_marker(tostring(title or ''))
+    local number=season_marker(title_width(title))
     return number
 end
 local function strip_season(title)
@@ -269,36 +280,59 @@ local function strip_season(title)
 end
 
 local function strip_year(title)
-    return title:gsub('%s*[（(]%d%d%d%d[)）]%s*$',''):gsub('[%s%-—–]+$','')
+    return title:gsub('%s*%(%d%d%d%d%)%s*$',''):gsub('%s*（%d%d%d%d）%s*$','')
+        :gsub('[%s%-]+$','')
+end
+local VIDEO_EXTENSIONS={mkv=true,mp4=true,avi=true,mov=true,wmv=true,flv=true,webm=true,
+    m4v=true,mpg=true,mpeg=true,ts=true,m2ts=true,mts=true,vob=true,ogv=true,rm=true,rmvb=true}
+local function strip_extension(title)
+    local extension=title:match('%.([%a%d]+)$')
+    if extension and VIDEO_EXTENSIONS[extension:lower()] then return title:sub(1,-#extension-2) end
+    return title
 end
 
 function M.episode_query(title)
-    title=tostring(title or '')
+    title=strip_extension(title_width(title)):gsub('^%s*%[[^%]]+%]%s*','')
+    for _=1,8 do
+        local stripped=title:gsub('%s*%[[^%]]+%]%s*$','')
+        if stripped==title then break end
+        title=stripped
+    end
     local season=M.season_number(title)
-    local start,finish=title:find('[Ss]%d+[Ee]%d+')
-    local episode=start and tonumber(title:sub(start,finish):match('[Ee](%d+)'))
+    local start,finish,explicit_season,number=title:find(SEASON_EPISODE)
+    if explicit_season and tonumber(explicit_season)==0 then return nil,nil,nil end
+    local episode=start and tonumber(number)
     local anime=start and strip_year(title:sub(1,start-1)) or nil
     if not episode then
-        local prefix,n=title:match('^(.-)%s*第%s*(%d+)%s*[集话話]')
-        if not prefix then prefix,n=title:match('^(.-)%s*[Ee][Pp]?%s*(%d+)') end
+        local prefix,n
+        for _,word in ipairs({'集','话','話'}) do
+            prefix,n=title:match('^(.-)%s*第%s*(%d+%.?%d*)%s*'..word)
+            if prefix then break end
+        end
+        if not prefix then prefix,n=title:match('^(.-)%s*%f[%a][Ee][Pp]?%s*(%d+%.?%d*)') end
         if not prefix then prefix,n=title:match('^(.-)%s*#%s*(%d+)') end
-        if not prefix then prefix,n=title:match('^(.-)%s*[%-—–~～]%s*(%d+)%s*$') end
+        if not prefix then prefix,n=title:match('^(.-)%s*%-%s*(%d+%.?%d*)%s*$') end
+        for _,separator in ipairs({'—','–','~'}) do
+            if not prefix then prefix,n=title:match('^(.-)%s*'..separator..'%s*(%d+%.?%d*)%s*$') end
+        end
         if prefix then anime=strip_year(prefix);episode=tonumber(n) end
     end
-    if not anime or anime=='' or not episode then return nil,nil,season end
+    if not anime or anime=='' or not episode or episode<=0 then return nil,nil,season end
+    local prefix_season=M.season_number(anime)
+    if prefix_season and season and prefix_season~=season then return nil,nil,nil end
     return strip_season(anime):gsub('%s+$',''),episode,season
 end
 
 function M.search_keyword(title)
     title = M.limit_text(title,512):gsub('[%z\1-\8\11\12\14-\31\127]', '')
     title = title:gsub('^%s*%[[^%]]+%]%s*', '')
-    title = title:gsub('%.[%w%d]+$', '')
+    title = strip_extension(title)
     local anime = M.episode_query(title)
-    if anime then return M.limit_text(anime,120) end
+    if anime then return M.show_info(anime).series end
     title = title:gsub('%s*%[[^%]]*[0-9]+[pPkK][^%]]*%]%s*$', '')
     title = title:gsub('%s*%[[^%]]*[Bb][Dd][^%]]*%]%s*$', '')
     title = title:gsub('[%s._%-]+$', ''):gsub('^%s+', ''):gsub('%s+$', '')
-    return M.limit_text(title,120)
+    return M.limit_text(M.show_info(title).series,120)
 end
 
 local function decode_json(text, parse_json)
@@ -335,24 +369,152 @@ local function platform_name(value)
     value=M.limit_text(value,32)
     return PLATFORM_NAMES[value:lower()] or value
 end
+function M.episode_platform(key,label)
+    local value=key and key~='' and key or tostring(label or ''):match('【([^】]+)】')
+        or tostring(label or ''):match('%[([^%]]+)%]')
+    return platform_name(value or '未知平台')
+end
 local function image_url(value)
     if type(value)~='string' or #value>2048 or value:find('[%z\1-\31]')
         or not value:match('^https?://[^/%?#]+') then return nil end
     return value
 end
 function M.show_info(value,clean)
-    local title=M.limit_text(value,120,clean)
-    local year=tonumber(title:match('[（(](%d%d%d%d)[)）]'))
+    local display=M.limit_text(value,120,clean)
+    local title=title_width(display)
+    local year=tonumber(title:match('%((%d%d%d%d)%)'))
     local season=M.season_number(title)
-    local part=tonumber(title:match('[Pp]art%s*(%d+)') or title:match('第%s*(%d+)%s*部分'))
+    local part=tonumber(title:match('[Pp]art[ ._-]*(%d+)') or title:match('第%s*(%d+)%s*部分'))
+    for n,word in ipairs(CHINESE_SEASONS) do
+        if title:find('第'..word..'部分',1,true) then part=n;break end
+    end
     local kind=(title:find('电影',1,true) or title:find('剧场版',1,true)) and '电影' or '剧集'
-    local label=title:gsub('%s*[Ff][Rr][Oo][Mm]%s+.*$',''):gsub('【.-】','')
+    local label=display:gsub('%s*[Ff][Rr][Oo][Mm]%s+.*$',''):gsub('【.-】','')
     label=label:gsub('%s+$','')
-    local series=strip_season(label):gsub('%s*[（(]%d%d%d%d[)）]','')
-    series=series:gsub('%s*第%s*%d+%s*季',''):gsub('%s*[Pp]art%s*%d+','')
-    for _,word in ipairs(CHINESE_SEASONS) do series=series:gsub('第'..word..'季','') end
+    local series=strip_season(title_width(label)):gsub('%s*%(%d%d%d%d%)','')
+    series=series:gsub('%s*第%s*%d+%s*季',''):gsub('%s*[Pp]art[ ._-]*%d+','')
+    for _,word in ipairs(CHINESE_SEASONS) do
+        series=series:gsub('第'..word..'季',''):gsub('第'..word..'部分','')
+    end
     series=series:gsub('%s*第%s*%d+%s*部分',''):gsub('%s+$','')
     return {label=label,series=series,season=season,part=part,year=year,kind=kind}
+end
+
+local function title_variants(value)
+    local out,seen={},{}
+    local function add(title)
+        title=trim(title)
+        if title~='' and not seen[title] then seen[title]=true;out[#out+1]=title end
+    end
+    value=title_width(value)
+    add(value)
+    for part in value:gsub('、',';'):gsub('；',';'):gmatch('[^;\r\n]+') do
+        add(part)
+        local prefix,translated=trim(part):match('^([%a][%w ._\'&:+%-]*%s+)(.+)$')
+        if prefix and translated then
+            local first=translated:match(UTF8_CODEPOINT)
+            local a,b,c
+            if first then a,b,c=first:byte(1,3) end
+            if a and a>=224 and a<=239 and b and c then
+                local code=(a-224)*4096+(b-128)*64+c-128
+                if code>=0x3400 and code<=0x9fff or code>=0x3040 and code<=0x30ff then add(translated) end
+            end
+        end
+    end
+    return out
+end
+
+local TITLE_SEPARATORS={}
+for character in ('　：；，。！？、·・～〜—–…“”‘’「」『』（）【】《》〈〉〔〕［］｛｝'):gmatch(UTF8_CODEPOINT) do
+    TITLE_SEPARATORS[character]=true
+end
+local function identity(value)
+    local out={}
+    for character in title_width(value):lower():gmatch(UTF8_CODEPOINT) do
+        if not TITLE_SEPARATORS[character] and not character:match('^[%s%p]$') then
+            out[#out+1]=character
+        end
+    end
+    return table.concat(out)
+end
+
+function M.series_source_key(media_name)
+    local anime,episode,season=M.episode_query(media_name)
+    if not anime or not episode then return nil end
+    local info=M.show_info(anime)
+    local series=identity(info.series)
+    if series=='' then return nil end
+    -- Unknown seasons remain distinct; a remembered source must never guess one.
+    return series..'/s'..tostring(season or 0)..'/p'..tostring(info.part or 0)
+end
+
+local function movie_kind(kind)
+    kind=tostring(kind or ''):lower()
+    return kind:find('电影',1,true) or kind:find('劇場版',1,true)
+        or kind:find('剧场版',1,true) or kind:find('movie',1,true)
+end
+
+local function season_series_kind(kind)
+    local value=tostring(kind or ''):lower()
+    return not movie_kind(kind) and not value:find('ova',1,true)
+        and not value:find('oad',1,true) and not value:find('special',1,true)
+        and not value:find('特别',1,true) and not value:find('特別',1,true)
+        and not value:find('特典',1,true)
+end
+local function numbered_series(value)
+    local prefix,number=title_width(value):match('^(.-)%s*(%d+)%s*$')
+    number=tonumber(number)
+    if not number or number<2 or number>99 or identity(prefix)=='' then return nil end
+    return trim(prefix),number
+end
+local function infer_numbered_seasons(shows)
+    local originals={}
+    for _,show in ipairs(shows) do
+        if (not show.season or show.season==1) and not show.season_ambiguous
+            and not show.part_ambiguous and season_series_kind(show.kind) then
+            local names={show.series}
+            local numbered=numbered_series(show.series)~=nil
+            for _,alias in ipairs(show.aliases) do
+                names[#names+1]=alias
+                numbered=numbered or numbered_series(alias)~=nil
+            end
+            if not numbered then
+                for _,name in ipairs(names) do
+                    local key=identity(name)
+                    local other=originals[key]
+                    if key~='' and other~=false then
+                        if other and (identity(other.series)~=identity(show.series)
+                            or other.year~=show.year or other.part~=show.part) then originals[key]=false
+                        else originals[key]=show end
+                    end
+                end
+            end
+        end
+    end
+    for _,show in ipairs(shows) do
+        if not show.season and not show.season_ambiguous and not show.part_ambiguous
+            and season_series_kind(show.kind) then
+            local names={show.series}
+            for _,alias in ipairs(show.aliases) do names[#names+1]=alias end
+            local original,season,conflicting=nil,nil,false
+            for _,name in ipairs(names) do
+                local prefix,number=numbered_series(name)
+                local base=prefix and originals[identity(prefix)]
+                if base and base~=show and base.part==show.part
+                    and (not base.year or not show.year or show.year>base.year) then
+                    if original and (original~=base or season~=number) then conflicting=true end
+                    original,season=base,number
+                end
+            end
+            if conflicting then show.season_ambiguous=true
+            elseif original then
+                show.season=season;show.series=original.series
+                -- The original's aliases identify the same series in other languages.
+                -- Keep the sequel's display title and platform IDs unchanged.
+                for _,alias in ipairs(original.aliases) do show.aliases[#show.aliases+1]=alias end
+            end
+        end
+    end
 end
 
 function M.search_results(text, keyword, parse_json, clean)
@@ -364,10 +526,36 @@ function M.search_results(text, keyword, parse_json, clean)
         if type(anime)=='table' then
             local id=M.episode_id(anime.animeId or anime.bangumiId)
             if id then
-                local info=M.show_info(anime.animeTitle or keyword,clean)
+                local info=M.show_info(anime.animeTitle or '',clean)
                 local content_type=M.limit_text(anime.typeDescription or anime.type or '',32,clean)
                 if content_type~='' then info.kind=content_type end
                 if not info.year then info.year=tonumber(tostring(anime.startDate or ''):match('^(%d%d%d%d)')) end
+                local aliases={}
+                local alias_season,conflicting_seasons=nil,false
+                local alias_part,conflicting_parts=nil,false
+                for alias_index,alias in ipairs(type(anime.aliases)=='table' and anime.aliases or {}) do
+                    if alias_index>48 then break end
+                    if type(alias)=='string' then
+                        for _,variant in ipairs(title_variants(alias)) do
+                            local alias_info=M.show_info(variant,clean)
+                            if alias_info.series~='' and (not info.season or not alias_info.season or info.season==alias_info.season)
+                                and (not info.part or not alias_info.part or info.part==alias_info.part) then
+                                aliases[#aliases+1]=alias_info.series
+                            end
+                            if alias_info.season then
+                                if alias_season and alias_season~=alias_info.season then conflicting_seasons=true end
+                                alias_season=alias_info.season
+                            end
+                            if alias_info.part then
+                                if alias_part and alias_part~=alias_info.part then conflicting_parts=true end
+                                alias_part=alias_info.part
+                            end
+                        end
+                    end
+                end
+                if not info.season and not conflicting_seasons then info.season=alias_season end
+                if not info.part and not conflicting_parts then info.part=alias_part end
+                if info.series=='' and aliases[1] then info.series=aliases[1];info.label=aliases[1] end
                 local platforms,platform_keys={},{}
                 local function add_platform(entry,episode_count)
                     local platform_id=M.episode_id(entry.animeId)
@@ -393,8 +581,33 @@ function M.search_results(text, keyword, parse_json, clean)
                 out[#out+1]={id=id,label=info.label,series=info.series,season=info.season,
                     part=info.part,year=info.year,kind=info.kind,
                     episode_count=tonumber(anime.episodeCount) or 0,
-                    image_url=image_url(anime.imageUrl),platforms=platforms}
+                    image_url=image_url(anime.imageUrl),platforms=platforms,aliases=aliases,
+                    season_ambiguous=not info.season and conflicting_seasons,
+                    part_ambiguous=not info.part and conflicting_parts}
             end
+        end
+    end
+    infer_numbered_seasons(out)
+    -- Search APIs commonly omit the season marker on the original series.
+    -- Infer season one only when a later season of the same series is present.
+    local sequels={}
+    for _,show in ipairs(out) do
+        if show.season and show.season>1 and season_series_kind(show.kind) then
+            local names={show.series}
+            for _,alias in ipairs(show.aliases or {}) do names[#names+1]=alias end
+            for _,name in ipairs(names) do
+                local key=identity(name)
+                if key~='' then
+                    local earliest=sequels[key]
+                    sequels[key]=math.min(earliest or show.year or 9999,show.year or 9999)
+                end
+            end
+        end
+    end
+    for _,show in ipairs(out) do
+        if not show.season and not show.season_ambiguous and season_series_kind(show.kind) then
+            local earliest=sequels[identity(show.series)]
+            if earliest and (not show.year or show.year<earliest) then show.season=1 end
         end
     end
     return out, nil
@@ -469,44 +682,142 @@ function M.bangumi_episodes(text, parse_json, clean, platform_key)
         item.number_value=number
         item.group=item.extra and '预告与其他' or '正片'
     end
-    return out,nil
+    local info=M.show_info(bangumi.animeTitle or '',clean)
+    local content_type=M.limit_text(bangumi.typeDescription or bangumi.type or '',32,clean)
+    if content_type~='' then info.kind=content_type end
+    return out,nil,info
 end
 
-function M.match_verified(match,media_name,episodes)
-    if type(match)~='table' or type(episodes)~='table' then return false end
-    local anime,episode,season=M.episode_query(media_name)
-    if not anime or not episode then return false end
-    local info=M.show_info(match.animeTitle)
-    if season and info.season~=season and not (season==1 and info.season==nil) then return false end
-    local year=tonumber(tostring(media_name):match('[（(](%d%d%d%d)[)）]'))
-    if year and info.year and info.year~=year then return false end
-    local wanted=anime:lower():gsub('[%s%p]','')
-    local actual=info.series:lower():gsub('[%s%p]','')
-    if wanted=='' or actual~=wanted then return false end
-    for _,item in ipairs(episodes) do
-        if item.id==match.episodeId and not item.extra and item.number_value==episode then return true end
+-- Compare codepoints, not UTF-8 bytes: one wrong Chinese character is one edit.
+-- Keep short titles exact; longer names may differ by at most 20% of characters.
+local function title_score(wanted,actual)
+    if wanted==actual then return wanted~='' and 1 or 0 end
+    local function numbers(value)
+        local out={}
+        for number in value:gmatch('%d+') do out[#out+1]=number end
+        return table.concat(out,',')
     end
-    return false
+    if numbers(wanted)~=numbers(actual) then return 0 end
+    local a,b={},{}
+    for c in wanted:gmatch(UTF8_CODEPOINT) do a[#a+1]=c end
+    for c in actual:gmatch(UTF8_CODEPOINT) do b[#b+1]=c end
+    local length=math.max(#a,#b)
+    local limit=math.floor(length*.2)
+    if math.min(#a,#b)<5 or length>120 or math.abs(#a-#b)>limit then return 0 end
+    local previous={}
+    for j=0,#b do previous[j]=j end
+    for i=1,#a do
+        local current={[0]=i}
+        local minimum=i
+        for j=1,#b do
+            current[j]=math.min(current[j-1]+1,previous[j]+1,
+                previous[j-1]+(a[i]==b[j] and 0 or 1))
+            minimum=math.min(minimum,current[j])
+        end
+        if minimum>limit then return 0 end
+        previous=current
+    end
+    return 1-previous[#b]/length
 end
 
-local function identity(value)
-    return tostring(value or ''):lower():gsub('[%s%p]','')
+local function special_title(value)
+    return title_width(value):lower():match('%f[%a]ova%f[%A]')
+        or title_width(value):lower():match('%f[%a]oad%f[%A]')
+end
+local function same_work(a,b)
+    return identity(a.series)==identity(b.series) and a.season==b.season
+        and a.part==b.part and a.year==b.year
+end
+
+local MOVIE_VERSIONS={
+    {name='mandarin',labels={'普通话版','普通话','国语版','国语','中文版','中文配音'}},
+    {name='cantonese',labels={'粤语版','粤语'}},
+    {name='english',labels={'英语版','英语配音'}},
+    {name='original',labels={'原声版','原声','原版','日语版','日语'}},
+}
+local function movie_version(value)
+    local title=title_width(value)
+    for _,version in ipairs(MOVIE_VERSIONS) do
+        for _,label in ipairs(version.labels) do
+            if title:find(label,1,true) then return version.name end
+        end
+    end
+end
+local function movie_title(value)
+    local title=title_width(value)
+    for _,version in ipairs(MOVIE_VERSIONS) do
+        for _,label in ipairs(version.labels) do title=title:gsub(label,'') end
+    end
+    return identity(title)
 end
 
 function M.auto_candidates(shows,media_name)
     local anime,episode,season=M.episode_query(media_name)
-    if not anime or not episode then return {} end
-    local year=tonumber(tostring(media_name):match('[（(](%d%d%d%d)[)）]'))
-    local wanted=identity(anime)
-    local out={}
-    for _,show in ipairs(shows or {}) do
-        if identity(show.series)==wanted and wanted~=''
-            and (not year or not show.year or show.year==year)
-            and (not season or show.season==season or season==1 and show.season==nil)
-            and show.kind~='电影' then
-            for _,platform in ipairs(show.platforms or {}) do
-                if platform.id and #out<20 then
-                    out[#out+1]={id=platform.id,key=platform.key,label=show.label}
+    local movie=not episode
+    local info=M.show_info(anime or M.search_keyword(media_name))
+    -- Without an episode number only a movie can be selected, never episode 1
+    -- of a similarly named series or a season with incomplete metadata.
+    if info.series=='' or movie and M.season_number(media_name) then return {} end
+    local wanted=movie and movie_title(info.series) or identity(info.series)
+    local version=movie_version(media_name) or 'original'
+    local year=M.show_info(media_name).year
+    local ranked={}
+    for order,show in ipairs(shows or {}) do
+        local kind=tostring(show.kind or '')
+        local season_ok=season and (show.season==season or season==1 and show.season==nil)
+            or not season and show.season==nil
+        if season_ok and not show.season_ambiguous and not show.part_ambiguous
+            and (not info.part or show.part==info.part)
+            and (movie and movie_kind(kind) or not movie and not movie_kind(kind)
+                and (season_series_kind(kind) or special_title(media_name)))
+            and (not movie or not movie_version(show.series) or movie_version(show.series)==version)
+            and not not special_title(anime or info.series)==not not special_title(show.series) then
+            local score=title_score(wanted,movie and movie_title(show.series) or identity(show.series))
+            if score<1 then
+                for _,alias in ipairs(show.aliases or {}) do
+                    if not movie or not movie_version(alias) or movie_version(alias)==version then
+                        score=math.max(score,title_score(wanted,movie and movie_title(alias) or identity(alias)))
+                    end
+                    if score==1 then break end
+                end
+            end
+            if score>=.8 then
+                -- A wrong release year must not veto a title and season match.
+                local rank=score+(year and show.year==year and .03 or 0)
+                ranked[#ranked+1]={show=show,score=rank,order=order}
+            end
+        end
+    end
+    table.sort(ranked,function(a,b)
+        if a.score==b.score then return a.order<b.order end
+        return a.score>b.score
+    end)
+    local best=ranked[1]
+    if not best then return {} end
+    -- Movie platforms can list different release years for the same title.
+    -- Prefer the requested year only among identical titles; a matching year
+    -- must never promote a weaker title match over a stronger one.
+    if movie and year and best.show.year==year then
+        for i=#ranked,2,-1 do
+            if ranked[i].show.year~=year
+                and movie_title(ranked[i].show.series)==movie_title(best.show.series) then
+                table.remove(ranked,i)
+            end
+        end
+    end
+    -- Different works within eight percentage points need a manual selection.
+    for i=2,#ranked do
+        if not same_work(best.show,ranked[i].show) and best.score-ranked[i].score<.08 then
+            return {},'ambiguous'
+        end
+    end
+    local out,seen={},{}
+    for _,entry in ipairs(ranked) do
+        if same_work(best.show,entry.show) then
+            for _,platform in ipairs(entry.show.platforms or {}) do
+                if platform.id and not seen[platform.id] and #out<20 then
+                    seen[platform.id]=true
+                    out[#out+1]={id=platform.id,key=platform.key,label=entry.show.label,kind=entry.show.kind}
                 end
             end
         end
@@ -514,12 +825,28 @@ function M.auto_candidates(shows,media_name)
     return out
 end
 
-function M.auto_episode(episodes,media_name)
+function M.match_verified(match,media_name,episodes,show)
+    if type(match)~='table' or type(episodes)~='table' then return false end
+    local info=M.show_info(match.animeTitle)
+    if show then info.kind=show.kind end
+    info.platforms={{id=match.episodeId}}
+    if #M.auto_candidates({info},media_name)==0 then return false end
+    local episode=M.auto_episode(episodes,media_name,info)
+    return episode~=nil and episode.id==match.episodeId
+end
+
+function M.auto_episode(episodes,media_name,show)
     local _,wanted=M.episode_query(media_name)
-    if not wanted then return nil end
+    local version=movie_version(media_name)
+    if not wanted and (not show or not movie_kind(show.kind)) then return nil end
     local selected
     for _,item in ipairs(episodes or {}) do
-        if not item.extra and item.number_value==wanted then
+        local matches=item.number_value==wanted
+        if not wanted then
+            local actual=movie_version(item.label) or movie_version(show.label or show.series)
+            matches=(actual or 'original')==(version or 'original')
+        end
+        if not item.extra and matches then
             if selected then return nil end
             selected=item
         end
@@ -540,6 +867,9 @@ function M.parse_comments(text, parse_json, core)
             local fields = {}
             for field in (tostring(comment.p or '') .. ','):gmatch('(.-),') do fields[#fields + 1] = field end
             local time, mode, color = tonumber(fields[1]), tonumber(fields[2]), tonumber(fields[3])
+            -- Renren forwards its member-comment type as 2. It is a normal
+            -- scrolling comment, not the converter's internal L2R type 2.
+            if mode==2 and tostring(fields[4] or ''):match('^%[renren%]') then mode=1 end
             if core.finite(time) and time >= 0 and time < 604800
                 and core.finite(mode) and mode>=1 and mode<=9 and mode==math.floor(mode) then
                 local value = core.clean(tostring(comment.m or '')):gsub('[\r\n]+', ' ')

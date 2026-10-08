@@ -65,9 +65,12 @@ local function read_conf()
 end
 
 local function exists(rel)
+    -- the installed/writable tree (config-dir parent = install root)
     if utils.file_info(mp.command_native({'expand-path', '~~/../' .. rel})) ~= nil then
         return true
     end
+    -- AppImage: the base runtime is bundled in the read-only payload, not under
+    -- the writable data dir. $APPDIR (set by the AppImage runtime) is its root.
     local appdir = os.getenv('APPDIR')
     if appdir and utils.file_info(appdir .. '/' .. rel) ~= nil then
         return true
@@ -75,20 +78,30 @@ local function exists(rel)
     return false
 end
 
+-- Component-pack sanity: a slim install (or one slimmed with
+-- AnimeJaNaiUpdater --remove) may lack the pieces the conf asks for.
+-- The filter would fail with a loader error; say what to run instead.
 local function check_components(backend, rife_configured)
     local hints = {}
     if backend == 'tensorrt' then
+        -- TensorRT core library name differs per platform (Windows DLL vs
+        -- Linux versioned .so).
         local nvinfer = mp.get_property('platform') == 'windows'
             and 'nvinfer_11.dll' or 'libnvinfer.so.11'
         if not exists('animejanai/inference/' .. nvinfer) then
             hints[#hints + 1] =
-                '尚未安装 TensorRT 运行库 - 按 Ctrl+E 打开 AnimeVE 管理器进行安装'
+                'TensorRT runtime not installed - press Ctrl+E to open ' ..
+                'AnimeJaNai Manager'
         else
+            -- builder resources are only needed to build new engines; cached
+            -- engines still run without them, so this is a soft warning
             local inf = mp.command_native({
                 'expand-path', '~~/../animejanai/inference'})
             local files = utils.readdir(inf, 'files') or {}
             local has_builder = false
             for _, n in ipairs(files) do
+                -- matches both nvinfer_builder_resource_* (Windows) and
+                -- libnvinfer_builder_resource_* (Linux)
                 if n:match('nvinfer_builder_resource_') then
                     has_builder = true
                     break
@@ -96,7 +109,8 @@ local function check_components(backend, rife_configured)
             end
             if not has_builder then
                 hints[#hints + 1] =
-                    '没有适用于此 GPU 的 TensorRT 内核包 - 新引擎将无法构建；按 Ctrl+E 打开 AnimeVE 管理器'
+                    'No TensorRT kernel pack for this GPU - new engine builds ' ..
+                    'will fail; press Ctrl+E to open AnimeJaNai Manager'
             end
         end
     end
@@ -112,7 +126,8 @@ local function check_components(backend, rife_configured)
         end
         if not has_model then
             hints[#hints + 1] =
-                '已启用 RIFE，但尚未安装模型 - 按 Ctrl+E 打开 AnimeVE 管理器进行安装'
+                'RIFE is enabled but the models are not installed - ' ..
+                'press Ctrl+E to open AnimeJaNai Manager'
         end
     end
     if #hints == 0 then
@@ -121,6 +136,13 @@ local function check_components(backend, rife_configured)
     for _, h in ipairs(hints) do
         msg.warn(h)
     end
+    -- The player shows the filename through the same shared OSD text
+    -- slot we'd use, right after file-loaded and for osd-duration ms
+    -- (default 1s). Posting our hint immediately just loses that slot to
+    -- the filename. So wait until the filename has cleared, then show
+    -- our hint in the normal OSD position (where the filename was) for a
+    -- good while. Reading osd-duration adapts if the user changed it; if
+    -- the player used a longer title duration ours simply replaces it.
     local shown = false
     mp.register_event('file-loaded', function()
         if shown then
@@ -129,7 +151,7 @@ local function check_components(backend, rife_configured)
         shown = true
         local after = mp.get_property_number('osd-duration', 1000) / 1000 + 0.5
         mp.add_timeout(after, function()
-            mp.osd_message('AnimeVE：' .. table.concat(hints, '\n'), 10)
+            mp.osd_message('AnimeJaNai: ' .. table.concat(hints, '\n'), 10)
         end)
     end)
 end
@@ -137,6 +159,9 @@ end
 local backend_raw, rife_configured, default_slot, sub_render_mode = read_conf()
 local backend = (backend_raw or 'TensorRT'):lower()
 local hwdec = 'nvdec'
+-- DirectML/ncnn use D3D11 frames (hwdec=d3d11va, gpu-api=d3d11). Windows-only:
+-- there is no D3D11 on Linux, where only the TensorRT (CUDA/nvdec) backend
+-- exists, so this branch is guarded behind the platform.
 if (backend == 'directml' or backend == 'ncnn')
         and mp.get_property('platform') == 'windows' then
     hwdec = 'd3d11va'
@@ -146,6 +171,22 @@ mp.set_property('hwdec', hwdec)
 msg.info(string.format('backend %s -> hwdec=%s%s', backend, hwdec,
                        hwdec == 'd3d11va' and ', gpu-api=d3d11' or ''))
 
+-- Opt-in GPU subtitle rendering: only ever applied on top of the stable
+-- defaults, never the reverse, so a user who set any of these options in
+-- mpv.conf keeps them as long as the mode is off. Applied here rather than in
+-- mpv.conf so the Manager stays the single writer of animejanai.conf.
+--
+-- A plain `apply-profile subs-gpu` would break mpv.conf's contract that your
+-- own lines win: the config is fully parsed before scripts run, so the profile
+-- would overwrite settings you made by hand. Instead each option is applied
+-- only while it still holds the managed default from [animejanai] (or, for an
+-- option that profile does not set, mpv's own default) - a different value can
+-- only have come from your mpv.conf, so it is left alone. Both value sets are
+-- read from profile-list, keeping the option lists in mpv-animejanai.conf.
+--
+-- Ambiguity worth knowing about: setting an option in mpv.conf to exactly the
+-- managed default is indistinguishable from not setting it at all (mpv does
+-- not record where a value came from), so that one does get the preset value.
 local function profile_options(list, name)
     for _, p in ipairs(list) do
         if p.name == name then
@@ -159,7 +200,8 @@ local function apply_subs_gpu()
     local profiles = mp.get_property_native('profile-list') or {}
     local preset = profile_options(profiles, 'subs-gpu')
     if not preset then
-        msg.warn('sub_render_mode=gpu，但未找到 subs-gpu 配置；mpv-animejanai.conf 是否已更新？')
+        msg.warn('sub_render_mode=gpu but no subs-gpu profile - ' ..
+                 'is mpv-animejanai.conf up to date?')
         return
     end
     local managed = profile_options(profiles, 'animejanai') or {}
@@ -179,29 +221,49 @@ local function apply_subs_gpu()
 
     for _, o in ipairs(preset) do
         if o.key == 'script-opts-append' then
+            -- One "key=value" script option. It shares the script-opts map with
+            -- everything else, so append it only when that key is unset.
             local k, v = tostring(o.value):match('^([^=]+)=(.*)$')
             local opts = mp.get_property_native('script-opts') or {}
             if k and opts[k] == nil then
                 opts[k] = v
                 mp.set_property_native('script-opts', opts)
             elseif k then
-                msg.info('subs-gpu：保留你的脚本选项 ' .. k .. '=' .. tostring(opts[k]))
+                msg.info('subs-gpu: keeping your script-opt ' .. k .. '=' .. tostring(opts[k]))
             end
         elseif norm(mp.get_property(o.key)) == norm(managed_value(o.key)) then
             mp.set_property(o.key, o.value)
         else
-            msg.info(string.format('subs-gpu：保留你的 %s=%s', o.key,
+            msg.info(string.format('subs-gpu: keeping your %s=%s', o.key,
                                    tostring(mp.get_property(o.key))))
         end
     end
-    msg.info('sub_render_mode gpu -> 已应用 subs-gpu 配置')
+    msg.info('sub_render_mode gpu -> applied profile subs-gpu')
 end
 
 if (sub_render_mode or ''):lower() == 'gpu' then
     apply_subs_gpu()
 end
 
--- Slot selection is owned by animejanai_slot.lua before the first frame.
--- Never apply a second slot here on file-loaded.
+-- The Manager's "Set as Default Profile" stores the chosen slot here. mpv
+-- rebuilds the filter chain from the vf string (which bakes in Balanced, 1002)
+-- on every file, so the active slot must be re-applied after each file loads or
+-- every file after the first would snap back to Balanced. We re-apply the
+-- *current* slot, not always default_slot: the default seeds the active slot at
+-- startup, but once the user switches that choice sticks across file loads.
+-- Restarting mpv re-reads default_slot and resets again.
+local current_slot = default_slot
+mp.register_script_message('aji-slot', function(slot)
+    local n = tonumber(slot)
+    if n then
+        current_slot = n
+    end
+end)
+mp.register_event('file-loaded', function()
+    if current_slot then
+        msg.info('applying slot ' .. current_slot)
+        mp.commandv('script-message', 'aji-slot', tostring(current_slot))
+    end
+end)
 
 check_components(backend, rife_configured)

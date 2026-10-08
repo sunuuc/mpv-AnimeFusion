@@ -1,9 +1,6 @@
 name: Verify and publish r2
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths: ['.github/workflows/publish-r2.yml']
 permissions:
   contents: write
   actions: read

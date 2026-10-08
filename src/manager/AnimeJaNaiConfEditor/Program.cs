@@ -12,7 +12,7 @@ namespace AnimeJaNaiConfEditor
         // Shared id for both the single-instance mutex and the activation pipe. Mutex and named
         // pipes are cross-platform in .NET (pipes are Unix domain sockets on Linux/macOS), so this
         // works without any OS-specific code.
-        private const string SingleInstanceId = "AnimeVEManager_SingleInstance";
+        private const string SingleInstanceId = "mpv-AnimeFusionManager_SingleInstance";
 
         // Held in a static field for the process lifetime so the mutex stays owned until exit.
         private static Mutex? _singleInstanceMutex;

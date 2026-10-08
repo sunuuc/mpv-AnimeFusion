@@ -1,4 +1,4 @@
--- Online acquisition plus DanmakuFactory/native ASS subtitle integration.
+-- Online acquisition with DanmakuFactory and the native secondary ASS track.
 local mp=require 'mp'
 local utils=require 'mp.utils'
 local core=(function()
@@ -90,7 +90,7 @@ function M.theme(accent)
         accent=accent,text='F7F3F6',secondary='CEC7CF',muted='A49CA5',
         panel='211F23',surface='2B292E',hover='39353D',selected='493743',
         border='141216',divider='4A454C',track='807982',buffer='C8C1C9',
-        scrim='000000',
+        scrim='000000',current='BBC539',
     }
 end
 M.metrics={
@@ -99,7 +99,8 @@ M.metrics={
     row_padding=16,icon_column=56,separator=16,slider=84,
     control_compact_step=48,control_step=56,control_compact_edge=28,control_edge=42,
     control_y=40,control_width=40,control_hit_height=20,speed_width=58,volume_width=130,volume_offset=8,
-    volume_min_width=36,seek_x=22,seek_track_y=88,seek_top=102,seek_bottom=74,
+    volume_min_width=36,seek_x=26,seek_track_y=88,seek_top=102,seek_bottom=74,
+    time_font=14,title_font=26,detail_font=16,
     network_width=104,network_gap=8,
     menu_speed_bottom=94,menu_bottom=106,
     icon_size=68,small_icon_size=40,icon_hover_radius=14,
@@ -118,11 +119,22 @@ function M.title(title,path)
     if title=='' then title='视频播放' end
     return title
 end
+function M.title_lines(title,path)
+    title=M.title(title,path)
+    local first,last,season,episode=title:find('%f[%a][Ss](%d+)[ ._:%-]*[Ee](%d+%.?%d*)')
+    if not first then return title,'' end
+    local name=title:sub(1,first-1):gsub('%s*%(%d%d%d%d%)%s*$',''):gsub('%s+$','')
+    if name=='' then return title,'' end
+    local detail=string.format('S%d:E%s',tonumber(season),tostring(tonumber(episode)))
+    local episode_title=title:sub(last+1):gsub('^[%s._%-:]+',''):gsub('%s+$','')
+    if episode_title~='' then detail=detail..' - '..episode_title end
+    return name,detail
+end
 -- Player UI layout 1.3.0: the ASS PlayRes IS the window, so glyphs are rasterised at
 -- native size and never resampled -- resampling was what made the text soft.
 -- ui_scale*dpi scales glyph and icon sizes, and shrinks further when the window
 -- is too narrow for the control row.
-function M.layout(pw,ph,dpi,ui_scale)
+function M.layout(pw,ph,dpi,ui_scale,time_width)
     pw,ph=math.max(1,pw),math.max(1,ph)
     local want=M.clamp(tonumber(ui_scale) or 1.00,.45,1.5)*M.clamp(tonumber(dpi) or 1,.75,1.5)
     local w,h=pw,ph
@@ -139,7 +151,7 @@ function M.layout(pw,ph,dpi,ui_scale)
                 y0=y-M.metrics.control_hit_height*want,y1=y+M.metrics.control_hit_height*want}
         end
         button('previous',edge);button('play',edge+step);button('next',edge+2*step);button('volume',edge+3*step)
-        local right={'fullscreen','settings','danmaku','sub','audio','speed'}
+        local right={'fullscreen','settings','danmaku','sub','audio','speed','bangumi'}
         local x=w-edge
         for _,id in ipairs(right) do button(id,x);x=x-step end
         local volume_button=edge+3*step
@@ -150,9 +162,9 @@ function M.layout(pw,ph,dpi,ui_scale)
             y0=y-15*want,y1=y+15*want,y=y}
         local network_x0=volume.x1+network_gap
         local network_x1=network_x0+network_width
-        local speed_x=w-edge-5*step
+        local leftmost_right=w-edge-6*step
         local network={x0=network_x0,x1=network_x1,y0=y-15*want,y1=y+15*want,y=y}
-        local ok=network.x0>=0 and network.x1<=speed_x-M.metrics.control_width*want/2-12*want
+        local ok=network.x0>=0 and network.x1<=leftmost_right-M.metrics.control_width*want/2-12*want
         for i,b in ipairs(controls) do
             if b.x0<0 or b.x1>w or b.y0<0 or b.y1>h then ok=false;break end
             for j=i+1,#controls do
@@ -163,9 +175,9 @@ function M.layout(pw,ph,dpi,ui_scale)
         end
         if ok then
             built={w=w,h=h,scale=1,ui=want,controls=controls,volume=volume,network_rate=network,
-                seek={x0=M.metrics.seek_x*want,x1=w-M.metrics.seek_x*want,
+                seek={x0=(M.metrics.seek_x+(time_width or 62))*want,x1=w-(M.metrics.seek_x+(time_width or 62))*want,
                     y0=h-M.metrics.seek_top*want,y1=h-M.metrics.seek_bottom*want,y=h-M.metrics.seek_track_y*want},
-                title_y=math.max(18*want,h-160*want),detail_y=math.max(42*want,h-126*want),
+                title_y=math.max(18*want,h-176*want),detail_y=math.max(48*want,h-140*want),
                 margin=26*want,compact=compact,small=false}
             break
         end
@@ -294,7 +306,7 @@ function M.request_command(url, body, options)
         '$utf8=[System.Text.UTF8Encoding]::new($false);',
         '$url=$utf8.GetString(' .. ps_b64(url) .. ');',
         '$request=[System.Net.HttpWebRequest]::Create($url);',
-        "$request.UserAgent='AnimeVE/1.1.9';",
+        "$request.UserAgent='mpv-AnimeFusion/1.1.9';",
         "$request.Timeout=" .. tostring(timeout * 1000) .. ';',
         "$request.ReadWriteTimeout=" .. tostring(timeout * 1000) .. ';',
         '[System.Net.ServicePointManager]::SecurityProtocol=[System.Net.SecurityProtocolType]::Tls12;',
@@ -467,8 +479,19 @@ end
 local CHINESE_SEASONS={'一','二','三','四','五','六','七','八','九','十','十一','十二'}
 local ROMAN_SEASONS={'Ⅰ','Ⅱ','Ⅲ','Ⅳ','Ⅴ','Ⅵ','Ⅶ','Ⅷ','Ⅸ','Ⅹ','Ⅺ','Ⅻ'}
 local ASCII_SEASONS={'I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'}
+local function title_width(value)
+    return tostring(value or ''):gsub(UTF8_CODEPOINT,function(character)
+        local a,b,c=character:byte(1,3)
+        if a==239 and b and c then
+            local code=(a-224)*4096+(b-128)*64+c-128
+            if code>=65281 and code<=65374 then return string.char(code-65248) end
+        end
+        return character=='　' and ' ' or character
+    end)
+end
+local SEASON_EPISODE='[Ss](%d+)[ ._%-]*[Ee](%d+%.?%d*)'
 local function season_marker(title)
-    for _,pattern in ipairs({'[Ss](%d+)[Ee]%d+','第%s*(%d+)%s*季',
+    for _,pattern in ipairs({SEASON_EPISODE,'第%s*(%d+)%s*季',
         '%f[%a][Ss][Ee][Aa][Ss][Oo][Nn]%s+(%d+)%f[%W]','%f[%w][Ss](%d+)%f[%W]'}) do
         local first,last,number=title:find(pattern)
         if number and tonumber(number)>0 then return tonumber(number),first,last end
@@ -491,7 +514,7 @@ local function season_marker(title)
     return nil
 end
 function M.season_number(title)
-    local number=season_marker(tostring(title or ''))
+    local number=season_marker(title_width(title))
     return number
 end
 local function strip_season(title)
@@ -500,36 +523,59 @@ local function strip_season(title)
 end
 
 local function strip_year(title)
-    return title:gsub('%s*[（(]%d%d%d%d[)）]%s*$',''):gsub('[%s%-—–]+$','')
+    return title:gsub('%s*%(%d%d%d%d%)%s*$',''):gsub('%s*（%d%d%d%d）%s*$','')
+        :gsub('[%s%-]+$','')
+end
+local VIDEO_EXTENSIONS={mkv=true,mp4=true,avi=true,mov=true,wmv=true,flv=true,webm=true,
+    m4v=true,mpg=true,mpeg=true,ts=true,m2ts=true,mts=true,vob=true,ogv=true,rm=true,rmvb=true}
+local function strip_extension(title)
+    local extension=title:match('%.([%a%d]+)$')
+    if extension and VIDEO_EXTENSIONS[extension:lower()] then return title:sub(1,-#extension-2) end
+    return title
 end
 
 function M.episode_query(title)
-    title=tostring(title or '')
+    title=strip_extension(title_width(title)):gsub('^%s*%[[^%]]+%]%s*','')
+    for _=1,8 do
+        local stripped=title:gsub('%s*%[[^%]]+%]%s*$','')
+        if stripped==title then break end
+        title=stripped
+    end
     local season=M.season_number(title)
-    local start,finish=title:find('[Ss]%d+[Ee]%d+')
-    local episode=start and tonumber(title:sub(start,finish):match('[Ee](%d+)'))
+    local start,finish,explicit_season,number=title:find(SEASON_EPISODE)
+    if explicit_season and tonumber(explicit_season)==0 then return nil,nil,nil end
+    local episode=start and tonumber(number)
     local anime=start and strip_year(title:sub(1,start-1)) or nil
     if not episode then
-        local prefix,n=title:match('^(.-)%s*第%s*(%d+)%s*[集话話]')
-        if not prefix then prefix,n=title:match('^(.-)%s*[Ee][Pp]?%s*(%d+)') end
+        local prefix,n
+        for _,word in ipairs({'集','话','話'}) do
+            prefix,n=title:match('^(.-)%s*第%s*(%d+%.?%d*)%s*'..word)
+            if prefix then break end
+        end
+        if not prefix then prefix,n=title:match('^(.-)%s*%f[%a][Ee][Pp]?%s*(%d+%.?%d*)') end
         if not prefix then prefix,n=title:match('^(.-)%s*#%s*(%d+)') end
-        if not prefix then prefix,n=title:match('^(.-)%s*[%-—–~～]%s*(%d+)%s*$') end
+        if not prefix then prefix,n=title:match('^(.-)%s*%-%s*(%d+%.?%d*)%s*$') end
+        for _,separator in ipairs({'—','–','~'}) do
+            if not prefix then prefix,n=title:match('^(.-)%s*'..separator..'%s*(%d+%.?%d*)%s*$') end
+        end
         if prefix then anime=strip_year(prefix);episode=tonumber(n) end
     end
-    if not anime or anime=='' or not episode then return nil,nil,season end
+    if not anime or anime=='' or not episode or episode<=0 then return nil,nil,season end
+    local prefix_season=M.season_number(anime)
+    if prefix_season and season and prefix_season~=season then return nil,nil,nil end
     return strip_season(anime):gsub('%s+$',''),episode,season
 end
 
 function M.search_keyword(title)
     title = M.limit_text(title,512):gsub('[%z\1-\8\11\12\14-\31\127]', '')
     title = title:gsub('^%s*%[[^%]]+%]%s*', '')
-    title = title:gsub('%.[%w%d]+$', '')
+    title = strip_extension(title)
     local anime = M.episode_query(title)
-    if anime then return M.limit_text(anime,120) end
+    if anime then return M.show_info(anime).series end
     title = title:gsub('%s*%[[^%]]*[0-9]+[pPkK][^%]]*%]%s*$', '')
     title = title:gsub('%s*%[[^%]]*[Bb][Dd][^%]]*%]%s*$', '')
     title = title:gsub('[%s._%-]+$', ''):gsub('^%s+', ''):gsub('%s+$', '')
-    return M.limit_text(title,120)
+    return M.limit_text(M.show_info(title).series,120)
 end
 
 local function decode_json(text, parse_json)
@@ -566,24 +612,152 @@ local function platform_name(value)
     value=M.limit_text(value,32)
     return PLATFORM_NAMES[value:lower()] or value
 end
+function M.episode_platform(key,label)
+    local value=key and key~='' and key or tostring(label or ''):match('【([^】]+)】')
+        or tostring(label or ''):match('%[([^%]]+)%]')
+    return platform_name(value or '未知平台')
+end
 local function image_url(value)
     if type(value)~='string' or #value>2048 or value:find('[%z\1-\31]')
         or not value:match('^https?://[^/%?#]+') then return nil end
     return value
 end
 function M.show_info(value,clean)
-    local title=M.limit_text(value,120,clean)
-    local year=tonumber(title:match('[（(](%d%d%d%d)[)）]'))
+    local display=M.limit_text(value,120,clean)
+    local title=title_width(display)
+    local year=tonumber(title:match('%((%d%d%d%d)%)'))
     local season=M.season_number(title)
-    local part=tonumber(title:match('[Pp]art%s*(%d+)') or title:match('第%s*(%d+)%s*部分'))
+    local part=tonumber(title:match('[Pp]art[ ._-]*(%d+)') or title:match('第%s*(%d+)%s*部分'))
+    for n,word in ipairs(CHINESE_SEASONS) do
+        if title:find('第'..word..'部分',1,true) then part=n;break end
+    end
     local kind=(title:find('电影',1,true) or title:find('剧场版',1,true)) and '电影' or '剧集'
-    local label=title:gsub('%s*[Ff][Rr][Oo][Mm]%s+.*$',''):gsub('【.-】','')
+    local label=display:gsub('%s*[Ff][Rr][Oo][Mm]%s+.*$',''):gsub('【.-】','')
     label=label:gsub('%s+$','')
-    local series=strip_season(label):gsub('%s*[（(]%d%d%d%d[)）]','')
-    series=series:gsub('%s*第%s*%d+%s*季',''):gsub('%s*[Pp]art%s*%d+','')
-    for _,word in ipairs(CHINESE_SEASONS) do series=series:gsub('第'..word..'季','') end
+    local series=strip_season(title_width(label)):gsub('%s*%(%d%d%d%d%)','')
+    series=series:gsub('%s*第%s*%d+%s*季',''):gsub('%s*[Pp]art[ ._-]*%d+','')
+    for _,word in ipairs(CHINESE_SEASONS) do
+        series=series:gsub('第'..word..'季',''):gsub('第'..word..'部分','')
+    end
     series=series:gsub('%s*第%s*%d+%s*部分',''):gsub('%s+$','')
     return {label=label,series=series,season=season,part=part,year=year,kind=kind}
+end
+
+local function title_variants(value)
+    local out,seen={},{}
+    local function add(title)
+        title=trim(title)
+        if title~='' and not seen[title] then seen[title]=true;out[#out+1]=title end
+    end
+    value=title_width(value)
+    add(value)
+    for part in value:gsub('、',';'):gsub('；',';'):gmatch('[^;\r\n]+') do
+        add(part)
+        local prefix,translated=trim(part):match('^([%a][%w ._\'&:+%-]*%s+)(.+)$')
+        if prefix and translated then
+            local first=translated:match(UTF8_CODEPOINT)
+            local a,b,c
+            if first then a,b,c=first:byte(1,3) end
+            if a and a>=224 and a<=239 and b and c then
+                local code=(a-224)*4096+(b-128)*64+c-128
+                if code>=0x3400 and code<=0x9fff or code>=0x3040 and code<=0x30ff then add(translated) end
+            end
+        end
+    end
+    return out
+end
+
+local TITLE_SEPARATORS={}
+for character in ('　：；，。！？、·・～〜—–…“”‘’「」『』（）【】《》〈〉〔〕［］｛｝'):gmatch(UTF8_CODEPOINT) do
+    TITLE_SEPARATORS[character]=true
+end
+local function identity(value)
+    local out={}
+    for character in title_width(value):lower():gmatch(UTF8_CODEPOINT) do
+        if not TITLE_SEPARATORS[character] and not character:match('^[%s%p]$') then
+            out[#out+1]=character
+        end
+    end
+    return table.concat(out)
+end
+
+function M.series_source_key(media_name)
+    local anime,episode,season=M.episode_query(media_name)
+    if not anime or not episode then return nil end
+    local info=M.show_info(anime)
+    local series=identity(info.series)
+    if series=='' then return nil end
+    -- Unknown seasons remain distinct; a remembered source must never guess one.
+    return series..'/s'..tostring(season or 0)..'/p'..tostring(info.part or 0)
+end
+
+local function movie_kind(kind)
+    kind=tostring(kind or ''):lower()
+    return kind:find('电影',1,true) or kind:find('劇場版',1,true)
+        or kind:find('剧场版',1,true) or kind:find('movie',1,true)
+end
+
+local function season_series_kind(kind)
+    local value=tostring(kind or ''):lower()
+    return not movie_kind(kind) and not value:find('ova',1,true)
+        and not value:find('oad',1,true) and not value:find('special',1,true)
+        and not value:find('特别',1,true) and not value:find('特別',1,true)
+        and not value:find('特典',1,true)
+end
+local function numbered_series(value)
+    local prefix,number=title_width(value):match('^(.-)%s*(%d+)%s*$')
+    number=tonumber(number)
+    if not number or number<2 or number>99 or identity(prefix)=='' then return nil end
+    return trim(prefix),number
+end
+local function infer_numbered_seasons(shows)
+    local originals={}
+    for _,show in ipairs(shows) do
+        if (not show.season or show.season==1) and not show.season_ambiguous
+            and not show.part_ambiguous and season_series_kind(show.kind) then
+            local names={show.series}
+            local numbered=numbered_series(show.series)~=nil
+            for _,alias in ipairs(show.aliases) do
+                names[#names+1]=alias
+                numbered=numbered or numbered_series(alias)~=nil
+            end
+            if not numbered then
+                for _,name in ipairs(names) do
+                    local key=identity(name)
+                    local other=originals[key]
+                    if key~='' and other~=false then
+                        if other and (identity(other.series)~=identity(show.series)
+                            or other.year~=show.year or other.part~=show.part) then originals[key]=false
+                        else originals[key]=show end
+                    end
+                end
+            end
+        end
+    end
+    for _,show in ipairs(shows) do
+        if not show.season and not show.season_ambiguous and not show.part_ambiguous
+            and season_series_kind(show.kind) then
+            local names={show.series}
+            for _,alias in ipairs(show.aliases) do names[#names+1]=alias end
+            local original,season,conflicting=nil,nil,false
+            for _,name in ipairs(names) do
+                local prefix,number=numbered_series(name)
+                local base=prefix and originals[identity(prefix)]
+                if base and base~=show and base.part==show.part
+                    and (not base.year or not show.year or show.year>base.year) then
+                    if original and (original~=base or season~=number) then conflicting=true end
+                    original,season=base,number
+                end
+            end
+            if conflicting then show.season_ambiguous=true
+            elseif original then
+                show.season=season;show.series=original.series
+                -- The original's aliases identify the same series in other languages.
+                -- Keep the sequel's display title and platform IDs unchanged.
+                for _,alias in ipairs(original.aliases) do show.aliases[#show.aliases+1]=alias end
+            end
+        end
+    end
 end
 
 function M.search_results(text, keyword, parse_json, clean)
@@ -595,10 +769,36 @@ function M.search_results(text, keyword, parse_json, clean)
         if type(anime)=='table' then
             local id=M.episode_id(anime.animeId or anime.bangumiId)
             if id then
-                local info=M.show_info(anime.animeTitle or keyword,clean)
+                local info=M.show_info(anime.animeTitle or '',clean)
                 local content_type=M.limit_text(anime.typeDescription or anime.type or '',32,clean)
                 if content_type~='' then info.kind=content_type end
                 if not info.year then info.year=tonumber(tostring(anime.startDate or ''):match('^(%d%d%d%d)')) end
+                local aliases={}
+                local alias_season,conflicting_seasons=nil,false
+                local alias_part,conflicting_parts=nil,false
+                for alias_index,alias in ipairs(type(anime.aliases)=='table' and anime.aliases or {}) do
+                    if alias_index>48 then break end
+                    if type(alias)=='string' then
+                        for _,variant in ipairs(title_variants(alias)) do
+                            local alias_info=M.show_info(variant,clean)
+                            if alias_info.series~='' and (not info.season or not alias_info.season or info.season==alias_info.season)
+                                and (not info.part or not alias_info.part or info.part==alias_info.part) then
+                                aliases[#aliases+1]=alias_info.series
+                            end
+                            if alias_info.season then
+                                if alias_season and alias_season~=alias_info.season then conflicting_seasons=true end
+                                alias_season=alias_info.season
+                            end
+                            if alias_info.part then
+                                if alias_part and alias_part~=alias_info.part then conflicting_parts=true end
+                                alias_part=alias_info.part
+                            end
+                        end
+                    end
+                end
+                if not info.season and not conflicting_seasons then info.season=alias_season end
+                if not info.part and not conflicting_parts then info.part=alias_part end
+                if info.series=='' and aliases[1] then info.series=aliases[1];info.label=aliases[1] end
                 local platforms,platform_keys={},{}
                 local function add_platform(entry,episode_count)
                     local platform_id=M.episode_id(entry.animeId)
@@ -624,8 +824,33 @@ function M.search_results(text, keyword, parse_json, clean)
                 out[#out+1]={id=id,label=info.label,series=info.series,season=info.season,
                     part=info.part,year=info.year,kind=info.kind,
                     episode_count=tonumber(anime.episodeCount) or 0,
-                    image_url=image_url(anime.imageUrl),platforms=platforms}
+                    image_url=image_url(anime.imageUrl),platforms=platforms,aliases=aliases,
+                    season_ambiguous=not info.season and conflicting_seasons,
+                    part_ambiguous=not info.part and conflicting_parts}
             end
+        end
+    end
+    infer_numbered_seasons(out)
+    -- Search APIs commonly omit the season marker on the original series.
+    -- Infer season one only when a later season of the same series is present.
+    local sequels={}
+    for _,show in ipairs(out) do
+        if show.season and show.season>1 and season_series_kind(show.kind) then
+            local names={show.series}
+            for _,alias in ipairs(show.aliases or {}) do names[#names+1]=alias end
+            for _,name in ipairs(names) do
+                local key=identity(name)
+                if key~='' then
+                    local earliest=sequels[key]
+                    sequels[key]=math.min(earliest or show.year or 9999,show.year or 9999)
+                end
+            end
+        end
+    end
+    for _,show in ipairs(out) do
+        if not show.season and not show.season_ambiguous and season_series_kind(show.kind) then
+            local earliest=sequels[identity(show.series)]
+            if earliest and (not show.year or show.year<earliest) then show.season=1 end
         end
     end
     return out, nil
@@ -700,44 +925,142 @@ function M.bangumi_episodes(text, parse_json, clean, platform_key)
         item.number_value=number
         item.group=item.extra and '预告与其他' or '正片'
     end
-    return out,nil
+    local info=M.show_info(bangumi.animeTitle or '',clean)
+    local content_type=M.limit_text(bangumi.typeDescription or bangumi.type or '',32,clean)
+    if content_type~='' then info.kind=content_type end
+    return out,nil,info
 end
 
-function M.match_verified(match,media_name,episodes)
-    if type(match)~='table' or type(episodes)~='table' then return false end
-    local anime,episode,season=M.episode_query(media_name)
-    if not anime or not episode then return false end
-    local info=M.show_info(match.animeTitle)
-    if season and info.season~=season and not (season==1 and info.season==nil) then return false end
-    local year=tonumber(tostring(media_name):match('[（(](%d%d%d%d)[)）]'))
-    if year and info.year and info.year~=year then return false end
-    local wanted=anime:lower():gsub('[%s%p]','')
-    local actual=info.series:lower():gsub('[%s%p]','')
-    if wanted=='' or actual~=wanted then return false end
-    for _,item in ipairs(episodes) do
-        if item.id==match.episodeId and not item.extra and item.number_value==episode then return true end
+-- Compare codepoints, not UTF-8 bytes: one wrong Chinese character is one edit.
+-- Keep short titles exact; longer names may differ by at most 20% of characters.
+local function title_score(wanted,actual)
+    if wanted==actual then return wanted~='' and 1 or 0 end
+    local function numbers(value)
+        local out={}
+        for number in value:gmatch('%d+') do out[#out+1]=number end
+        return table.concat(out,',')
     end
-    return false
+    if numbers(wanted)~=numbers(actual) then return 0 end
+    local a,b={},{}
+    for c in wanted:gmatch(UTF8_CODEPOINT) do a[#a+1]=c end
+    for c in actual:gmatch(UTF8_CODEPOINT) do b[#b+1]=c end
+    local length=math.max(#a,#b)
+    local limit=math.floor(length*.2)
+    if math.min(#a,#b)<5 or length>120 or math.abs(#a-#b)>limit then return 0 end
+    local previous={}
+    for j=0,#b do previous[j]=j end
+    for i=1,#a do
+        local current={[0]=i}
+        local minimum=i
+        for j=1,#b do
+            current[j]=math.min(current[j-1]+1,previous[j]+1,
+                previous[j-1]+(a[i]==b[j] and 0 or 1))
+            minimum=math.min(minimum,current[j])
+        end
+        if minimum>limit then return 0 end
+        previous=current
+    end
+    return 1-previous[#b]/length
 end
 
-local function identity(value)
-    return tostring(value or ''):lower():gsub('[%s%p]','')
+local function special_title(value)
+    return title_width(value):lower():match('%f[%a]ova%f[%A]')
+        or title_width(value):lower():match('%f[%a]oad%f[%A]')
+end
+local function same_work(a,b)
+    return identity(a.series)==identity(b.series) and a.season==b.season
+        and a.part==b.part and a.year==b.year
+end
+
+local MOVIE_VERSIONS={
+    {name='mandarin',labels={'普通话版','普通话','国语版','国语','中文版','中文配音'}},
+    {name='cantonese',labels={'粤语版','粤语'}},
+    {name='english',labels={'英语版','英语配音'}},
+    {name='original',labels={'原声版','原声','原版','日语版','日语'}},
+}
+local function movie_version(value)
+    local title=title_width(value)
+    for _,version in ipairs(MOVIE_VERSIONS) do
+        for _,label in ipairs(version.labels) do
+            if title:find(label,1,true) then return version.name end
+        end
+    end
+end
+local function movie_title(value)
+    local title=title_width(value)
+    for _,version in ipairs(MOVIE_VERSIONS) do
+        for _,label in ipairs(version.labels) do title=title:gsub(label,'') end
+    end
+    return identity(title)
 end
 
 function M.auto_candidates(shows,media_name)
     local anime,episode,season=M.episode_query(media_name)
-    if not anime or not episode then return {} end
-    local year=tonumber(tostring(media_name):match('[（(](%d%d%d%d)[)）]'))
-    local wanted=identity(anime)
-    local out={}
-    for _,show in ipairs(shows or {}) do
-        if identity(show.series)==wanted and wanted~=''
-            and (not year or not show.year or show.year==year)
-            and (not season or show.season==season or season==1 and show.season==nil)
-            and show.kind~='电影' then
-            for _,platform in ipairs(show.platforms or {}) do
-                if platform.id and #out<20 then
-                    out[#out+1]={id=platform.id,key=platform.key,label=show.label}
+    local movie=not episode
+    local info=M.show_info(anime or M.search_keyword(media_name))
+    -- Without an episode number only a movie can be selected, never episode 1
+    -- of a similarly named series or a season with incomplete metadata.
+    if info.series=='' or movie and M.season_number(media_name) then return {} end
+    local wanted=movie and movie_title(info.series) or identity(info.series)
+    local version=movie_version(media_name) or 'original'
+    local year=M.show_info(media_name).year
+    local ranked={}
+    for order,show in ipairs(shows or {}) do
+        local kind=tostring(show.kind or '')
+        local season_ok=season and (show.season==season or season==1 and show.season==nil)
+            or not season and show.season==nil
+        if season_ok and not show.season_ambiguous and not show.part_ambiguous
+            and (not info.part or show.part==info.part)
+            and (movie and movie_kind(kind) or not movie and not movie_kind(kind)
+                and (season_series_kind(kind) or special_title(media_name)))
+            and (not movie or not movie_version(show.series) or movie_version(show.series)==version)
+            and not not special_title(anime or info.series)==not not special_title(show.series) then
+            local score=title_score(wanted,movie and movie_title(show.series) or identity(show.series))
+            if score<1 then
+                for _,alias in ipairs(show.aliases or {}) do
+                    if not movie or not movie_version(alias) or movie_version(alias)==version then
+                        score=math.max(score,title_score(wanted,movie and movie_title(alias) or identity(alias)))
+                    end
+                    if score==1 then break end
+                end
+            end
+            if score>=.8 then
+                -- A wrong release year must not veto a title and season match.
+                local rank=score+(year and show.year==year and .03 or 0)
+                ranked[#ranked+1]={show=show,score=rank,order=order}
+            end
+        end
+    end
+    table.sort(ranked,function(a,b)
+        if a.score==b.score then return a.order<b.order end
+        return a.score>b.score
+    end)
+    local best=ranked[1]
+    if not best then return {} end
+    -- Movie platforms can list different release years for the same title.
+    -- Prefer the requested year only among identical titles; a matching year
+    -- must never promote a weaker title match over a stronger one.
+    if movie and year and best.show.year==year then
+        for i=#ranked,2,-1 do
+            if ranked[i].show.year~=year
+                and movie_title(ranked[i].show.series)==movie_title(best.show.series) then
+                table.remove(ranked,i)
+            end
+        end
+    end
+    -- Different works within eight percentage points need a manual selection.
+    for i=2,#ranked do
+        if not same_work(best.show,ranked[i].show) and best.score-ranked[i].score<.08 then
+            return {},'ambiguous'
+        end
+    end
+    local out,seen={},{}
+    for _,entry in ipairs(ranked) do
+        if same_work(best.show,entry.show) then
+            for _,platform in ipairs(entry.show.platforms or {}) do
+                if platform.id and not seen[platform.id] and #out<20 then
+                    seen[platform.id]=true
+                    out[#out+1]={id=platform.id,key=platform.key,label=entry.show.label,kind=entry.show.kind}
                 end
             end
         end
@@ -745,12 +1068,28 @@ function M.auto_candidates(shows,media_name)
     return out
 end
 
-function M.auto_episode(episodes,media_name)
+function M.match_verified(match,media_name,episodes,show)
+    if type(match)~='table' or type(episodes)~='table' then return false end
+    local info=M.show_info(match.animeTitle)
+    if show then info.kind=show.kind end
+    info.platforms={{id=match.episodeId}}
+    if #M.auto_candidates({info},media_name)==0 then return false end
+    local episode=M.auto_episode(episodes,media_name,info)
+    return episode~=nil and episode.id==match.episodeId
+end
+
+function M.auto_episode(episodes,media_name,show)
     local _,wanted=M.episode_query(media_name)
-    if not wanted then return nil end
+    local version=movie_version(media_name)
+    if not wanted and (not show or not movie_kind(show.kind)) then return nil end
     local selected
     for _,item in ipairs(episodes or {}) do
-        if not item.extra and item.number_value==wanted then
+        local matches=item.number_value==wanted
+        if not wanted then
+            local actual=movie_version(item.label) or movie_version(show.label or show.series)
+            matches=(actual or 'original')==(version or 'original')
+        end
+        if not item.extra and matches then
             if selected then return nil end
             selected=item
         end
@@ -771,6 +1110,9 @@ function M.parse_comments(text, parse_json, core)
             local fields = {}
             for field in (tostring(comment.p or '') .. ','):gmatch('(.-),') do fields[#fields + 1] = field end
             local time, mode, color = tonumber(fields[1]), tonumber(fields[2]), tonumber(fields[3])
+            -- Renren forwards its member-comment type as 2. It is a normal
+            -- scrolling comment, not the converter's internal L2R type 2.
+            if mode==2 and tostring(fields[4] or ''):match('^%[renren%]') then mode=1 end
             if core.finite(time) and time >= 0 and time < 604800
                 and core.finite(mode) and mode>=1 and mode<=9 and mode==math.floor(mode) then
                 local value = core.clean(tostring(comment.m or '')):gsub('[\r\n]+', ' ')
@@ -797,7 +1139,7 @@ o.dandanplay_app_id=tostring(o.dandanplay_app_id or ''):gsub('^%s+',''):gsub('%s
 o.dandanplay_app_secret=tostring(o.dandanplay_app_secret or ''):gsub('^%s+',''):gsub('%s+$','')
 local function private_server_config_path()
     local root=os.getenv('LOCALAPPDATA') or os.getenv('APPDATA')
-    if root and root~='' then return root..'/AnimeVE-danmaku.conf' end
+    if root and root~='' then return root..'/mpv-AnimeFusion-danmaku.conf' end
     root=os.getenv('XDG_CONFIG_HOME')
     if root and root~='' then return root..'/animejanai-danmaku.conf' end
     root=os.getenv('HOME')
@@ -819,23 +1161,14 @@ local function read_private_servers()
     end
     return online.parse_servers(value or '')
 end
-local function write_private_servers(list)
-    local path=private_server_config_path()
+local function write_private_file(path,body)
     if not path then return false end
     local temp=path..'.tmp'
     local file=io.open(temp,'wb')
     if not file then return false end
-    local write_error
-    local function write(value)
-        if write_error then return end
-        local ok,err=file:write(value)
-        if not ok then write_error=err or '配置写入失败' end
-    end
-    write('# Private local danmaku sources; kept outside release files.\n')
-    write('api_servers='..online.serialize_servers(list)..'\n')
-    local closed,close_error=file:close()
-    if not closed then write_error=write_error or close_error or '配置刷新失败' end
-    if write_error then os.remove(temp);return false end
+    local written=file:write(body)
+    local closed=file:close()
+    if not written or not closed then os.remove(temp);return false end
 
     local current=io.open(path,'rb')
     if current then
@@ -862,8 +1195,43 @@ local function write_private_servers(list)
     end
     return true
 end
--- Only the per-user file supplies endpoints; packaged script options stay blank.
+local function write_private_servers(list)
+    return write_private_file(private_server_config_path(),
+        '# Private local danmaku sources; kept outside release files.\n'
+        ..'api_servers='..online.serialize_servers(list)..'\n')
+end
+local function series_sources_path()
+    local path=private_server_config_path()
+    return path and path:gsub('%.conf$','-sources.json') or nil
+end
+local function read_series_sources()
+    local path=series_sources_path()
+    local file=path and io.open(path,'rb')
+    if not file and path then file=io.open(path..'.bak','rb') end
+    if not file then return {} end
+    local body=file:read(8388609) or '';file:close()
+    if #body>8388608 then return {} end
+    local ok,data=pcall(utils.parse_json,body)
+    return ok and type(data)=='table' and data or {}
+end
 local servers=read_private_servers()
+local series_sources=read_series_sources()
+local function remember_source(name,index,show,available)
+    local key=online.series_source_key(name)
+    local server=servers[index]
+    if not key or not server or not show or not online.episode_id(show.id) then return end
+    local saved_episodes={}
+    for _,episode in ipairs(available or {}) do
+        saved_episodes[#saved_episodes+1]={id=episode.id,label=episode.label,
+            number_value=episode.number_value,extra=episode.extra}
+    end
+    series_sources[key]={server_url=server.url,id=show.id,key=show.key,
+        label=show.label,kind=show.kind,episodes=saved_episodes}
+    if not write_private_file(series_sources_path(),utils.format_json(series_sources)) then
+        mp.msg.warn('弹幕来源记录保存失败')
+    end
+end
+-- Only the per-user file supplies endpoints; packaged script options stay blank.
 local source,status,results,episodes=1,'',{},{}
 local autoload_state='idle'
 local search_view,search_keyword,search_season,selected_show='shows','',nil,nil
@@ -871,6 +1239,21 @@ local search_source,search_cache,search_cache_order,search_batch=0,{}, {},nil
 local search_health={pending=0,failed=0,responded=0,total=0}
 local episode_load_generation=0
 local loaded=''
+local loaded_platform=''
+local preparation_timer,load_notice_pending=nil,false
+local function show_loading_notice(text)
+    local message=mp.get_property_osd('osd-ass-cc/0')..'{\\an5}'..text
+        ..mp.get_property_osd('osd-ass-cc/1')
+    mp.commandv('show-text',message,'3000','0')
+end
+local function cancel_preparation()
+    if preparation_timer then preparation_timer:kill();preparation_timer=nil end
+end
+local function playback_notice_timer()
+    if not preparation_timer then return end
+    if mp.get_property_bool('core-idle',true) then preparation_timer:stop()
+    else preparation_timer:resume() end
+end
 local picker,generation,request_jobs,request_serial=nil,0,{},0
 local renderer
 local publish
@@ -884,9 +1267,13 @@ publish=function()
     for i,server in ipairs(servers) do
         server_view[#server_view+1]={index=i,note=server.note or '',selected=i==source}
     end
+    local numbers={'一','二','三','四','五','六','七','八','九','十'}
+    local number=numbers[source] or (source<20 and '十'..numbers[source-10] or '二十')
+    local source_label=loaded_platform~='' and ('线路'..number..'·'..loaded_platform) or '本地弹幕'
     mp.set_property_native('user-data/player_ui/danmaku',{
         loaded=renderer and renderer.ready or false,file=loaded,count=renderer and renderer.count or 0,enabled=o.enabled,
-        settings=renderer and renderer.settings or {},backend='DanmakuFactory / mpv ASS',
+        source_label=source_label,
+        settings=renderer and renderer.settings or {},backend='DanmakuFactory',
         render_pending=renderer and renderer.busy or false,track=renderer and renderer.track,
         servers=server_view,source=source,status=status,results=results,episodes=episodes,autoload_state=autoload_state,
         search_view=search_view,search_keyword=search_keyword,search_season=search_season,
@@ -901,7 +1288,7 @@ renderer=(function()
 -- animation, seeking and presentation; this module has no frame update loop.
 return function(mp, utils, on_change)
     local M={ready=false,busy=false,count=0,track=nil,error=nil}
-    local defaults={resolution={1920,1080},displayArea=1,scrollArea=1,
+    local defaults={resolution={1920,1080},fps=60,displayArea=1,scrollArea=1,
         scrolltime=12,fixtime=5,density=0,lineSpacing=0,topMargin=0,bottomMargin=0,
         fontsize=38,fontname='Microsoft YaHei',opacity=180,outline=0,shadow=1,bold=false,
         outlineBlur=0,outlineOpacity=255,saveBlocked=true,showUsernames=false,showMsgbox=true,
@@ -909,10 +1296,11 @@ return function(mp, utils, on_change)
         blockmode=utils.parse_json('[]'),statmode=utils.parse_json('[]'),
         fontSizeStrict=false,fontSizeNorm=false,blacklist='',blacklistRegex=false}
     local root=os.getenv('LOCALAPPDATA') or os.getenv('APPDATA') or os.getenv('TEMP')
-    M.config_path=root and (root..'/AnimeVE-DanmakuFactory.json') or nil
+    M.config_path=root and (root..'/mpv-AnimeFusion-DanmakuFactory.json') or nil
     local executable=mp.command_native({'expand-path','~~/../animejanai/danmaku/DanmakuFactory.exe'})
     local job,serial,ass_path,input_path,owned_input= nil,0,nil,nil,false
-    local previous_secondary,previous_style,previous_visibility
+    local previous_secondary,previous_style,previous_visibility,previous_display_sync
+    local previous_render_fps
     local playback_speed=mp.get_property_number('speed',1)
     local timeline={{t=0,rate=playback_speed}}
     local regen_timer
@@ -953,6 +1341,8 @@ return function(mp, utils, on_change)
                 mp.set_property_native('secondary-sid',previous_secondary or 'no')
                 mp.set_property('secondary-sub-ass-override',previous_style or 'strip')
                 mp.set_property_bool('secondary-sub-visibility',previous_visibility~=false)
+                mp.set_property_bool('secondary-sub-display-sync',previous_display_sync or false)
+                mp.set_property_number('secondary-sub-render-fps',previous_render_fps)
             end
             mp.commandv('sub-remove',M.track)
             M.track=nil
@@ -970,8 +1360,12 @@ return function(mp, utils, on_change)
                 previous_secondary=mp.get_property_native('secondary-sid','no')
                 previous_style=mp.get_property('secondary-sub-ass-override','strip')
                 previous_visibility=mp.get_property_bool('secondary-sub-visibility',true)
+                previous_display_sync=mp.get_property_bool('secondary-sub-display-sync',false)
+                previous_render_fps=mp.get_property_number('secondary-sub-render-fps',60)
                 mp.set_property('secondary-sub-ass-override','no')
                 mp.set_property_bool('secondary-sub-visibility',M.enabled~=false)
+                mp.set_property_number('secondary-sub-render-fps',M.settings.fps)
+                mp.set_property_bool('secondary-sub-display-sync',true)
                 mp.set_property_native('secondary-sid',track.id)
                 on_change()
                 break
@@ -1003,7 +1397,7 @@ return function(mp, utils, on_change)
         local expected=serial
         local temp=os.getenv('TEMP') or root
         if not temp then M.busy=false;M.error='本机临时目录不可用';on_change();return end
-        local output=temp..'/AnimeVE-danmaku-'..tostring(utils.getpid())..'-'..serial..'.ass'
+        local output=temp..'/mpv-AnimeFusion-danmaku-'..tostring(utils.getpid())..'-'..serial..'.ass'
         os.remove(output)
         local args={executable,'--ignore-warnings','--force','-o',output,'-i',path}
         -- Pass settings through the upstream CLI, which also supports word blocking.
@@ -1043,7 +1437,7 @@ return function(mp, utils, on_change)
     function M.comments(list)
         local temp=os.getenv('TEMP') or root
         if not temp then M.error='本机临时目录不可用';on_change();return end
-        local path=temp..'/AnimeVE-comments-'..tostring(utils.getpid())..'-'..(serial+1)..'.xml'
+        local path=temp..'/mpv-AnimeFusion-comments-'..tostring(utils.getpid())..'-'..(serial+1)..'.xml'
         local lines={'<?xml version="1.0" encoding="UTF-8"?><i>'}
         for _,item in ipairs(list) do
             lines[#lines+1]=string.format('<d p="%.3f,%d,25,%d,0,0,0,0">%s</d>',
@@ -1069,6 +1463,10 @@ return function(mp, utils, on_change)
             value=tonumber(value)
             if not value or value<1 or value>100 then return end
             values.opacity=math.floor(value*255/100+.5)
+        elseif key=='fps' then
+            value=tonumber(value)
+            if value~=30 and value~=60 and value~=90 then return end
+            values.fps=value
         elseif defaults[key]~=nil then
             values[key]=value
             if key=='blacklist' then values.blacklistRegex=false end
@@ -1076,6 +1474,10 @@ return function(mp, utils, on_change)
         local ok,why=write(M.config_path,utils.format_json(values))
         if not ok then M.error='无法保存弹幕设置：'..tostring(why);on_change();return end
         M.settings=values
+        if key=='fps' then
+            if M.track then mp.set_property_number('secondary-sub-render-fps',value) end
+            on_change();return
+        end
         if input_path then M.convert(input_path,owned_input) else on_change() end
     end
     function M.words()
@@ -1093,7 +1495,7 @@ return function(mp, utils, on_change)
                 words[#words+1]=line
             end
         end
-        local path=root..'/AnimeVE-danmaku-blocklist.txt'
+        local path=root..'/mpv-AnimeFusion-danmaku-blocklist.txt'
         local ok,why=write(path,table.concat(words,'\n'))
         if not ok then M.error='无法保存屏蔽词：'..tostring(why);on_change();return end
         M.set('blacklist',#words>0 and path or '')
@@ -1145,7 +1547,15 @@ end)()(mp,utils,function()
     if renderer then
         if renderer.error then status=renderer.error;autoload_state='error'
         elseif renderer.busy then status='弹幕转换中…'
-        elseif renderer.ready then status='';autoload_state='loaded' end
+        elseif renderer.ready then
+            status='';autoload_state='loaded';cancel_preparation()
+            if load_notice_pending then
+                load_notice_pending=false
+                if renderer.count>0 then
+                    show_loading_notice(tostring(renderer.count)..'条弹幕大军正在袭来~~~')
+                end
+            end
+        end
     end
     publish()
 end)
@@ -1153,14 +1563,15 @@ local function kill() renderer.cancel() end
 local function clear() renderer.clear() end
 local function safe_path(path)
     return type(path)=='string' and path~='' and not path:find('%z') and not path:match('^%a[%w+.-]*://')
-        and (path:lower():match('%.xml$') or path:lower():match('%.ass$') or path:lower():match('%.json$'))
+        and (path:lower():match('%.xml$') or path:lower():match('%.json$') or path:lower():match('%.ass$'))
 end
 local function load(path)
-    if not safe_path(path) then mp.osd_message('请选择本地 XML、ASS 或 JSON 弹幕文件',3);return false end
+    if not safe_path(path) then mp.osd_message('请选择本地 XML、JSON 或 ASS 弹幕文件',3);return false end
     local file=io.open(path,'rb');if not file then mp.osd_message('无法打开弹幕文件',3);return false end;file:close()
     if cancel_online then cancel_online() end
     results={};autoload_state='loading';
-    clear();loaded=path;o.enabled=true;renderer.toggle(true)
+    load_notice_pending=false;clear();loaded=path;loaded_platform='';o.enabled=true;renderer.toggle(true)
+    load_notice_pending=true
     renderer.convert(path,false);publish();return true
 end
 local function cancel_request()
@@ -1218,11 +1629,23 @@ local function run_powershell(command,callback,shared_serial,error_label)
         end)
     end
 end
+local unsupported_api_error
 local function request(url,body,callback,shared_serial)
     local ok,command=pcall(online.request_command,url,body,{
         timeout=o.danmaku_timeout,app_id=o.dandanplay_app_id,app_secret=o.dandanplay_app_secret})
     if not ok then callback(nil,tostring(command));return end
-    run_powershell(command,callback,shared_serial,'网络请求')
+    local serial=shared_serial or cancel_request()
+    local file_generation=generation
+    local function attempt(number)
+        run_powershell(command,function(response,err)
+            if err and number<=3 and not unsupported_api_error(err) then
+                mp.add_timeout(.3*2^(number-1),function()
+                    if serial==request_serial and file_generation==generation then attempt(number+1) end
+                end)
+            else callback(response,err) end
+        end,serial,'网络请求')
+    end
+    attempt(1)
 end
 local cached_hash_path,cached_hash
 local function hash_file(path,callback)
@@ -1256,7 +1679,7 @@ local function route_error(index,action,detail)
         :gsub('[\r\n]+',' '):gsub('%s+',' '):sub(1,140)
     return route_name(index)..' '..action..'失败：'..detail
 end
-local function unsupported_api_error(detail)
+unsupported_api_error=function(detail)
     detail=tostring(detail or '')
     return detail:find('404',1,true)~=nil or detail:find('405',1,true)~=nil
         or detail:find('501',1,true)~=nil
@@ -1355,12 +1778,13 @@ end
 local function parse_remote(text)
     return online.parse_comments(text,utils.parse_json,core)
 end
-local function adopt(list,label)
+local function adopt(list,label,platform_key)
 
-    clear();loaded=label or '';o.enabled=true;renderer.toggle(true)
+    load_notice_pending=false;clear();loaded=label or '';loaded_platform=online.episode_platform(platform_key,label)
+    o.enabled=true;renderer.toggle(true);load_notice_pending=true
     autoload_state='loading';renderer.comments(list);publish()
 end
-local function fetch_episode(episode_id,label,server_index,quiet,on_missing,shared_serial)
+local function fetch_episode(episode_id,label,server_index,quiet,on_missing,shared_serial,on_loaded,on_empty,platform_key)
     local id=online.episode_id(episode_id)
     local sv=servers[server_index or source]
     episode_load_generation=episode_load_generation+1
@@ -1390,13 +1814,14 @@ local function fetch_episode(episode_id,label,server_index,quiet,on_missing,shar
         if #list==0 then
             kill();clear();loaded=''
             route_log(server_index or source,'弹幕读取','该集返回 0 条弹幕')
+            if on_empty then on_empty();return end
             if on_missing then on_missing()
             else status='该集没有弹幕';publish() end
             return
         end
-        adopt(list,label)
+        if on_loaded then on_loaded() end
+        adopt(list,label,platform_key)
         route_log(server_index or source,'弹幕读取','载入 '..#list..' 条弹幕')
-        if not quiet then mp.osd_message('已载入 '..#list..' 条弹幕',3) end
     end,shared_serial)
 end
 local function query_name()
@@ -1478,7 +1903,9 @@ local function finish_match(attempt,detail)
             local route_failures=attempt.errors[index]
             if route_failures and route_failures[1] then failures[#failures+1]=route_failures[1] end
         end
-        if #failures>0 then
+        if attempt.ambiguous then
+            detail='有多个相近作品，请手动选择弹幕'
+        elseif #failures>0 then
             failed=true
             detail=server_error('弹幕匹配',table.concat(failures,'；'))
         else
@@ -1528,9 +1955,9 @@ local function match_by_file(attempt,position,index,server,search_fallback)
         end
         if matched and matched.animeId then
             request(server.url..'/api/v2/bangumi/'..matched.animeId,nil,function(detail,detail_error)
-                local available,detail_why
-                if not detail_error then available,detail_why=online.bangumi_episodes(detail or '',utils.parse_json,core.clean) end
-                if available and online.match_verified(matched,attempt.name,available) then
+                local available,detail_why,show
+                if not detail_error then available,detail_why,show=online.bangumi_episodes(detail or '',utils.parse_json,core.clean) end
+                if available and online.match_verified(matched,attempt.name,available,show) then
                     route_log(index,'剧集核验','匹配 '..tostring(matched.animeTitle or '')..' · '..tostring(matched.episodeTitle or ''))
                     source=index
                     fetch_episode(matched.episodeId,
@@ -1538,7 +1965,10 @@ local function match_by_file(attempt,position,index,server,search_fallback)
                         index,attempt.quiet,function(detail_error)
                             if detail_error then append_attempt_error(attempt,index,'弹幕读取',detail_error) end
                             continue()
-                        end,attempt.serial)
+                        end,attempt.serial,function()
+                            remember_source(attempt.name,index,{id=matched.animeId,label=matched.animeTitle,
+                                kind=show and show.kind},available)
+                        end)
                 else
                     if detail_error or detail_why then
                         append_attempt_error(attempt,index,'剧集核验',detail_error or detail_why)
@@ -1571,8 +2001,9 @@ match_search_result=function(attempt,position,index,server,body,err)
             else match_by_file(attempt,position,index,server) end
             return
         end
-        local candidates=online.auto_candidates(shows,attempt.name)
-        route_log(index,'作品搜索','返回 '..#(shows or {})..' 个作品，精确候选 '..#candidates)
+        local candidates,reason=online.auto_candidates(shows,attempt.name)
+        attempt.ambiguous=attempt.ambiguous or reason=='ambiguous'
+        route_log(index,'作品搜索','返回 '..#(shows or {})..' 个作品，匹配候选 '..#candidates)
         if #candidates==0 then
             if attempt.match_attempted and attempt.match_attempted[index] then match_at(attempt,position+1)
             else match_by_file(attempt,position,index,server) end
@@ -1590,7 +2021,7 @@ match_search_result=function(attempt,position,index,server,body,err)
                 if not detail_error then
                     available,detail_why=online.bangumi_episodes(detail or '',utils.parse_json,core.clean,candidate.key)
                 end
-                local episode=online.auto_episode(available,attempt.name)
+                local episode=online.auto_episode(available,attempt.name,candidate)
                 if not episode then
                     if detail_error or detail_why then
                         append_attempt_error(attempt,index,'剧集核验',detail_error or detail_why)
@@ -1604,7 +2035,7 @@ match_search_result=function(attempt,position,index,server,body,err)
                     index,attempt.quiet,function(comment_error)
                         if comment_error then append_attempt_error(attempt,index,'弹幕读取',comment_error) end
                         try_candidate(candidate_index+1)
-                    end,attempt.serial)
+                    end,attempt.serial,function()remember_source(attempt.name,index,candidate,available)end,nil,candidate.key)
             end,attempt.serial)
         end
         try_candidate(1)
@@ -1662,9 +2093,12 @@ local function automatic_match_all_routes(attempt)
                 if attempt.finished then return end
                 local available,why
                 if not err then available,why=online.bangumi_episodes(body or '',utils.parse_json,core.clean,candidate.key) end
-                local episode=available and online.auto_episode(available,attempt.name) or nil
+                local episode=available and online.auto_episode(available,attempt.name,candidate) or nil
                 if not episode then
                     if err or why then append_attempt_error(attempt,index,'剧集核验',err or why) end
+                    next_candidate(position+1);return
+                end
+                if attempt.failed_episodes and attempt.failed_episodes[index..':'..episode.id] then
                     next_candidate(position+1);return
                 end
                 request(servers[index].url..'/api/v2/comment/'..episode.id..'?withRelated=true',nil,function(comments,comment_error)
@@ -1672,14 +2106,15 @@ local function automatic_match_all_routes(attempt)
                     local list,parse_error
                     if not comment_error then list,parse_error=parse_remote(comments or '') end
                     if list and #list>0 then
+                        remember_source(attempt.name,index,candidate,available)
                         attempt.finished=true;cancel_request();source=index
-                        adopt(list,online.limit_text(candidate.label..' · '..episode.label,220,core.clean))
+                        adopt(list,online.limit_text(candidate.label..' · '..episode.label,220,core.clean),candidate.key)
                         route_log(index,'弹幕读取','载入 '..#list..' 条弹幕');return
                     end
                     if comment_error or parse_error then
                         append_attempt_error(attempt,index,'弹幕读取',comment_error or parse_error)
                     end
-                    route_log(index,'弹幕读取',list and '该集返回 0 条弹幕' or comment_error or parse_error)
+                    route_log(index,'弹幕读取',list and ('该集返回 '..#list..' 条弹幕，继续查找') or comment_error or parse_error)
                     -- Exhaust this route's other platforms before moving to the next route.
                     if not priority_fallback and #attempt.queue>1 then
                         state.next_position=position+1
@@ -1716,8 +2151,10 @@ local function automatic_match_all_routes(attempt)
             local found,why
             if not err then found,why=online.search_results(body or '',attempt.keyword or attempt.name,utils.parse_json,core.clean) end
             if found then
-                states[index].candidates=online.auto_candidates(found,attempt.name)
-                route_log(index,'作品搜索','返回 '..#found..' 个作品')
+                local candidates,reason=online.auto_candidates(found,attempt.name)
+                states[index].candidates=candidates
+                attempt.ambiguous=attempt.ambiguous or reason=='ambiguous'
+                route_log(index,'作品搜索','返回 '..#found..' 个作品，匹配候选 '..#candidates)
             else
                 append_attempt_error(attempt,index,'作品搜索',err or why)
                 route_log(index,'作品搜索',err or why,true)
@@ -1726,7 +2163,44 @@ local function automatic_match_all_routes(attempt)
         end,attempt.serial)
     end
 end
-match_current=function(quiet,automatic)
+local function load_remembered_source(attempt,on_missing)
+    local key=online.series_source_key(attempt.name)
+    local saved=key and series_sources[key]
+    if type(saved)~='table' or not online.episode_id(saved.id)
+        or type(saved.label)~='string' or type(saved.episodes)~='table' then on_missing();return end
+    local index
+    for i,server in ipairs(servers) do if server.url==saved.server_url then index=i;break end end
+    if not index then on_missing();return end
+    local function load(available)
+        local episode=online.auto_episode(available,attempt.name,saved)
+        if not episode or not online.episode_id(episode.id) then on_missing();return end
+        route_log(index,'来源复用','直接读取已记住平台的对应剧集')
+        fetch_episode(episode.id,online.limit_text(saved.label..' · '..episode.label,220,core.clean),
+            index,attempt.quiet,function(err)
+                attempt.failed_episodes={[index..':'..episode.id]=true}
+                if err then append_attempt_error(attempt,index,'弹幕读取',err) end
+                on_missing()
+            end,attempt.serial,function()
+                if available~=saved.episodes then remember_source(attempt.name,index,saved,available) end
+            end,function()
+                if available~=saved.episodes then remember_source(attempt.name,index,saved,available) end
+                status='该集没有弹幕';autoload_state='empty';publish()
+            end,saved.key)
+    end
+    if online.auto_episode(saved.episodes,attempt.name,saved) then load(saved.episodes);return end
+    -- An ongoing series can gain episodes. Refresh this platform's list directly,
+    -- without searching the work again, before declaring the source unavailable.
+    request(servers[index].url..'/api/v2/bangumi/'..saved.id,nil,function(body,err)
+        local available,why
+        if not err then available,why=online.bangumi_episodes(body or '',utils.parse_json,core.clean,saved.key) end
+        if not available then
+            if err or why then append_attempt_error(attempt,index,'剧集核验',err or why) end
+            on_missing();return
+        end
+        load(available)
+    end,attempt.serial)
+end
+match_current=function(quiet,automatic,failed_episodes)
     cancel_request();results={}
     autoload_state=automatic and 'loading' or 'idle'
     publish()
@@ -1747,9 +2221,11 @@ match_current=function(quiet,automatic)
         local attempt={name=name,queue=queue,quiet=quiet,automatic=automatic,errors={},file_hash=file_hash,
             serial=request_serial,generation=generation,direct_match_first=automatic,match_attempted={}}
         local keyword=online.episode_query(name)
-        if keyword then attempt.keyword=keyword end
+        if automatic or keyword then attempt.keyword=online.search_keyword(name) end
         if automatic then
-            automatic_match_all_routes(attempt)
+            attempt.failed_episodes=failed_episodes
+            if failed_episodes then automatic_match_all_routes(attempt)
+            else load_remembered_source(attempt,function()automatic_match_all_routes(attempt)end) end
             return
         end
         if keyword then
@@ -1759,7 +2235,7 @@ match_current=function(quiet,automatic)
                 local server=servers[index]
                 if server then
                     local route_position=position
-                    request(server.url..'/api/v2/search/anime?keyword='..online.urlencode(keyword),nil,
+                    request(server.url..'/api/v2/search/anime?keyword='..online.urlencode(attempt.keyword),nil,
                         function(body,err)
                             attempt.search_replies[route_position]={body=body,err=err}
                             if attempt.waiting_position==route_position then match_at(attempt,route_position) end
@@ -1771,6 +2247,10 @@ match_current=function(quiet,automatic)
     end
     if automatic then start(nil) else hash_file(mp.get_property('path',''),start) end
 end
+mp.register_script_message('player_ui-danmaku-retry-match',function()
+    if autoload_state=='loading' then return end
+    match_current(true,true)
+end)
 local try_automatic_match
 local function schedule_automatic_match(expected_generation,attempts)
     if autoload_probe_timer or attempts>=120 then return end
@@ -1866,15 +2346,8 @@ mp.register_script_message('player_ui-danmaku-show',function(anime_id,server_ind
         if show.server_index==index then
             for _,platform in ipairs(show.platforms or {}) do
                 if platform.id==id then
-                    chosen={id=id,label=show.label,platform=platform.name,key=platform.key,
+                    chosen={id=id,label=show.label,kind=show.kind,season=show.season,platform=platform.name,key=platform.key,
                         server_index=index,server_url=server.url}
-                    chosen.alternate_platforms={}
-                    for _,alternate in ipairs(show.platforms or {}) do
-                        if alternate.id and alternate.id~=id then
-                            chosen.alternate_platforms[#chosen.alternate_platforms+1]={
-                                id=alternate.id,key=alternate.key,name=alternate.name}
-                        end
-                    end
                     break
                 end
             end
@@ -1903,69 +2376,30 @@ mp.register_script_message('player_ui-danmaku-search-back',function()
     else status='请选择作品、季度和平台';publish() end
 end)
 mp.register_script_message('player_ui-danmaku-pick',function(id,label,index)
-    index=tonumber(index)
-    index=index or source
-    local episode_id=online.episode_id(id)
-    local selected_episode
-    if episode_id then
-        for _,item in ipairs(episodes) do
-            if item.id==episode_id then selected_episode=item;break end
-        end
-    end
-    local alternates=selected_show and selected_show.server_index==index
-        and servers[index] and selected_show.server_url==servers[index].url
-        and selected_show.alternate_platforms or {}
-    if not selected_episode or not selected_episode.number_value or #alternates==0 then
-        fetch_episode(id,label,index,false)
-        return
-    end
-
+    index=tonumber(index) or source
+    local chosen=selected_show
+    local available=episodes
+    local name=query_name()
+    local episode=chosen and online.auto_episode(available,name,chosen)
+    local same_episode=episode and episode.id==online.episode_id(id)
+    local _,_,season=online.episode_query(name)
+    local same_season=chosen and (not chosen.season or chosen.season==season)
+    local same_source=chosen and chosen.server_index==index
+        and servers[index] and chosen.server_url==servers[index].url
     local serial=cancel_request()
-    local server=servers[index]
-    if not server then fetch_episode(id,label,index,false);return end
-    local function try_alternate(position)
-        local platform=alternates[position]
-        if not platform then
-            status='已检查当前线路的可用平台；该集没有弹幕'
-            autoload_state='idle';publish();return
-        end
-        status='当前平台没有弹幕，正在尝试 '..tostring(platform.name or '其他平台')
-        publish()
-        request(server.url..'/api/v2/bangumi/'..platform.id,nil,function(body,err)
-            local available,why
-            if not err then
-                available,why=online.bangumi_episodes(body or '',utils.parse_json,core.clean,platform.key)
-            end
-            local match,count=nil,0
-            for _,candidate in ipairs(available or {}) do
-                if candidate.extra==selected_episode.extra
-                    and candidate.number_value==selected_episode.number_value then
-                    match=candidate;count=count+1
-                end
-            end
-            if err or why or count~=1 then
-                if err or why then route_log(index,'平台切换剧集',err or why,true)
-                elseif count>1 then route_log(index,'平台切换剧集','该集编号不唯一')
-                else route_log(index,'平台切换剧集','该平台没有对应剧集') end
-                try_alternate(position+1)
-                return
-            end
-            route_log(index,'平台切换','尝试 '..tostring(platform.name or '其他平台'))
-            local alternate_label=online.limit_text(tostring(label or selected_show.label)
-                ..' · '..tostring(platform.name or '其他平台')..' · '..tostring(match.label),220,core.clean)
-            fetch_episode(match.id,alternate_label,index,false,function(detail_error)
-                if detail_error then route_log(index,'平台切换弹幕',detail_error,true) end
-                try_alternate(position+1)
-            end,serial)
-        end,serial)
-    end
-    fetch_episode(episode_id,label,index,false,function(detail_error)
-        if detail_error then route_log(index,'弹幕读取',detail_error,true) end
-        try_alternate(1)
-    end,serial)
+    fetch_episode(id,label,index,false,function(err)
+        if err then route_log(index,'弹幕读取',err,true) end
+        if same_episode and same_season and same_source then match_current(true,true,{[index..':'..tostring(online.episode_id(id))]=true})
+        else status=err or '该集没有弹幕';autoload_state='idle';publish() end
+    end,serial,function()
+        if same_episode and same_season and same_source then remember_source(name,index,chosen,available) end
+    end,function()
+        if same_episode and same_season and same_source then remember_source(name,index,chosen,available) end
+        status='该集没有弹幕';autoload_state='empty';publish()
+    end,chosen and chosen.key)
 end)
 mp.register_script_message('player_ui-danmaku-episode',function(id,label)
-    fetch_episode(id,label,source,false)
+    fetch_episode(id,label,source,false,nil,nil,nil,nil,selected_show and selected_show.key)
 end)
 local function show_source_manager()
     local args={}
@@ -2031,6 +2465,7 @@ mp.register_script_message('player_ui-danmaku-words',function()
 end)
 mp.register_script_message('player_ui-danmaku-save-words',renderer.set_words)
 mp.register_event('start-file',function()
+    cancel_preparation();load_notice_pending=false;loaded_platform=''
     autoload_file_active=true
     generation=generation+1;autoload_generation=-1;autoload_metadata_ready=-1
 
@@ -2056,8 +2491,20 @@ mp.register_event('file-loaded',function()
         autoload_metadata_ready=generation
         try_automatic_match(generation,0)
     end
+    if (has_local_danmaku or o.autoload_danmaku) and not renderer.ready then
+        local expected_generation=generation
+        preparation_timer=mp.add_timeout(2,function()
+            preparation_timer=nil
+            if generation==expected_generation and autoload_state=='loading' and not renderer.ready then
+                show_loading_notice('弹幕准备中~~~')
+            end
+        end,true)
+        playback_notice_timer()
+    end
 end)
+mp.observe_property('core-idle','bool',playback_notice_timer)
 mp.register_event('end-file',function()
+    cancel_preparation();load_notice_pending=false;loaded_platform=''
     autoload_file_active=false
     generation=generation+1;autoload_metadata_ready=-1
 
@@ -2067,6 +2514,7 @@ mp.register_event('end-file',function()
     publish()
 end)
 mp.register_event('shutdown',function()
+    cancel_preparation();load_notice_pending=false
     cancel_request();renderer.clear()
     if autoload_probe_timer then autoload_probe_timer:kill();autoload_probe_timer=nil end
     if picker then mp.abort_async_command(picker) end

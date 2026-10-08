@@ -51,6 +51,7 @@ public class MainPlayer : MpvClient
     public float AutofitLarger { get; set; } = 0.8f;
 
     public AutoResetEvent ShutdownAutoResetEvent { get; } = new AutoResetEvent(false);
+    readonly ManualResetEventSlim _mainEventLoopStopped = new(true);
     public nint MainHandle { get; set; }
     public List<MediaTrack> MediaTracks { get; set; } = new List<MediaTrack>();
     public List<TimeSpan> BluRayTitles { get; } = new List<TimeSpan>();
@@ -70,6 +71,11 @@ public class MainPlayer : MpvClient
     {
         App.ApplyShowMenuFix();
 
+        // These implicit capture layers can block vkDestroySwapchainKHR.
+        // Use their manifest-defined opt-outs for this player process only.
+        Environment.SetEnvironmentVariable("DISABLE_GAMEPP_LAYER", "1");
+        Environment.SetEnvironmentVariable("DISABLE_VULKAN_OBS_CAPTURE", "1");
+
         MainHandle = mpv_create();
         Handle = MainHandle;
 
@@ -83,7 +89,10 @@ public class MainPlayer : MpvClient
         mpv_request_log_messages(MainHandle, "no");
 
         if (formHandle != IntPtr.Zero)
+        {
+            _mainEventLoopStopped.Reset();
             TaskHelp.Run(MainEventLoop);
+        }
 
         if (MainHandle == IntPtr.Zero)
             throw new Exception("error mpv_create");
@@ -158,7 +167,7 @@ public class MainPlayer : MpvClient
         // this means Lua scripts that use idle might not work correctly
         SetPropertyString("idle", "yes");
 
-        SetPropertyString("user-data/frontend/name", "AnimeVE");
+        SetPropertyString("user-data/frontend/name", "mpv-AnimeFusion");
         SetPropertyString("user-data/frontend/version", AppInfo.Version.ToString());
         SetPropertyString("user-data/frontend/process-path", Environment.ProcessPath!);
 
@@ -192,6 +201,7 @@ public class MainPlayer : MpvClient
 
     public void Destroy()
     {
+        _mainEventLoopStopped.Wait();
         mpv_destroy(MainHandle);
         mpv_destroy(Handle);
 
@@ -259,7 +269,7 @@ public class MainPlayer : MpvClient
                 _configFolder = Folder.Startup + "portable_config";
 
                 if (!Directory.Exists(_configFolder))
-                    _configFolder = Folder.AppData + "AnimeVE";
+                    _configFolder = Folder.AppData + "mpv-AnimeFusion";
 
                 if (!Directory.Exists(_configFolder))
                     Directory.CreateDirectory(_configFolder);
@@ -342,17 +352,30 @@ public class MainPlayer : MpvClient
 
     public void MainEventLoop()
     {
-        while (true)
+        try
         {
-            mpv_wait_event(MainHandle, -1);
+            while (true)
+            {
+                IntPtr ptr = mpv_wait_event(MainHandle, -1);
+                mpv_event evt = Marshal.PtrToStructure<mpv_event>(ptr);
+                if (evt.event_id == mpv_event_id.MPV_EVENT_SHUTDOWN)
+                    return;
+            }
         }
+        finally { _mainEventLoopStopped.Set(); }
     }
 
     protected override void OnShutdown()
     {
         IsQuitNeeded = false;
-        base.OnShutdown();
-        ShutdownAutoResetEvent.Set();
+        try
+        {
+            base.OnShutdown();
+        }
+        finally
+        {
+            ShutdownAutoResetEvent.Set();
+        }
     }
 
     protected override void OnLogMessage(mpv_event_log_message data)

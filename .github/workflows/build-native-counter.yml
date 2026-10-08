@@ -1,11 +1,7 @@
 name: Native frame counter and runtime r2
 on:
+  workflow_call:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/build-native-counter.yml'
-      - 'tools/apply_native_r2.py'
 permissions:
   contents: read
 jobs:
@@ -36,6 +32,13 @@ jobs:
           repository: the-database/libass
           ref: 896614fa263f9f64944f7b8650ff6806d5328c4d
           path: libass-source
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: haasn/libplacebo
+          ref: cee9b076f2c63104ccfd497fa79c39a867293ec4
+          path: libplacebo-source
+          submodules: recursive
           persist-credentials: false
       - name: Apply reviewed patches
         shell: python
@@ -72,12 +75,17 @@ jobs:
             mingw-w64-ucrt-x86_64-libarchive
             mingw-w64-ucrt-x86_64-lcms2
             mingw-w64-ucrt-x86_64-vulkan-headers
+            mingw-w64-ucrt-x86_64-shaderc
+            mingw-w64-ucrt-x86_64-xxhash
       - name: Build pinned native components and regression tests
         run: |
           set -euo pipefail
           prefix="$(cygpath -m "$PWD/native-prefix")"
           export PKG_CONFIG_PATH="$prefix/lib/pkgconfig"
           export PATH="$PWD/native-prefix/bin:$PATH"
+          meson setup build-placebo libplacebo-source --prefix="$prefix" --buildtype=release --default-library=shared --wrap-mode=nodownload -Ddemos=false -Dtests=false -Dbench=false -Dfuzz=false -Dvulkan=enabled -Dd3d11=enabled -Dopengl=enabled -Dshaderc=enabled -Dxxhash=enabled
+          meson compile -C build-placebo -j 4
+          meson install -C build-placebo
           meson setup build-ass libass-source --prefix="$prefix" --buildtype=release --default-library=shared --wrap-mode=nodownload -Ddebug=true -Dthreads=enabled -Ddirectwrite=enabled -Dfontconfig=disabled -Dlibunibreak=enabled -Dtest=disabled -Dcompare=disabled -Dprofile=disabled -Dcheckasm=disabled
           meson compile -C build-ass -j 4
           meson install -C build-ass
@@ -89,9 +97,10 @@ jobs:
           meson test -C build-mpv --print-errorlogs
           (cd mpv-source && python TOOLS/subtest/test_stability.py --cc gcc --out ../native-output/build-info/subtitle-stability)
           pacman -Q > native-output/build-info/msys2-packages.txt
-          git -C mpv-source -c core.autocrlf=true diff --binary -- video/out/vo.c video/out/vo.h player/command.c audio/out/ao_wasapi.c audio/out/ao_wasapi.h audio/out/ao_wasapi_utils.c > native-output/build-info/native-r2.patch
+          git -C mpv-source -c core.autocrlf=true diff --binary > native-output/build-info/native-r2.patch
           git -C mpv-source rev-parse HEAD > native-output/build-info/mpv-commit.txt
           git -C libass-source rev-parse HEAD > native-output/build-info/libass-commit.txt
+          git -C libplacebo-source rev-parse HEAD > native-output/build-info/libplacebo-commit.txt
           cp mpv-source/Copyright native-output/build-info/mpv-Copyright.txt
       - name: Test native FPS, repeated shutdown and short-lived client thread
         shell: python

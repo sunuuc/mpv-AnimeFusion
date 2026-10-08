@@ -91,7 +91,7 @@ function M.theme(accent)
         accent=accent,text='F7F3F6',secondary='CEC7CF',muted='A49CA5',
         panel='211F23',surface='2B292E',hover='39353D',selected='493743',
         border='141216',divider='4A454C',track='807982',buffer='C8C1C9',
-        scrim='000000',
+        scrim='000000',current='BBC539',
     }
 end
 M.metrics={
@@ -100,7 +100,8 @@ M.metrics={
     row_padding=16,icon_column=56,separator=16,slider=84,
     control_compact_step=48,control_step=56,control_compact_edge=28,control_edge=42,
     control_y=40,control_width=40,control_hit_height=20,speed_width=58,volume_width=130,volume_offset=8,
-    volume_min_width=36,seek_x=22,seek_track_y=88,seek_top=102,seek_bottom=74,
+    volume_min_width=36,seek_x=26,seek_track_y=88,seek_top=102,seek_bottom=74,
+    time_font=14,title_font=26,detail_font=16,
     network_width=104,network_gap=8,
     menu_speed_bottom=94,menu_bottom=106,
     icon_size=68,small_icon_size=40,icon_hover_radius=14,
@@ -119,11 +120,22 @@ function M.title(title,path)
     if title=='' then title='视频播放' end
     return title
 end
+function M.title_lines(title,path)
+    title=M.title(title,path)
+    local first,last,season,episode=title:find('%f[%a][Ss](%d+)[ ._:%-]*[Ee](%d+%.?%d*)')
+    if not first then return title,'' end
+    local name=title:sub(1,first-1):gsub('%s*%(%d%d%d%d%)%s*$',''):gsub('%s+$','')
+    if name=='' then return title,'' end
+    local detail=string.format('S%d:E%s',tonumber(season),tostring(tonumber(episode)))
+    local episode_title=title:sub(last+1):gsub('^[%s._%-:]+',''):gsub('%s+$','')
+    if episode_title~='' then detail=detail..' - '..episode_title end
+    return name,detail
+end
 -- Player UI layout 1.3.0: the ASS PlayRes IS the window, so glyphs are rasterised at
 -- native size and never resampled -- resampling was what made the text soft.
 -- ui_scale*dpi scales glyph and icon sizes, and shrinks further when the window
 -- is too narrow for the control row.
-function M.layout(pw,ph,dpi,ui_scale)
+function M.layout(pw,ph,dpi,ui_scale,time_width)
     pw,ph=math.max(1,pw),math.max(1,ph)
     local want=M.clamp(tonumber(ui_scale) or 1.00,.45,1.5)*M.clamp(tonumber(dpi) or 1,.75,1.5)
     local w,h=pw,ph
@@ -140,7 +152,7 @@ function M.layout(pw,ph,dpi,ui_scale)
                 y0=y-M.metrics.control_hit_height*want,y1=y+M.metrics.control_hit_height*want}
         end
         button('previous',edge);button('play',edge+step);button('next',edge+2*step);button('volume',edge+3*step)
-        local right={'fullscreen','settings','danmaku','sub','audio','speed'}
+        local right={'fullscreen','settings','danmaku','sub','audio','speed','bangumi'}
         local x=w-edge
         for _,id in ipairs(right) do button(id,x);x=x-step end
         local volume_button=edge+3*step
@@ -151,9 +163,9 @@ function M.layout(pw,ph,dpi,ui_scale)
             y0=y-15*want,y1=y+15*want,y=y}
         local network_x0=volume.x1+network_gap
         local network_x1=network_x0+network_width
-        local speed_x=w-edge-5*step
+        local leftmost_right=w-edge-6*step
         local network={x0=network_x0,x1=network_x1,y0=y-15*want,y1=y+15*want,y=y}
-        local ok=network.x0>=0 and network.x1<=speed_x-M.metrics.control_width*want/2-12*want
+        local ok=network.x0>=0 and network.x1<=leftmost_right-M.metrics.control_width*want/2-12*want
         for i,b in ipairs(controls) do
             if b.x0<0 or b.x1>w or b.y0<0 or b.y1>h then ok=false;break end
             for j=i+1,#controls do
@@ -164,9 +176,9 @@ function M.layout(pw,ph,dpi,ui_scale)
         end
         if ok then
             built={w=w,h=h,scale=1,ui=want,controls=controls,volume=volume,network_rate=network,
-                seek={x0=M.metrics.seek_x*want,x1=w-M.metrics.seek_x*want,
+                seek={x0=(M.metrics.seek_x+(time_width or 62))*want,x1=w-(M.metrics.seek_x+(time_width or 62))*want,
                     y0=h-M.metrics.seek_top*want,y1=h-M.metrics.seek_bottom*want,y=h-M.metrics.seek_track_y*want},
-                title_y=math.max(18*want,h-160*want),detail_y=math.max(42*want,h-126*want),
+                title_y=math.max(18*want,h-176*want),detail_y=math.max(48*want,h-140*want),
                 margin=26*want,compact=compact,small=false}
             break
         end
@@ -244,11 +256,63 @@ void* __stdcall GetCurrentProcess(void);
 int __stdcall GetProcessTimes(void*, PLAYER_UI_FILETIME*, PLAYER_UI_FILETIME*, PLAYER_UI_FILETIME*, PLAYER_UI_FILETIME*);
 unsigned long __stdcall GetActiveProcessorCount(unsigned short);
 int __stdcall K32GetProcessMemoryInfo(void*, PLAYER_UI_PMC*, unsigned long);
+int __stdcall lstrlenW(const unsigned short*);
+typedef struct { unsigned long status; union { long integer; double value; long long large; }; } PLAYER_UI_PDH_VALUE;
+typedef struct { unsigned short* name; PLAYER_UI_PDH_VALUE formatted; } PLAYER_UI_PDH_ITEM;
+long __stdcall PdhOpenQueryW(const unsigned short*, size_t, void**);
+long __stdcall PdhAddEnglishCounterW(void*, const unsigned short*, size_t, void**);
+long __stdcall PdhCollectQueryData(void*);
+long __stdcall PdhGetFormattedCounterArrayW(void*, unsigned long, unsigned long*, unsigned long*, PLAYER_UI_PDH_ITEM*);
+long __stdcall PdhCloseQuery(void*);
 ]])
 if not declared then return M end
 local k=ffi.load('kernel32')
 local last_time,last_cpu
-function M.reset() last_time,last_cpu=nil,nil end
+local pdh_ok,pdh=pcall(ffi.load,'pdh')
+local query,counter,gpu_time,gpu_value,gpu_tried
+local function gpu_read(now)
+    if not pdh_ok then return nil end
+    if gpu_time and now-gpu_time<1 then return gpu_value end
+    gpu_time=now
+    if not gpu_tried then
+        gpu_tried=true
+        local q,h=ffi.new('void*[1]'),ffi.new('void*[1]')
+        local path='\\GPU Engine(*)\\Utilization Percentage'
+        local wide=ffi.new('unsigned short[?]',#path+1)
+        for i=1,#path do wide[i-1]=path:byte(i) end
+        if pdh.PdhOpenQueryW(nil,0,q)~=0 then return nil end
+        if pdh.PdhAddEnglishCounterW(q[0],wide,0,h)~=0 then pdh.PdhCloseQuery(q[0]);return nil end
+        query,counter=q[0],h[0]
+        pdh.PdhCollectQueryData(query)
+        return nil -- GPU utilization is a delta and needs two samples.
+    end
+    if not query or pdh.PdhCollectQueryData(query)~=0 then gpu_value=nil;return nil end
+    local size,count=ffi.new('unsigned long[1]'),ffi.new('unsigned long[1]')
+    pdh.PdhGetFormattedCounterArrayW(counter,0x200,size,count,nil)
+    if size[0]==0 or size[0]>4194304 then gpu_value=nil;return nil end
+    local buffer=ffi.new('uint8_t[?]',tonumber(size[0]))
+    local rows=ffi.cast('PLAYER_UI_PDH_ITEM*',buffer)
+    if pdh.PdhGetFormattedCounterArrayW(counter,0x200,size,count,rows)~=0 then gpu_value=nil;return nil end
+    local engines={}
+    for i=0,tonumber(count[0])-1 do
+        local r=rows[i]
+        if (r.formatted.status==0 or r.formatted.status==1) and r.name~=nil then
+            local name=ffi.string(ffi.cast('char*',r.name),k.lstrlenW(r.name)*2):gsub('%z','')
+            local engine=name:match('_luid_(.-)_engtype_')
+            local value=tonumber(r.formatted.value)
+            if engine and value==value and value>=0 then engines[engine]=(engines[engine] or 0)+value end
+        end
+    end
+    -- Sum processes sharing an engine; use the busiest engine, as Task Manager does.
+    gpu_value=nil
+    for _,value in pairs(engines) do gpu_value=math.max(gpu_value or 0,math.min(100,value)) end
+    return gpu_value
+end
+function M.reset()
+    last_time,last_cpu=nil,nil
+    if query then pdh.PdhCloseQuery(query) end
+    query,counter,gpu_time,gpu_value,gpu_tried=nil,nil,nil,nil,nil
+end
 function M.read(now)
     local result={}
     local success=pcall(function()
@@ -262,6 +326,7 @@ function M.read(now)
         end
         local m=ffi.new('PLAYER_UI_PMC[1]');m[0].cb=ffi.sizeof(m[0])
         if k.K32GetProcessMemoryInfo(handle,m,ffi.sizeof(m[0]))~=0 then result.memory=tonumber(m[0].WorkingSetSize) end
+        result.gpu=gpu_read(now)
     end)
     return success and result or {}
 end
@@ -281,6 +346,8 @@ local state={visible=false,x=-1,y=-1,hover=nil,menu=nil,scroll=0,drag=nil,presse
 local playback_ready=false
 local loading=false
 local layout,buttons,menu_box,menu_items,menus
+local bangumi_account={}
+local draw_cover,remove_cover,cover_seen
 local render_timer,hide_timer,pulse,network_timer,thumb_timer,clock_timer,loading_timer,volume_osd_timer
 local render,request_render,show,sync_timers,open_menu
 local show_volume_osd
@@ -308,7 +375,7 @@ local function format_num(value,unit,decimals)
 end
 local function actual_sample()
     state.fps=samples:sample(mp.get_time(),num('vo-presented-frame-count'),bool('pause') or bool('seeking'))
-    if metrics.read then local m=metrics.read(mp.get_time());state.cpu=m.cpu;state.memory=m.memory end
+    if metrics.read then local m=metrics.read(mp.get_time());state.cpu=m.cpu;state.memory=m.memory;state.gpu=m.gpu end
 end
 local function volume(delta)
     mp.set_property_number('volume',core.clamp(num('volume',100)+delta,0,num('volume-max',100)))
@@ -342,7 +409,7 @@ local function info_data(kind)
     local function row(text,fn,selected,disabled) rows[#rows+1]={text=text,fn=fn,selected=selected,disabled=disabled or fn==nil} end
     if kind=='stats' then
         local target=num('estimated-vf-fps');if target then target=target*num('speed',1) end
-        row('实际 FPS  '..format_num(state.fps,'',2)..'  /  目标 '..format_num(target,'',2))
+        row('FPS  '..format_num(state.fps,'',2)..'  /  '..format_num(target,'',2)..'    GPU '..format_num(state.gpu,'%'))
         row('播放器 CPU  '..format_num(state.cpu,'%')..'    内存 '..format_num(state.memory and state.memory/1048576,' MiB',0))
         row('源帧率  '..format_num(num('container-fps'),' FPS',3)..'    屏幕 '..format_num(num('display-fps'),' Hz',2))
         row('视频输出丢帧  '..format_num(num('frame-drop-count'),'',0)..'    解码丢帧 '..format_num(num('decoder-frame-drop-count'),'',0))
@@ -358,7 +425,7 @@ local function info_data(kind)
         row('像素格式  '..tostring(v.pixelformat or '—')..' · '..tostring(v.colormatrix or '—'))
         row('音频  '..mp.get_property('audio-codec-name','—')..' · '..tostring(a.samplerate or '—')..' Hz')
         row('时长  '..core.time(num('duration'))..'    章节 '..tostring(#(prop('chapter-list',{}) or {})))
-        row('AnimeVE 状态（Ctrl+J）',function()state.visible=false;cmd('script-binding','animejanaistats/show_animejanai_stats')end)
+        row('mpv-AnimeFusion 状态（Ctrl+Tab）',function()state.visible=false;cmd('script-binding','animejanaistats/show_animejanai_stats')end)
         row('mpv 完整统计（Tab）',function()state.visible=false;cmd('script-binding','stats/display-stats-toggle')end)
     elseif kind=='chapters' then
         title='章节'
@@ -470,13 +537,81 @@ return function(c)
         end
         local function link(text,target,icon)row(text,nil,false,{target=target,icon=icon})end
         local function separator()a[#a+1]={separator=true,h=12}end
+        local account=c.account and c.account() or {}
+        local function action(...)c.command('script-message-to','mpvnet','bangumi-action',...)end
+        local function enabled(fn)return not account.busy and fn or nil end
         if kind=='settings' then
             link('缩放模式','scale')
             link('超分与补帧','ai')
             link('字幕设置','sub-settings','sub')
             link('弹幕设置','danmaku-settings','danmaku')
+            link('同步设置','sync-settings','bangumi')
             link('统计信息','stats','info')
             row('显示时间',c.toggle_clock,c.clock(),{stay=true})
+        elseif kind=='sync-settings' then
+            local settings=account.settings or {}
+            row('自动收藏为在看',function()action('setting','auto-collect',settings.autoCollect and 'no' or 'yes')end,settings.autoCollect,{stay=true})
+            row('收藏进度',nil,false,{slider={value=settings.collectPercent or 10,min=1,max=100,step=1,format='%.0f%%',
+                set=function(v)action('setting','collect-percent',tostring(v))end}})
+            separator()
+            row('自动标记剧集看过',function()action('setting','auto-sync',settings.autoSync and 'no' or 'yes')end,settings.autoSync,{stay=true})
+            row('看过进度',nil,false,{slider={value=settings.watchedPercent or 90,min=1,max=100,step=1,format='%.0f%%',
+                set=function(v)action('setting','watched-percent',tostring(v))end}})
+        elseif kind=='bangumi' then
+            if not account.connected then
+                local retry=account.authorizing or (account.status and account.status~='')
+                local login=(not account.busy or account.authorizing) and function()action('login')end or nil
+                row(retry and '重新授权' or '登录 Bangumi',login,false,{stay=true})
+                if account.authorizing then row('等待浏览器授权…',nil,false,{status=true,spinner=true}) end
+            else
+                local subject=account.subject
+                if subject then
+                    row(subject.title,nil,false,{card=subject,h=156,status=true})
+                    link('收藏：'..({[0]='未收藏','想看','看过','在看','搁置','抛弃'})[subject.collectionType or 0],'bangumi-collection')
+                    for _,episode in ipairs(subject.episodes or {}) do
+                        if episode.id==subject.currentEpisode then row('当前：'..episode.title,nil,false,{status=true,wrap=2});break end
+                    end
+                    row(subject.kind=='电影' and '正片' or '剧集',nil,false,{h=36,status=true})
+                    local cells={}
+                    for _,episode in ipairs(subject.episodes or {}) do
+                        local ep=episode
+                        cells[#cells+1]={text=subject.kind=='电影' and ep.kind==0 and '正片' or (ep.kind==0 and '' or 'SP ')..tostring(ep.number),
+                            key='bangumi-episode:'..ep.id,selected=ep.id==subject.currentEpisode,state=ep.state,
+                            disabled=account.busy,stay=true,fn=function()s.bangumi_episode=ep.id;c.open('bangumi-episode','bangumi')end}
+                        if #cells==6 then row('',nil,false,{cells=cells,h=56});cells={} end
+                    end
+                    if #cells>0 then row('',nil,false,{cells=cells,h=56}) end
+                elseif account.resolving then
+                    row('正在匹配…',nil,false,{status=true,spinner=true})
+                end
+                separator()
+                if not account.resolving and (not subject or not subject.currentEpisode) then
+                    row('重新匹配',function()action('retry-match')end,false,{stay=true})
+                end
+                row('选择条目…',function()c.command('script-message-to','mpvnet','show-bangumi-match')end)
+            end
+            if account.status and account.status~='' then row(account.status,nil,false,{status=true,wrap=2}) end
+        elseif kind=='bangumi-collection' then
+            local subject=account.subject or {}
+            for type,label in ipairs({'想看','看过','在看','搁置','抛弃'}) do local value=type
+                row(label,enabled(function()action('collection',tostring(value),tostring(account.generation))end),subject.collectionType==value,{stay=true})
+            end
+        elseif kind=='bangumi-episode' then
+            local subject=account.subject or {};local episode
+            for _,ep in ipairs(subject.episodes or {}) do if ep.id==s.bangumi_episode then episode=ep;break end end
+            if episode then
+                row(episode.title,nil,false,{status=true,wrap=3})
+                row('设为当前剧集',enabled(function()action('select-episode',tostring(episode.id),tostring(account.generation))end),
+                    subject.currentEpisode==episode.id,{stay=true})
+                separator()
+                local can_edit=(subject.collectionType or 0)>0 and not account.busy
+                for _,item in ipairs({{'看过',2},{'看到',2,'through'},{'想看',1},{'抛弃',3},{'未看',0}}) do local label,value,mode=item[1],item[2],item[3]
+                    row(label,can_edit and (mode~='through' or episode.kind==0) and function()
+                        action('episode',tostring(episode.id),tostring(value),mode or 'single',tostring(account.generation))
+                    end or nil,mode~='through' and episode.state==value,{stay=true})
+                end
+                if not can_edit and not account.busy then row('请先收藏',nil,false,{status=true}) end
+            end
         elseif kind=='speed' then
             for _,v in ipairs({8,5,3,2,1.5,1.25,1,.5}) do local n=v
                 local label=v%1==0 and string.format('%.1fx',v) or string.format('%gx',v)
@@ -503,12 +638,18 @@ return function(c)
             local d=c.prop('user-data/player_ui/danmaku',{}) or {}
             row('关闭',function()if d.enabled then c.command('script-message','player_ui-danmaku-toggle')end end,not d.loaded or not d.enabled,{stay=true})
             if d.autoload_state=='loading' then
-                row('自动加载中…',nil,false,{status=true})
+                row('自动加载中…',nil,false,{status=true,spinner=true})
             elseif not d.loaded and d.autoload_state=='error' then
                 row('自动加载失败',nil,false,{status=true})
+                row('重试匹配',function()c.command('script-message','player_ui-danmaku-retry-match')end,false,{stay=true})
+            elseif not d.loaded and d.autoload_state=='not-found' then
+                row('没有匹配到弹幕',nil,false,{status=true})
+                row('重试匹配',function()c.command('script-message','player_ui-danmaku-retry-match')end,false,{stay=true})
+            elseif not d.loaded and d.autoload_state=='empty' then
+                row('该集没有弹幕',nil,false,{status=true})
             elseif d.loaded then
                 row(core.title('',d.file),function()if not d.enabled then c.command('script-message','player_ui-danmaku-toggle')end end,d.enabled,
-                    {stay=true,wrap=5,detail='共 '..tostring(d.count or 0)..' 条弹幕'})
+                    {stay=true,wrap=5,detail=(d.source_label or '本地弹幕')..'·'..tostring(d.count or 0)..'条弹幕'})
             end
             separator()
             row('搜索弹幕',function()c.command('script-message','player_ui-danmaku-search')end)
@@ -532,7 +673,6 @@ return function(c)
                 end,selected)
             end
         elseif kind=='sub-settings' then
-            row('显示字幕',function()c.command('cycle','sub-visibility')end,c.bool('sub-visibility',true),{stay=true})
             row('字号缩放',nil,false,{slider={value=c.num('sub-scale',1),min=.5,max=2,step=.05,format='%.2fx',set=function(v)c.set_number('sub-scale',v)end}})
             row('字幕位置',nil,false,{slider={value=c.num('sub-pos',100),min=0,max=100,step=1,format='%.0f%%',set=function(v)c.set_number('sub-pos',v)end}})
             row('延迟  '..string.format('%+.1f 秒',c.num('sub-delay',0)),nil,false,{h=44})
@@ -557,6 +697,7 @@ return function(c)
             slider('不透明度','opacity-percent',(settings.opacity or 180)*100/255,1,100,1,'%.0f%%')
             slider('弹幕字号','fontsize',settings.fontsize or 38,12,100,1,'%.0f')
             slider('速度','speed',12/(settings.scrolltime or 12),.5,3,.1,'%.1f×')
+            slider('弹幕帧率','fps',settings.fps or 60,30,90,30,'%.0f FPS')
             separator()
             for _,group in ipairs({{label='屏蔽固定弹幕',modes={'TOP','BOTTOM'}},
                 {label='屏蔽滚动弹幕',modes={'R2L','L2R'}},{label='屏蔽彩色弹幕',modes={'COLOR'}}}) do
@@ -580,9 +721,11 @@ return function(c)
         return title,a
     end
     M.allowed={settings='设置',speed='播放速度',sub='字幕',audio='音轨',danmaku='弹幕',ai='超分与补帧',scale='缩放模式',
-        ['sub-settings']='字幕设置',['danmaku-settings']='弹幕设置',['audio-settings']='音频设置',stats='统计信息',chapters='章节'}
+        ['sub-settings']='字幕设置',['danmaku-settings']='弹幕设置',
+        ['audio-settings']='音频设置',stats='统计信息',chapters='章节',
+        bangumi='Bangumi',['sync-settings']='同步设置',['bangumi-collection']='收藏',['bangumi-episode']='剧集'}
     local function width(kind,l)
-        local widths={speed=216,settings=200,sub=344,audio=344,danmaku=312,ai=256,scale=280,stats=440,chapters=368}
+        local widths={speed=216,settings=200,sub=344,audio=344,danmaku=312,ai=256,scale=280,stats=440,chapters=368,bangumi=440}
         local u=l.ui or 1
         return math.min((widths[kind] or 344)*u,math.max(1,l.w-2*metrics.menu_margin*u))
     end
@@ -636,6 +779,15 @@ return function(c)
             if b.title then
                 d.text(b.x0+metrics.row_padding*u,b.y0+29*u,22*u,b.title,4,white,true,w-80*u,.8)
             end
+            if b.kind=='bangumi' and c.account and c.account().connected then
+                local account=c.account()
+                local button={id='bangumi-logout',key='退出登录',x0=b.x1-52*u,x1=b.x1-12*u,
+                    y0=b.y0+9*u,y1=b.y0+49*u,disabled=account.busy}
+                local hover=core.inside(button,s.x,s.y)
+                if hover then d.round(button.x0,button.y0,button.x1,button.y1,6*u,theme.hover,5) end
+                d.icon('logout',b.x1-32*u,b.y0+29*u,hover,account.busy,true)
+                add(button)
+            end
             local bottom=b.content+b.view
             for _,entry in ipairs(b.rows) do
                 local r=entry.row
@@ -649,6 +801,35 @@ return function(c)
                     d.clip(0,b.content,l.w,bottom,function()
                         if r.separator then d.rect(b.x0+12*u,yy+entry.height/2,b.x1-12*u,yy+entry.height/2+u,theme.divider,18);return end
                         local box={id='row-'..index,index=index,x0=b.x0+6*u,x1=b.x1-6*u,y0=math.max(yy,b.content),y1=math.min(y1,bottom),key=r.key or r.text}
+                        if r.card then
+                            local left=b.x0+120*u;local available=w-140*u
+                            d.round(b.x0+20*u,yy+8*u,b.x0+106*u,yy+137*u,5*u,surface,0)
+                            if d.image then d.image(r.card.cover,b.x0+20*u,yy+8*u,86*u,129*u,b.content,bottom) end
+                            local cy=yy+12*u
+                            for _,line in ipairs(core.wrap(r.text,available,20*u,3)) do d.text(left,cy,20*u,line,7,white,true,nil,.8);cy=cy+24*u end
+                            local detail=r.card.kind=='电影' and '电影' or ('第 '..tostring(r.card.season or 1)..' 季')
+                            d.text(left,yy+88*u,14*u,(r.card.date or '')..' · '..detail,7,muted,false,available,.8)
+                            d.text(left,yy+116*u,22*u,r.card.score and string.format('%.1f',r.card.score) or '暂无评分',7,accent,true,nil,.8)
+                            return
+                        elseif r.cells then
+                            local gap=6*u;local cw=(w-32*u-5*gap)/6
+                            for column,cell in ipairs(r.cells) do
+                                M.rows[#M.rows+1]=cell
+                                local x=b.x0+16*u+(column-1)*(cw+gap)
+                                local cellbox={id='row-'..#M.rows,index=#M.rows,key=cell.key,x0=x,x1=x+cw,y0=math.max(yy+3*u,b.content),y1=math.min(y1-3*u,bottom)}
+                                local hover=core.inside(cellbox,s.x,s.y)
+                                local watched=cell.state==2
+                                local marker=cell.selected or not watched
+                                d.round(x,yy+3*u,x+cw,y1-(marker and 10 or 3)*u,6*u,watched and accent or (hover and theme.hover or surface),watched and 0 or 5)
+                                local colors={[1]=theme.secondary,[2]=accent,[3]=muted}
+                                if marker then
+                                    d.round(x,yy+entry.height-8*u,x+cw,yy+entry.height-4*u,2*u,cell.selected and theme.current or colors[cell.state] or theme.track,(not cell.selected and cell.state==0) and 120 or 0)
+                                end
+                                d.text(x+cw/2,yy+entry.height/2,16*u,cell.text,5,cell.disabled and muted or white,cell.selected,nil,.8)
+                                if not cell.disabled then add(cellbox) end
+                            end
+                            return
+                        end
                         local hovered=core.inside(box,s.x,s.y)
                         local picked=r.selected or (r.target and r.target==s.menu)
                         if hovered or picked then
@@ -672,6 +853,14 @@ return function(c)
                             local text_height=#entry.lines*metrics.row_line*u+detail_height
                             local ty=yy+(entry.height-text_height)/2
                             for _,line in ipairs(entry.lines) do d.text(left,ty,metrics.row_text*u,line,7,color,false,nil,.8);ty=ty+metrics.row_line*u end
+                            if r.spinner then
+                                local cx,cy=b.x1-30*u,yy+entry.height/2
+                                for dot=0,7 do
+                                    local angle=dot*math.pi/4
+                                    d.circle(cx+math.sin(angle)*8*u,cy-math.cos(angle)*8*u,2*u,accent,
+                                        35+math.floor(((dot-(s.tick or 0))%8)*185/7))
+                                end
+                            end
                             if r.detail then d.text(left,ty+2*u,metrics.row_detail*u,r.detail,7,muted,false,w-(left-b.x0)-24*u,.8) end
                             if r.target then d.text(b.x1-25*u,yy+entry.height/2,27*u,'›',6,theme.secondary,false,nil,.8)
                             elseif r.hint then d.text(b.x1-19*u,yy+entry.height/2,13*u,r.hint,6,muted,false,nil,.8) end
@@ -706,6 +895,8 @@ return function(c)
     function M.pick(b)
         if b.id=='menu-back' then M.back()
         elseif b.id=='menu-dismiss' then M.close()
+        elseif b.id=='bangumi-logout' and not b.disabled then
+            c.command('script-message-to','mpvnet','bangumi-action','logout');M.close()
         elseif b.index then
             local r=M.rows[b.index]
             if r and r.target then
@@ -746,7 +937,7 @@ return function(c)
         local id=b and b.id
         local menu_surface=b and b.menu and id~='menu-dismiss'
         local menu_trigger=id=='settings' or id=='speed' or id=='audio' or id=='sub'
-            or id=='danmaku'
+            or id=='danmaku' or id=='bangumi'
         if menu_surface or menu_trigger then dismiss_timer()
         elseif not M.dismiss_timer then
             M.dismiss_timer=c.after(.45,function()
@@ -777,7 +968,7 @@ return function(c)
         if b and b.menu then return b end
         for _,box in ipairs(M.boxes) do if core.inside(box,x,y) then return {id='menu-surface',menu=true} end end
         if b and (b.id=='settings' or b.id=='speed' or b.id=='audio'
-            or b.id=='sub' or b.id=='danmaku') then return b end
+            or b.id=='sub' or b.id=='danmaku' or b.id=='bangumi') then return b end
         return {id='menu-dismiss',menu=true}
     end
     function M.shutdown()close_timer();dismiss_timer()end
@@ -785,6 +976,7 @@ return function(c)
 end
 end)()({
     state=state,core=core,theme=THEME,accent=ACCENT,prop=prop,num=num,bool=bool,command=cmd,
+    account=function()return bangumi_account end,
     set=mp.set_property,set_number=mp.set_property_number,set_bool=mp.set_property_bool,
     read_presets=read_presets,presets=function()return presets end,current_slot=current_slot,select_slot=ai_select,
     clock=function()return o.show_clock end,
@@ -805,12 +997,12 @@ end)()({
     end,
     open_file=open_file,info=info_data,after=mp.add_timeout,on_close=function()if show then show()end end,
     open=function(kind,parent)open_menu(kind,parent)end,
-    manager=function()cmd('run',mp.command_native({'expand-path','~~/../AnimeVEManager.exe'}))end
+    manager=function()cmd('run',mp.command_native({'expand-path','~~/../mpv-AnimeFusionManager.exe'}))end
 })
 open_menu=function(kind,parent)
     if not playback_ready then return end
     if kind=='more' then kind='settings' end
-    hide_thumb();samples:reset();state.fps=nil;state.cpu=nil;state.memory=nil
+    hide_thumb();samples:reset();state.fps=nil;state.cpu=nil;state.memory=nil;state.gpu=nil
     if metrics.reset then metrics.reset() end
     menus.open(kind,parent)
     if state.menu=='stats' then actual_sample() end
@@ -824,6 +1016,7 @@ local function activate(id)
         if num('playlist-count',0)>1 then cmd(id=='previous' and 'playlist-prev' or 'playlist-next','weak')
         elseif bool('seekable') then cmd('seek',id=='previous' and -10 or 10,'relative+exact') end
     elseif id=='volume' then cmd('cycle','mute')
+    elseif id=='bangumi' then open_menu('bangumi')
     elseif id=='fullscreen' then cmd('cycle','fullscreen')
     else open_menu(id) end
 end
@@ -843,6 +1036,8 @@ local icons={
  restore='m 10 2 l 13 2 13 13 2 13 2 10 10 10 m 19 2 l 22 2 22 10 30 10 30 13 19 13 m 2 19 l 13 19 13 30 10 30 10 22 2 22 m 19 19 l 30 19 30 22 22 22 22 30 19 30',
  more='m 2 14 l 7 14 7 19 2 19 m 14 14 l 19 14 19 19 14 19 m 26 14 l 31 14 31 19 26 19'
 }
+icons.bangumi='m 16 2 b 8 2 8 16 16 16 b 24 16 24 2 16 2 m 3 30 b 3 13 29 13 29 30 l 25 30 b 25 18 7 18 7 30'
+icons.logout='m 3 3 l 16 3 16 6 6 6 6 26 16 26 16 29 3 29 m 13 14 l 25 14 20 9 22 7 31 16 22 25 20 23 25 18 13 18'
 icons.settings=icons.ai
 icons.plus='m 15 4 l 18 4 18 14 28 14 28 17 18 17 18 28 15 28 15 17 5 17 5 14 15 14'
 icons.info='m 16 1 b 7 1 1 7 1 16 b 1 25 7 31 16 31 b 25 31 31 25 31 16 b 31 7 25 1 16 1 m 14 14 l 14 25 18 25 18 14 m 14 7 l 14 11 18 11 18 7'
@@ -883,9 +1078,9 @@ local function clip(x0,y0,x1,y1,fn)
     clip_region=string.format('\\clip(%d,%d,%d,%d)',math.floor(x0),math.floor(y0),math.ceil(x1),math.ceil(y1))
     fn();clip_region=old
 end
-local function text(x,y,size,s,align,color,bold,max,outline)
+local function text(x,y,size,s,align,color,bold,max,outline,font)
     if max then s=core.ellipsize(s,max,size) end
-    line(string.format('{\\rDefault\\an%d\\pos(%.2f,%.2f)\\fn%s\\fs%d\\b%d\\bord%s\\shad0\\1c&H%s&\\1a&H00&}%s',align or 7,x,y,o.font,size,bold and 1 or 0,string.format('%.2f',outline or o.text_outline),color or WHITE,core.escape(s)))
+    line(string.format('{\\rDefault\\an%d\\pos(%.2f,%.2f)\\fn%s\\fs%d\\b%d\\bord%s\\shad0\\1c&H%s&\\1a&H00&}%s',align or 7,x,y,font or o.font,size,bold and 1 or 0,string.format('%.2f',outline or o.text_outline),color or WHITE,core.escape(s)))
 end
 show_volume_osd=function(value)
     local level=math.floor(core.clamp(tonumber(value) or num('volume',0),0,num('volume-max',100))+.5)
@@ -931,7 +1126,7 @@ local function seek_value(x)
     return core.clamp((x-layout.seek.x0)/(layout.seek.x1-layout.seek.x0),0,1)*num('duration',0)
 end
 local function draw_menu()
-    menu_items=menus.draw(layout,{rect=rect,round=round,circle=circle,text=text,icon=icon,clip=clip},buttons)
+    menu_items=menus.draw(layout,{rect=rect,round=round,circle=circle,text=text,icon=icon,clip=clip,image=draw_cover},buttons)
 end
 local function hit(x,y)
     local found
@@ -989,22 +1184,70 @@ local function bind_mouse(enabled)
         for _,key in ipairs({'player_ui-click','player_ui-double','player_ui-wheel-up','player_ui-wheel-down'}) do mp.remove_key_binding(key) end
     end
 end
+local cover_key
+remove_cover=function()
+    if cover_key then cmd('overlay-remove',62);cover_key=nil end
+end
+draw_cover=function(path,x,y,w,h,top,bottom)
+    if not path or path=='' then return end
+    local first=math.max(0,math.ceil((top-y)*360/h))
+    local last=math.min(360,math.floor((bottom-y)*360/h))
+    if first>=last then return end
+    local scale=layout.scale
+    local px,py=math.floor(x*scale+.5),math.floor((y+first*h/360)*scale+.5)
+    local pw,ph=math.max(1,math.floor(w*scale+.5)),math.max(1,math.floor((last-first)*h/360*scale+.5))
+    local key=table.concat({path,px,py,pw,ph,first,last},':')
+    cover_seen=true
+    if key~=cover_key then
+        local _,err=mp.command_native({'overlay-add',62,px,py,path,first*960,'bgra',240,last-first,960,pw,ph})
+        if err then remove_cover();return end
+        cover_key=key
+    end
+end
+local avatar_key
+local function remove_avatar()
+    if avatar_key then cmd('overlay-remove',61);avatar_key=nil end
+    remove_cover()
+end
+local function draw_avatar(b,u)
+    if not bangumi_account.connected or not bangumi_account.avatar or bangumi_account.avatar=='' then return false end
+    local size=math.max(1,math.floor(28*u*layout.scale+.5))
+    local x,y=math.floor(b.x*layout.scale-size/2+.5),math.floor(b.y*layout.scale-size/2+.5)
+    local key=bangumi_account.avatar..':'..x..':'..y..':'..size
+    if avatar_key~=key then
+        local _,err=mp.command_native({'overlay-add',61,x,y,bangumi_account.avatar,0,'bgra',64,64,256,size,size})
+        if err then remove_avatar();return false end
+        avatar_key=key
+    end
+    return true
+end
+mp.observe_property('user-data/player_ui/bangumi','native',function(_,value)
+    bangumi_account=type(value)=='table' and value or type(value)=='string' and utils.parse_json(value) or {}
+    if type(bangumi_account)~='table' then bangumi_account={} end
+    remove_avatar();menus.invalidate();sync_timers();request_render()
+end)
 render=function()
     render_timer=nil
+    cover_seen=false
     state.tick=(state.tick or 0)+1
-    if bool('window-minimized') then ui:remove();bind_mouse(false);return end
+    if bool('window-minimized') then remove_avatar();ui:remove();bind_mouse(false);return end
     local pw,ph=mp.get_osd_size();if pw<=0 or ph<=0 then return end
-    layout=core.layout(pw,ph,num('display-hidpi-scale',1),o.ui_scale);buttons={};output={};menu_box=nil
+    local dur,pos=num('duration'),num('time-pos',0)
+    local time_width=math.max(core.ass_text_width(core.time(pos),core.metrics.time_font),
+        core.ass_text_width(core.time(dur),core.metrics.time_font))+16
+    layout=core.layout(pw,ph,num('display-hidpi-scale',1),o.ui_scale,time_width);buttons={};output={};menu_box=nil
     local u=layout.ui;icon_u=u
     local playing=playback_ready and not bool('idle-active',true)
     local net=bool('demuxer-via-network') and o.network_speed and playing
     if loading or bool('paused-for-cache') then loading_indicator(layout.w,layout.h,u) end
     if state.visible then
-        local band=190*u
+        local band=210*u
         for i=0,47 do local y=layout.h-band+i*band/48
             rect(0,y,layout.w,y+band/48+.2,THEME.scrim,math.floor(255-140*(i/47)^1.4))
         end
-        local seek=layout.seek;local dur=num('duration');local pos=num('time-pos',0)
+        local seek=layout.seek
+        text(layout.margin,seek.y,core.metrics.time_font*u,core.time(pos),4,WHITE,false,nil,0,'Segoe UI')
+        text(layout.w-layout.margin,seek.y,core.metrics.time_font*u,core.time(dur),6,WHITE,false,nil,0,'Segoe UI')
         -- Track stays dim, the buffered range is clearly brighter, played is accent.
         rect(seek.x0,seek.y-2.5*u,seek.x1,seek.y+2.5*u,THEME.track,35)
         if dur and dur>0 then
@@ -1032,7 +1275,12 @@ render=function()
             if id=='play' then drawid=(bool('pause') or bool('idle-active',true)) and 'play' or 'pause' end
             if id=='volume' and bool('mute') then drawid='muted' end
             if id=='fullscreen' and bool('fullscreen') then drawid='restore' end
-            if id=='speed' then
+            if id=='bangumi' and draw_avatar(b,u) then
+                if state.hover==id then circle(b.x,b.y,16*u,ACCENT,170) end
+            elseif id=='bangumi' and bangumi_account.connected then
+                circle(b.x,b.y,14*u,THEME.selected,0)
+                text(b.x,b.y,16*u,(bangumi_account.username or 'B'):sub(1,1):upper(),5,WHITE,true)
+            elseif id=='speed' then
                 text(b.x,b.y+1*u,14*u,string.format('%.1fx',num('speed',1)),5,WHITE,true)
             else
                 icon(drawid,b.x,b.y,state.menu==id or id=='settings' and state.parent=='settings',disabled)
@@ -1054,7 +1302,7 @@ render=function()
             local b=layout.network_rate
             text((b.x0+b.x1)/2,b.y+1*u,14*u,core.rate(state.rate),5,WHITE,true)
         end
-    else hide_thumb() end
+    else hide_thumb();remove_avatar() end
     -- The clock remains at the top while playback controls stay in the bottom row.
     if o.show_clock and playing then
         text(0,0,22*u,os.date('%H:%M'),7,THEME.secondary,false,nil,0.6)
@@ -1062,11 +1310,15 @@ render=function()
     -- Keep the current title visible while either the bottom controls or a
     -- bottom-row menu is open.
     if playback_ready and (state.visible or state.menu~=nil) then
-        local title=core.title(prop('media-title',''),prop('path',''))
-        text(layout.margin,layout.title_y,22*u,title,7,WHITE,false,
-            math.max(1,layout.w-2*layout.margin),0.6)
+        local title,detail=core.title_lines(prop('media-title',''),prop('path',''))
+        local width=math.max(1,layout.w-2*layout.margin)
+        text(layout.margin,layout.title_y,core.metrics.title_font*u,title,7,WHITE,true,width,0,'Microsoft YaHei UI')
+        if detail~='' then
+            text(layout.margin,layout.detail_y,core.metrics.detail_font*u,detail,7,THEME.secondary,false,width,0,'Microsoft YaHei UI')
+        end
     end
     if playback_ready and state.menu then draw_menu() end
+    if not cover_seen then remove_cover() end
     local b=hit(state.x,state.y);state.hover=b and b.id or nil
     bind_mouse(state.visible and (b~=nil or state.drag~=nil or state.menu~=nil))
     ui.res_x=math.floor(layout.w+.5);ui.res_y=math.floor(layout.h+.5);ui.data=table.concat(output,'\n')
@@ -1107,12 +1359,18 @@ sync_timers=function()
         loading_timer:kill();loading_timer=nil
     end
     local menu_open=state.menu~=nil
+    if state.menu~='stats' and metrics.reset then metrics.reset() end
     if menu_open~=menu_escape_bound then
         menu_escape_bound=menu_open
         if menu_open then mp.add_forced_key_binding('ESC','player_ui-menu-escape',escape)
         else mp.remove_key_binding('player_ui-menu-escape') end
     end
-    local need=not bool('window-minimized') and (state.visible and not bool('pause') and not bool('idle-active',true) or state.menu=='stats')
+    local danmaku=prop('user-data/player_ui/danmaku',{}) or {}
+    local bangumi=bangumi_account or {}
+    local menu_loading=state.menu=='danmaku' and danmaku.autoload_state=='loading'
+        or state.menu=='bangumi' and (bangumi.resolving or bangumi.authorizing)
+    local need=not bool('window-minimized') and (state.visible and not bool('pause') and not bool('idle-active',true)
+        or state.menu=='stats' or menu_loading)
     if need and not pulse then pulse=mp.add_periodic_timer(.25,function()
         if state.menu=='stats' then actual_sample();menus.invalidate() end
         request_render()
@@ -1198,7 +1456,7 @@ for _,p in ipairs({'pause','idle-active','paused-for-cache','demuxer-via-network
     end)
 end
 mp.register_event('start-file',function()
-    playback_ready=false;volume_osd:remove();kill(volume_osd_timer);loading=true;state.visible=false;state.rate=nil;state.menu=nil
+    remove_avatar();playback_ready=false;volume_osd:remove();kill(volume_osd_timer);loading=true;state.visible=false;state.rate=nil;state.menu=nil
     menus.close();state.drag=nil;state.pressed=nil;state.fps=nil
     samples:reset();hide_thumb();sync_timers();request_render()
 end)
@@ -1218,10 +1476,11 @@ mp.register_event('playback-restart',function()
 end)
 mp.register_event('seek',function()samples:reset()end)
 mp.register_event('end-file',function()
-    playback_ready=false;loading=false;state.visible=false;state.menu=nil;state.rate=nil
+    remove_avatar();playback_ready=false;loading=false;state.visible=false;state.menu=nil;state.rate=nil
     hide_thumb();sync_timers();request_render()
 end)
 mp.register_event('shutdown',function()
-    menus.shutdown();kill(render_timer);kill(hide_timer);kill(pulse);kill(network_timer);kill(thumb_timer);kill(clock_timer);kill(loading_timer);kill(volume_osd_timer);ui:remove();volume_osd:remove();bind_mouse(false)
+    if metrics.reset then metrics.reset() end
+    remove_avatar();menus.shutdown();kill(render_timer);kill(hide_timer);kill(pulse);kill(network_timer);kill(thumb_timer);kill(clock_timer);kill(loading_timer);kill(volume_osd_timer);ui:remove();volume_osd:remove();bind_mouse(false)
 end)
 show()

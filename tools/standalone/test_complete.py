@@ -27,7 +27,7 @@ def stop(proc):
         except subprocess.TimeoutExpired:proc.kill();proc.wait(5)
 
 def components():
-    cp=subprocess.run([str(APP/'app/AnimeVEUpdater.exe'),'--components','--json'],env=ENV,cwd=OUT,capture_output=True,timeout=40)
+    cp=subprocess.run([str(APP/'app/mpv-AnimeFusionUpdater.exe'),'--components','--json'],env=ENV,cwd=OUT,capture_output=True,timeout=40)
     (OUT/'components.log').write_bytes(cp.stdout+cp.stderr)
     assert cp.returncode==0,cp.stderr
     data=json.loads(cp.stdout)
@@ -45,7 +45,7 @@ def no_release_update_logic():
         assert 'ctrl+u' not in text,rel
     checks={}
     for arg in ('--check','--open-releases'):
-        cp=subprocess.run([str(APP/'app/AnimeVEUpdater.exe'),arg],env=ENV,cwd=OUT,capture_output=True,timeout=30)
+        cp=subprocess.run([str(APP/'app/mpv-AnimeFusionUpdater.exe'),arg],env=ENV,cwd=OUT,capture_output=True,timeout=30)
         log=cp.stdout+cp.stderr
         (OUT/('unsupported-'+arg[2:]+'.log')).write_bytes(log)
         assert cp.returncode==2,(arg,cp.returncode,log)

@@ -532,7 +532,7 @@ namespace AnimeJaNaiConfEditor.Services
         public async Task<(bool ok, string message)> SubmitAsync(CancellationToken ct = default)
         {
             using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
-            client.DefaultRequestHeaders.UserAgent.ParseAdd("AnimeVEManager");
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("mpv-AnimeFusionManager");
             using var content = new StringContent(JsonSerializer.Serialize(this), Encoding.UTF8, "application/json");
             try
             {

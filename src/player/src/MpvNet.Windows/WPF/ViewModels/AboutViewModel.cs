@@ -1,4 +1,4 @@
-﻿
+
 using CommunityToolkit.Mvvm.Input;
 using MpvNet.Help;
 
@@ -11,7 +11,7 @@ public partial class AboutViewModel : ViewModelBase
     public string About { get; } = AppClass.About;
 
     [RelayCommand]
-    public void OpenSource() => ProcessHelp.ShellExecute("https://github.com/sunuuc/mpv-AnimeVE");
+    public void OpenSource() => ProcessHelp.ShellExecute("https://github.com/sunuuc/mpv-AnimeFusion");
 
     [RelayCommand]
     public void OpenNotices() => ProcessHelp.ShellExecute(Path.Combine(Folder.Startup, "docs", "OPEN_SOURCE_NOTICES.md"));

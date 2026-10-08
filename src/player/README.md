@@ -1,6 +1,6 @@
-# AnimeVE Player
+# mpv-AnimeFusion Player
 
-Windows frontend for [mpv-AnimeVE](https://github.com/sunuuc/mpv-AnimeVE), based on mpv.net.
+Windows frontend for [mpv-AnimeFusion](https://github.com/sunuuc/mpv-AnimeFusion), based on mpv.net.
 
 
 ![](docs/img/mpvnet.png)

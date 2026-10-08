@@ -1,4 +1,4 @@
-﻿
+
 using System.Text;
 
 namespace MpvNet;
@@ -178,8 +178,8 @@ public static class InputHelp
         Add(b, new (_("Config") + " > " + _("Setup"), _("Register image file associations"), "script-message-to mpvnet reg-file-assoc image"));
         Add(b, new (_("Config") + " > " + _("Setup"), _("Unregister file associations"), "script-message-to mpvnet reg-file-assoc unreg"));
         Add(b, new (_("Config") + " > " + _("Setup"), "-"));
-        Add(b, new (_("Config") + " > " + _("Setup"), _("Add AnimeVE to Path environment variable"), "script-message-to mpvnet add-to-path"));
-        Add(b, new (_("Config") + " > " + _("Setup"), _("Remove AnimeVE from Path environment variable"), "script-message-to mpvnet remove-from-path"));
+        Add(b, new (_("Config") + " > " + _("Setup"), _("Add mpv-AnimeFusion to Path environment variable"), "script-message-to mpvnet add-to-path"));
+        Add(b, new (_("Config") + " > " + _("Setup"), _("Remove mpv-AnimeFusion from Path environment variable"), "script-message-to mpvnet remove-from-path"));
 
         Add(b, new (_("Tools"), _("Set/clear A-B loop points"), "ab-loop", "l"));
         Add(b, new (_("Tools"), _("Toggle infinite file looping"), "cycle-values loop-file inf no", "L"));
@@ -196,7 +196,7 @@ public static class InputHelp
         Add(b, new (_("Help"), _("Manual mpv.net"), "script-message-to mpvnet shell-execute https://github.com/mpvnet-player/mpv.net/blob/main/docs/manual.md", "Ctrl+F2"));
         Add(b, new (_("Help"), "-"));
         Add(b, new (_("Help"), _("awesome-mpv"), "script-message-to mpvnet shell-execute https://github.com/stax76/awesome-mpv", "Ctrl+a"));
-        Add(b, new (_("Help"), _("About AnimeVE"), "script-message-to mpvnet show-about"));
+        Add(b, new (_("Help"), _("About mpv-AnimeFusion"), "script-message-to mpvnet show-about"));
 
         Add(b, new ("", "", "quit", "q", _("Exit")));
         Add(b, new ("", "", "script-message-to mpvnet show-menu", "MBTN_Right", _("Show Menu")));

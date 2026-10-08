@@ -1,4 +1,4 @@
-﻿
+
 using System.Windows;
 
 namespace MpvNet.Windows.WPF;
@@ -14,7 +14,7 @@ public class WpfApplication
         Application.Current!.DispatcherUnhandledException += (sender, e) => Terminal.WriteError(e.Exception);
 
         Application.Current?.Resources.MergedDictionaries.Add(
-            Application.LoadComponent(new Uri("AnimeVE;component/WPF/Resources.xaml",
+            Application.LoadComponent(new Uri("mpv-AnimeFusion;component/WPF/Resources.xaml",
                 UriKind.Relative)) as ResourceDictionary);
     }
 }

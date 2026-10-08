@@ -1,0 +1,49 @@
+name: animeve-auth
+services:
+  auth:
+    build: ..
+    restart: unless-stopped
+    environment:
+      PublicOrigin: https://bangumi.sunuuc.de5.net
+    secrets:
+      - app-id
+      - app-secret
+    volumes:
+      - ./data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    networks:
+      auth:
+        ipv4_address: 172.30.77.2
+  nginx:
+    image: nginx:stable-alpine@sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94
+    restart: unless-stopped
+    depends_on: [auth]
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./acme:/var/www/acme:ro
+      - ./certificates:/etc/letsencrypt:ro
+    networks:
+      auth:
+        ipv4_address: 172.30.77.3
+  certbot:
+    image: certbot/certbot:latest@sha256:f70ad0adbb7e117f0fe42a63c553f28ea451edabc0148757b6efcd9735acaa20
+    profiles: [maintenance]
+    volumes:
+      - ./acme:/var/www/acme
+      - ./certificates:/etc/letsencrypt
+secrets:
+  app-id:
+    file: ./secrets/app-id
+  app-secret:
+    file: ./secrets/app-secret
+networks:
+  auth:
+    ipam:
+      config:
+        - subnet: 172.30.77.0/29

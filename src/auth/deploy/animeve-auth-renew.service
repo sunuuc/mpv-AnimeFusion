@@ -1,0 +1,10 @@
+[Unit]
+Description=Renew AnimeVE authorization HTTPS certificate
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/mpv-animeve-auth/deploy
+ExecStart=/usr/bin/docker compose --profile maintenance run --rm certbot renew --quiet
+ExecStart=/usr/bin/docker compose exec -T nginx nginx -s reload

@@ -7,23 +7,27 @@
     "sha256": "172521816f07ecd3a9b6f04a804da8d6abf46c68dd8cd8f60b08ac7953a20040"
   },
   "native_and_ui_resources": {
-    "repo": "sunuuc/mpv-AnimeVE",
-    "tag": "latest",
+    "repo": "sunuuc/mpv-AnimeFusion",
+    "tag": "standalone-v1.3.0",
     "name": "native-build-inputs.7z",
-    "sha256": "c56b070d848a19f609e6400a2fd757d1b332d58553e6be0243b2e97bd56444ab",
-    "bytes": 80515638,
-    "origin": "Native runtime and localization files from the SHA-256-verified standalone-v1.1.8 distribution; binary origins and build configuration are included in build-info/native."
-  },
-  "danmaku_factory": {
-    "repo": "hihkm/DanmakuFactory",
-    "source_commit": "1c575c6cda49d32457fd3d7436c722c8999c0633",
-    "source_path": "third_party/danmaku-factory",
-    "build": "tools/standalone/build_danmaku_factory.py"
+    "sha256": "d690a390e8b899f2093f9a76d91448e6bde19cc67f31e8a6a5d4d2e8613c1cec",
+    "bytes": 86262633,
+    "origin": "Exact restored pre-2026-10-07 18:49 native runtime and localization, pinned by SHA-256. Provenance and individual hashes are in build-info/native/release-runtime.json."
   },
   "libass": {
     "repo": "libass/libass",
     "source_commit": "896614fa263f9f64944f7b8650ff6806d5328c4d",
     "source_path": "third_party/libass",
     "build": "tools/standalone/build_libass.py"
+  },
+  "danmaku": {
+    "repo": "hihkm/DanmakuFactory",
+    "tag": "dev",
+    "name": "DanmakuFactory-dev-windows-x64-CLI.zip",
+    "sha256": "cbf536a676997b10f2b5dd6e0a4dc2a8684ad9bb77d85b0d3a7e3226ad0385df",
+    "source_commit": "1c575c6cda49d32457fd3d7436c722c8999c0633",
+    "executable_sha256": "66b6fb12ef3394ce94fd83eb06e5146cf58f5af5007cac533e66c4c4aae1e066",
+    "source_path": "third_party/danmaku-factory",
+    "build": "tools/standalone/build_danmaku_factory.py"
   }
 }

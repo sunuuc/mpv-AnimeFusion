@@ -6,10 +6,10 @@
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
-    <Version>1.2.7</Version>
-    <Title>AnimeVE Manager</Title>
-    <Product>AnimeVE</Product>
-    <AssemblyName>AnimeVEManager</AssemblyName>
+    <Version>1.3.0</Version>
+    <Title>mpv-AnimeFusion Manager</Title>
+    <Product>mpv-AnimeFusion</Product>
+    <AssemblyName>mpv-AnimeFusionManager</AssemblyName>
     <PackageIcon>logo.png</PackageIcon>
     <ApplicationIcon>Assets\logo.ico</ApplicationIcon>
     <PublishSingleFile>false</PublishSingleFile>

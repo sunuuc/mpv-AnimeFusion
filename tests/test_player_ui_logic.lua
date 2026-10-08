@@ -2,12 +2,19 @@ local ok,real=pcall(require,'mp')
 local logger=ok and require('mp.msg') or nil
 local root=ok and real.get_property('script-opts'):match('playeruiroot=([^,]+)') or arg[1]
 local out=ok and real.get_property('script-opts'):match('playeruiout=([^,]+)') or ''
+local focus=ok and real.get_property('script-opts'):match('playeruifocus=([^,]+)') or nil
 local core=dofile(assert(root)..'/portable_config/script-modules/player_ui_core.lua')
 local checks=0
 local function check(v,label) checks=checks+1;assert(v,label) end
 local function suite()
  check(core.time(3661)=='1:01:01' and core.rate(1250000)=='1.25 MB/s','units')
  check(core.title('', 'https://server.invalid/a/movie.mkv?token=secret')=='movie.mkv','private URL query hidden')
+ local show,episode=core.title_lines('作品名字 (2025) S03E07 - 剧集名字','')
+ check(show=='作品名字' and episode=='S3:E7 - 剧集名字','season and episode move below the clean series title')
+ show,episode=core.title_lines('Series Name S2:E12.5 - Episode Name','')
+ check(show=='Series Name' and episode=='S2:E12.5 - Episode Name','title layout preserves explicit season and fractional episode numbers')
+ show,episode=core.title_lines('电影名字 (2023)','')
+ check(show=='电影名字 (2023)' and episode=='','a movie does not invent a season or episode')
  check(core.escape('{\\pos(1,2)}'):find('\\{',1,true),'escape ASS text')
  check(core.char_count('A间谍')==3 and core.limit_chars('A间谍过家家',3)=='A间谍','danmaku text limits avoid character arrays')
  local volume_box=core.volume_osd_layout(1280,720,1,'音量 95%',16)
@@ -32,6 +39,11 @@ local function suite()
     and ids.danmaku.x<ids.settings.x and ids.settings.x<ids.fullscreen.x,
     'Hills utility controls keep their left-to-right order')
    check(l.seek.y==l.h-core.metrics.seek_track_y*l.ui,'timeline sits above the bottom control row')
+   check(l.seek.x0>=l.margin+60*l.ui and l.seek.x1<=l.w-l.margin-60*l.ui,
+    'timeline leaves clear space for current and total time on both sides')
+   check(l.title_y+core.metrics.title_font*l.ui<l.detail_y
+    and l.detail_y+core.metrics.detail_font*l.ui<l.seek.y0,
+    'bold title, smaller episode detail and timeline have separate vertical space')
    check(l.network_rate and l.network_rate.x0>=0 and l.network_rate.x1<=l.w
    and l.volume and l.network_rate.x0>=l.volume.x1
    and l.network_rate.x0-l.volume.x1<=core.metrics.network_gap*l.ui+.01
@@ -46,6 +58,10 @@ local function suite()
    check(l.title_y>=0 and l.seek.x1>l.seek.x0,'title and seek bounds '..size[1]..'x'..size[2]..' dpi='..dpi..' title='..l.title_y..' seek='..l.seek.x0..':'..l.seek.x1)
   end
  end
+ local account_layout=core.layout(2560,1600,1.5)
+ local account_control
+ for _,button in ipairs(account_layout.controls)do if button.id=='bangumi' then account_control=button end end
+ check(account_control and account_control.x0>account_layout.network_rate.x1,'account entry remains visible without overlapping network or volume')
  local a,b=core.layout(1280,720,1),core.layout(2560,1440,1)
  check(a.scale==b.scale,'fullscreen does not enlarge controls proportionally')
  local f=core.fps_sampler()
@@ -55,7 +71,7 @@ local function suite()
  check(#core.wrap(string.rep('很长的字幕标题',30),260,20,2)==2,'long labels bounded to two lines')
  local now,timers,bindings,messages,observers=0,{},{},{},{}
  local clock_config=os.tmpname();local f=assert(io.open(clock_config,'wb'));f:write('show_clock=yes\nnetwork_speed=yes\n');f:close()
- local pos={x=0,y=0};local commands={};local player_overlay_data,volume_overlay_data;local factory_arguments
+ local pos={x=0,y=0};local commands={};local player_overlay_data,volume_overlay_data;local renderer_arguments
  local props={pause=false,['idle-active']=false,['window-minimized']=false,['playlist-count']=1,['playlist-pos']=0,
    ['time-pos']=10,duration=120,['file-size']=1024,seekable=true,volume=50,['volume-max']=100,speed=1,sid=2,aid=1,['secondary-sid']='no',
   ['track-list']={{id=1,type='audio',title='A',lang='jpn',codec='aac',['audio-channels']='2.0',selected=true},
@@ -95,21 +111,21 @@ local function suite()
      end}
    end,
   get_osd_size=function()return 1280,720 end,get_mouse_pos=function()return pos.x,pos.y end,
-  command_native=function(a)if a[1]=='expand-path'then if a[2]=='~~/script-opts/player_ui.conf' then return clock_config end;return a[2]:gsub('^~~/%.%./',root..'/'):gsub('^~~/',root..'/portable_config/')end end,
+  command_native=function(a)if a[1]=='overlay-add' then commands[#commands+1]=a;return true end;if a[1]=='expand-path'then if a[2]=='~~/script-opts/player_ui.conf' then return clock_config end;return a[2]:gsub('^~~/%.%./',root..'/'):gsub('^~~/',root..'/portable_config/')end end,
   command_native_async=function(spec,callback)
-   if spec.args[1]:find('DanmakuFactory.exe',1,true) then
-    factory_arguments=spec.args
-    local output,input
-    for i,v in ipairs(spec.args) do if v=='-o' then output=spec.args[i+1] elseif v=='-i' then input=spec.args[i+1] end end
-    local f=assert(io.open(input,'rb'));local text=f:read('*a');f:close()
-    local lines={'[Script Info]'}
-    for _ in text:gmatch('<d ') do lines[#lines+1]='Dialogue: 0,0:00:00.00,0:00:12.00,Default,,0,0,0,,native comment' end
-    f=assert(io.open(output,'wb'));f:write(table.concat(lines,'\n'));f:close()
-    callback(true,{status=0,stdout='',stderr=''});return 0
-   end
    next_async=next_async+1;pending_async[next_async]={spec=spec,callback=callback};return next_async
   end,abort_async_command=function(id)if pending_async[id]then pending_async[id].aborted=true end end,
-  commandv=function(...)local a={...};commands[#commands+1]=a;if a[1]=='cycle'then props[a[2]]=not props[a[2]]end;return true end,
+  commandv=function(...)
+   local a={...};commands[#commands+1]=a
+   if a[1]=='cycle'then props[a[2]]=not props[a[2]]end
+   if a[2]=='danmaku-action' and a[3]=='load' then
+    renderer_arguments=a
+    local f=assert(io.open(a[4],'rb'));local text=f:read('*a');f:close()
+    local count=0;for _ in text:gmatch('<d ')do count=count+1 end
+    observers['user-data/player_ui/danmaku-render'](nil,{serial=tonumber(a[6]),ready=true,busy=false,count=count,error=''})
+   end
+   return true
+  end,
   osd_message=function()end,add_timeout=function(d,f)return timer(d,f,false)end,add_periodic_timer=function(d,f)return timer(d,f,true)end,
   add_key_binding=function(_,n,f)bindings[n]=f end,add_forced_key_binding=function(_,n,f)bindings[n]=f end,
   remove_key_binding=function(n)bindings[n]=nil end,register_script_message=function(n,f)messages[n]=f end,
@@ -150,6 +166,73 @@ local function suite()
   return false
  end
  check(ui().version=='1.3.0','production layout revision')
+ check(button('bangumi')~=nil,'logged-out account entry is in the bottom control bar')
+ click('bangumi')
+ check(ui().menu=='bangumi' and has_row('登录 Bangumi'),'account entry opens a bottom-bar popover')
+ local account_box=ui().menu_boxes[1];local account_button=button('bangumi')
+ check(account_box.y1<account_button.y0 and math.abs((account_box.x0+account_box.x1)/2-(account_button.x0+account_button.x1)/2)<1,
+  'account popover anchors directly above its bottom-bar button')
+ click(row('登录 Bangumi'))
+ check(commands[#commands][1]=='script-message-to' and commands[#commands][3]=='bangumi-action' and commands[#commands][4]=='login',
+  'login uses native browser authorization')
+ observers['user-data/player_ui/bangumi']('user-data/player_ui/bangumi',{connected=true,username='user',avatar='fixture-avatar.bgra'})
+ advance(.1)
+ local avatar_count=0
+ for _,command in ipairs(commands)do if command[1]=='overlay-add' and command[2]==61 then avatar_count=avatar_count+1 end end
+ check(avatar_count==1,'connected account draws its cached circular avatar')
+ advance(.2)
+ local stable_count=0
+ for _,command in ipairs(commands)do if command[1]=='overlay-add' and command[2]==61 then stable_count=stable_count+1 end end
+ check(stable_count==avatar_count,'unchanged avatar is not resent every frame')
+ pos.x=0;pos.y=0;messages['player_ui-hide']();advance(.1)
+ check(commands[#commands][1]=='overlay-remove' and commands[#commands][2]==61,'hiding controls removes the avatar')
+ observers['user-data/player_ui/bangumi']('user-data/player_ui/bangumi',{connected=true,username='user',generation=7,status='',settings={autoCollect=true,collectPercent=20,autoSync=true,watchedPercent=80},
+  subject={id=10,title='间谍过家家 第三季',date='2025-10',score=7.3,season=3,collectionType=3,currentEpisode=102,episodes={
+   {id=101,number=38,title='第 38 集',kind=0,state=2},{id=102,number=39,title='第 39 集',kind=0,state=0}}}})
+ messages['player_ui-show']();advance(.1);click('bangumi')
+ check(has_row('剧集') and has_row('当前：第 39 集') and player_overlay_data:find('7.3',1,true),
+  'matched season displays title rating and current episode with a labelled episode grid')
+ local watched_cell=button(row('bangumi-episode:101'))
+ local current_cell=button(row('bangumi-episode:102'))
+ local cell_scale=(watched_cell.y1-watched_cell.y0)/50
+ local pink=core.theme().accent
+ local cell_drawing=player_overlay_data:gsub('\\clip%([^)]*%)','')
+ local function pink_shape(cell,r,y,color)
+  return string.format('\\1c&H%s&\\1a&H00&\\p1}m %.2f %.2f',color or pink,cell.x0+r*cell_scale,y)
+ end
+ check(cell_drawing:find(pink_shape(watched_cell,6,watched_cell.y0),1,true),
+  'watched episode fills the entire cell pink')
+ check(not cell_drawing:find(pink_shape(current_cell,6,current_cell.y0),1,true),
+  'current unwatched episode has no pink cell background')
+ check(cell_drawing:find(pink_shape(current_cell,2,current_cell.y1-5*cell_scale,core.theme().current),1,true),
+  'current unwatched episode has a #39c5bb bottom strip')
+ check(not cell_drawing:find(pink_shape(current_cell,2,current_cell.y0),1,true),
+  'current episode has no pink top strip')
+ check(core.theme().current=='BBC539','current episode uses the requested teal in ASS BGR order')
+ check(not has_row('收藏进度') and not has_row('看过进度'),'account panel has no synchronization settings')
+ check(not has_row('退出登录'),'logout is not a text menu row')
+ local logout=button('bangumi-logout');local box=ui().menu_boxes[1]
+ check(logout and logout.x0>box.x1-60 and logout.y1<box.y0+55,
+  'logout icon is within the upper-right header of the account popover')
+ click(row('bangumi-episode:102'));check(ui().menu=='bangumi-episode' and #ui().menu_boxes==2,'episode cell opens state actions beside its parent')
+ click(row('看到'));check(commands[#commands][4]=='episode' and commands[#commands][5]=='102' and commands[#commands][7]=='through' and commands[#commands][8]=='7',
+  'watched-through includes file generation and batch mode')
+ bindings['player_ui-menu-escape']();advance(.1);bindings['player_ui-menu-escape']();advance(.1)
+ click('settings');click(row('sync-settings'))
+ check(has_row('收藏进度') and has_row('看过进度') and has_row('自动收藏为在看') and has_row('自动标记剧集看过'),
+  'separate collection and watched thresholds live only under synchronization settings')
+ bindings['player_ui-menu-escape']();advance(.1);bindings['player_ui-menu-escape']();advance(.1)
+ click('bangumi');click('bangumi-logout')
+ check(commands[#commands][4]=='logout' and ui().menu=='','header logout icon dispatches the account action and closes its popover')
+ observers['user-data/player_ui/bangumi']('user-data/player_ui/bangumi',{connected=false});messages['player_ui-show']();advance(.1)
+ click('bangumi');check(not button('bangumi-logout'),'logged-out panel has no logout icon')
+ observers['user-data/player_ui/bangumi']('user-data/player_ui/bangumi',{connected=false,busy=true,authorizing=true})
+ advance(.1)
+ check(has_row('重新授权') and has_row('等待浏览器授权…'),'pending authorization keeps a retry action visible')
+ click(row('重新授权'))
+ check(commands[#commands][4]=='login','retry remains actionable while browser authorization is pending')
+ bindings['player_ui-menu-escape']();advance(.1)
+ local play_button=button('play');pos.x=(play_button.x0+play_button.x1)*ui().scale/2;pos.y=(play_button.y0+play_button.y1)*ui().scale/2;bindings['player_ui-move']();advance(.05)
  event_handlers['start-file'][1]();advance(.1)
  observers['volume']('volume',95)
  check(volume_overlay_data==nil,'startup restoration of volume creates no percentage popup')
@@ -164,6 +247,19 @@ local function suite()
  event_handlers['playback-restart'][1]();advance(.1)
  check(ui().visible and not ui().loading,
   'first playback frame replaces the loading indicator with the bottom HUD')
+ check(player_overlay_data:find('00:10',1,true) and player_overlay_data:find('02:00',1,true),
+  'bottom HUD displays current playback time and full duration')
+ props['media-title']='作品名字 (2025) S1E7 - 剧集名字';observers['media-title']();advance(.1)
+ check(player_overlay_data:find('S1:E7 - 剧集名字',1,true) and not player_overlay_data:find('(2025) S1E7',1,true)
+  and player_overlay_data:find('\\fnMicrosoft YaHei UI\\fs%d+\\b1')
+  and player_overlay_data:find('\\fnSegoe UI',1,true),
+  'HUD renders the bold series title and smaller episode row with Windows UI fonts')
+ props['media-title']='Title';observers['media-title']();advance(.1)
+ if focus=='hud' then
+  os.remove(clock_config)
+  package.loaded.mp=saved.mp;package.loaded['mp.options']=saved.opts;package.loaded['mp.utils']=saved.utils
+  return
+ end
  props['paused-for-cache']=true;observers['paused-for-cache']();advance(.1)
  check(ui().loading,'buffering shows the same animated loading indicator')
  props['paused-for-cache']=false;observers['paused-for-cache']();advance(.1)
@@ -466,7 +562,7 @@ local function suite()
   messages['player_ui-danmaku-setting']('scrolltime','5.5')
   danmaku_state=props['user-data/player_ui/danmaku']
   check(danmaku_state.settings.fontsize==32 and danmaku_state.settings.scrolltime==5.5,
-   'Factory settings are published and saved using upstream parameter names')
+   'Comment settings are published and saved')
   messages['player_ui-danmaku-setting']('speed','2')
   danmaku_state=props['user-data/player_ui/danmaku']
   check(danmaku_state.settings.scrolltime==6 and danmaku_state.settings.fixtime==2.5,
@@ -571,6 +667,41 @@ local function suite()
  local after_success=next_async
  event_handlers['file-loaded'][#event_handlers['file-loaded']]();advance(100)
  check(next_async==after_success,'metadata events and elapsed time never resubmit automatic searches')
+ props.path='C:/Video/星海里的旅行者 (2024) S2E5.mkv'
+ props['media-title']='星海里的旅行者 (2024) S2E5'
+ event_handlers['start-file'][#event_handlers['start-file']]()
+ before=next_async
+ event_handlers['file-loaded'][#event_handlers['file-loaded']]()
+ json_responses['ambiguous-works']={animes={
+  {animeId=51,animeTitle='星海中的旅行者 第二季(2024)',source='qq'},
+  {animeId=52,animeTitle='星海外的旅行者 第二季(2025)',source='qq'}}}
+ local ambiguous_searches={}
+ for i=1,3 do
+  ambiguous_searches[i]=find_async_after(before,'https://danmaku'..(i==1 and '' or i)..'.example/api/v2/search/anime?keyword='..
+   online_api.urlencode('星海里的旅行者'))
+ end
+ for i=1,3 do complete_async(ambiguous_searches[i],'ambiguous-works') end
+ danmaku_state=props['user-data/player_ui/danmaku']
+ check(next_async==before+3 and not danmaku_state.loaded and danmaku_state.autoload_state=='not-found',
+  'ambiguous works never request episode details or comments, and each route is searched only once')
+ check(danmaku_state.status=='有多个相近作品，请手动选择弹幕',
+  'ambiguous automatic results explain the need for a manual selection')
+ props.path='C:/Video/Voyagers of the Stars S2E5.mkv'
+ props['media-title']='Voyagers of the Stars S2E5'
+ event_handlers['start-file'][#event_handlers['start-file']]()
+ before=next_async
+ event_handlers['file-loaded'][#event_handlers['file-loaded']]()
+ json_responses['alias-work']={animes={{animeId=51,animeTitle='星海中的旅行者 第二季(2024)',source='qq',
+  aliases={'Voyagers of the Stars Season 2'}}}}
+ json_responses['alias-episodes']={bangumi={episodes={{episodeId=55,episodeNumber=5,episodeTitle='第5集'}}}}
+ local alias_search=find_async_after(before,'https://danmaku3.example/api/v2/search/anime?keyword='..
+  online_api.urlencode('Voyagers of the Stars'))
+ complete_async(alias_search,'alias-work')
+ complete_async(pending_async[next_async],'alias-episodes')
+ complete_async(pending_async[next_async],comments_json)
+ check(props['user-data/player_ui/danmaku'].loaded and props['user-data/player_ui/danmaku'].source==3,
+  'provider aliases load the exact episode from the first matching route without waiting for other routes')
+ props.path='C:/Video/Anime title S1E1.mkv';props['media-title']='Anime title S1E1'
  json_responses['sources-two-json']={servers={{name='ME',url='https://danmaku.example'},{name='Catcat',url='https://danmaku2.example'}}}
  messages['player_ui-danmaku-save-servers']('sources-two-json')
   event_handlers['playback-restart'][1]();bindings['player_ui-move']();advance(.1);click('danmaku');click(row('搜索弹幕'));dispatch_last_message()
@@ -652,26 +783,19 @@ local function suite()
  picker.callback(true,{status=0,stdout=out..'/comments.xml',stderr=''},nil)
   danmaku_state=props['user-data/player_ui/danmaku']
   check(danmaku_state.loaded and danmaku_state.count==3,'choosing a local XML fixture loads it into the renderer')
-  check(danmaku_state.backend=='DanmakuFactory / mpv ASS' and danmaku_state.render_fps==nil,
-   'native subtitle rendering does not publish a fabricated Lua submission FPS')
-  local function converter_option(name)
-   for i,value in ipairs(factory_arguments) do if value=='--'..name then return factory_arguments[i+1] end end
-  end
+  check(danmaku_state.backend=='imtaotao/danmu' and danmaku_state.render_fps==nil,
+   'original renderer does not publish a fabricated Lua submission FPS')
   local before_resize=next_async
-  local before_resize_track=props['user-data/player_ui/danmaku'].track
+  local previous_load=renderer_arguments
   for _,size in ipairs({{1920,1200,60},{2560,1600,80},{1280,720,0},{1920,1200,60}}) do
    props['osd-dimensions']={w=size[1],h=size[2],ml=0,mr=0,mt=size[3],mb=size[3]}
    observers['osd-dimensions']('osd-dimensions',props['osd-dimensions']);advance(.2)
-   check(next_async==before_resize and props['user-data/player_ui/danmaku'].track==before_resize_track,
-    'resizing keeps the native track and starts no conversion subprocess')
+   check(next_async==before_resize and renderer_arguments==previous_load,
+    'resizing never reloads comments or starts a converter subprocess')
   end
-  check(converter_option('viewport-height')==nil and converter_option('viewport-offset-y')==nil,
-   'native screen coordinates do not bake a window size into the ASS file')
   props['speed']=2;props['time-pos']=5
   observers['speed']('speed',2);advance(.2)
-  check(converter_option('playback-speed')=='2' and converter_option('playback-time')=='5'
-   and converter_option('playback-timeline'):find('5.000000:2.000000',1,true),
-   'speed changes pass a media anchor and rate history to preserve native animation position')
+  check(renderer_arguments==previous_load,'playback rate changes never rebuild the comment pool')
   props['speed']=1;observers['speed']('speed',1);advance(.2)
   local ticks=0
   for _,candidate in ipairs(timers) do
@@ -682,6 +806,9 @@ local function suite()
   bindings['player_ui-leave']();advance(4)
   local active=0;for _,t in ipairs(timers)do if t.alive and t.repeated then active=active+1 end end
   check(active==0,'hidden local video has no repeating UI timer')
+  local before_secondary=props['secondary-sid']
+  messages['player_ui-danmaku-clear']()
+  check(props['secondary-sid']==before_secondary,'independent rendering does not replace secondary subtitles')
  props.path='C:/Video/间谍过家家 代号：白 (2023).mkv';props['media-title']='间谍过家家 代号：白 (2023)'
  local before_movie=next_async
  event_handlers['start-file'][#event_handlers['start-file']]()

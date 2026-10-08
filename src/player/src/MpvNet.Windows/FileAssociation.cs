@@ -1,4 +1,4 @@
-﻿
+
 using Microsoft.Win32;
 
 using MpvNet.Windows.Help;
@@ -24,13 +24,13 @@ public static class FileAssociation
             }
 
             RegistryHelp.SetValue(@"HKCU\Software\Microsoft\Windows\CurrentVersion\App Paths\" + exeFilename, "", exePath);
-            RegistryHelp.SetValue(@"HKCR\Applications\" + exeFilename, "FriendlyAppName", "AnimeVE media player");
+            RegistryHelp.SetValue(@"HKCR\Applications\" + exeFilename, "FriendlyAppName", "mpv-AnimeFusion media player");
             RegistryHelp.SetValue(@"HKCR\Applications\" + exeFilename + @"\shell\open\command", "", $"\"{exePath}\" \"%1\"");
             RegistryHelp.SetValue(@"HKCR\SystemFileAssociations\video\OpenWithList\" + exeFilename, "", "");
             RegistryHelp.SetValue(@"HKCR\SystemFileAssociations\audio\OpenWithList\" + exeFilename, "", "");
-            RegistryHelp.SetValue(@"HKLM\SOFTWARE\RegisteredApplications", "AnimeVE", @"SOFTWARE\Clients\Media\AnimeVE\Capabilities");
-            RegistryHelp.SetValue(@"HKLM\SOFTWARE\Clients\Media\AnimeVE\Capabilities", "ApplicationDescription", "AnimeVE media player");
-            RegistryHelp.SetValue(@"HKLM\SOFTWARE\Clients\Media\AnimeVE\Capabilities", "ApplicationName", "AnimeVE");
+            RegistryHelp.SetValue(@"HKLM\SOFTWARE\RegisteredApplications", "mpv-AnimeFusion", @"SOFTWARE\Clients\Media\mpv-AnimeFusion\Capabilities");
+            RegistryHelp.SetValue(@"HKLM\SOFTWARE\Clients\Media\mpv-AnimeFusion\Capabilities", "ApplicationDescription", "mpv-AnimeFusion media player");
+            RegistryHelp.SetValue(@"HKLM\SOFTWARE\Clients\Media\mpv-AnimeFusion\Capabilities", "ApplicationName", "mpv-AnimeFusion");
 
             foreach (string ext in extensions)
             {
@@ -39,7 +39,7 @@ public static class FileAssociation
                 RegistryHelp.SetValue(@"HKCR\" + "." + ext + @"\OpenWithProgIDs", exeFilenameNoExt + "." + ext, "");
                 RegistryHelp.SetValue(@"HKCR\" + "." + ext, "PerceivedType", perceivedType);
                 RegistryHelp.SetValue(@"HKCR\" + exeFilenameNoExt + "." + ext + @"\shell\open\command", "", $"\"{exePath}\" \"%1\"");
-                RegistryHelp.SetValue(@"HKLM\SOFTWARE\Clients\Media\AnimeVE\Capabilities\FileAssociations", "." + ext, exeFilenameNoExt + "." + ext);
+                RegistryHelp.SetValue(@"HKLM\SOFTWARE\Clients\Media\mpv-AnimeFusion\Capabilities\FileAssociations", "." + ext, exeFilenameNoExt + "." + ext);
             }
         }
         else
@@ -49,11 +49,11 @@ public static class FileAssociation
 
             RegistryHelp.RemoveKey(@"HKCU\Software\Microsoft\Windows\CurrentVersion\App Paths\" + exeFilename);
             RegistryHelp.RemoveKey(@"HKCR\Applications\" + exeFilename);
-            RegistryHelp.RemoveKey(@"HKLM\SOFTWARE\Clients\Media\AnimeVE");
+            RegistryHelp.RemoveKey(@"HKLM\SOFTWARE\Clients\Media\mpv-AnimeFusion");
             RegistryHelp.RemoveKey(@"HKCR\SystemFileAssociations\video\OpenWithList\" + exeFilename);
             RegistryHelp.RemoveKey(@"HKCR\SystemFileAssociations\audio\OpenWithList\" + exeFilename);
 
-            RegistryHelp.RemoveValue(@"HKLM\SOFTWARE\RegisteredApplications", "AnimeVE");
+            RegistryHelp.RemoveValue(@"HKLM\SOFTWARE\RegisteredApplications", "mpv-AnimeFusion");
 
             foreach (string id in Registry.ClassesRoot.GetSubKeyNames())
             {

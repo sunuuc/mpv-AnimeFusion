@@ -53,13 +53,14 @@ danmaku_source=(APP/'portable_config/scripts/player_ui_danmaku.lua').read_text(e
 assert 'mp.input.get' not in danmaku_source and 'console_opt_overrides' not in danmaku_source
 assert "id='close'" not in player_ui_source and "id=='close'" not in player_ui_source
 player_config=(APP/'portable_config/mpv.conf').read_text(encoding='utf-8')
-assert 'osc=no' in player_config
+assert 'osc=yes' in player_config
 assert 'border=yes' in player_config
 assert 'title-bar=yes' in player_config
 assert 'fullscreen=no' in player_config
 assert 'window-maximized=no' in player_config
 assert 'osd-on-seek=no' in player_config
-assert not (APP/'portable_config/script-opts/osc.conf').exists()
+osc_config=(APP/'portable_config/script-opts/osc.conf').read_text(encoding='utf-8')
+assert all(option in osc_config for option in ['idlescreen=yes','showwindowed=no','showfullscreen=no','windowcontrols=no'])
 assert not (APP/'portable_config/scripts/modernx.lua').exists(),'Two control bars packaged'
 # Exercise the installed scripts with a fresh configuration root and isolated
 # private-source directory. The only source is a reserved .invalid test endpoint.

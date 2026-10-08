@@ -6,36 +6,19 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 class SourceTreeTests(unittest.TestCase):
-    def prune(self,current,releases,failed=False):
-        source=ast.parse((ROOT/'tools/standalone/publish.py').read_text(encoding='utf-8'))
-        function=next(node for node in source.body if isinstance(node,ast.FunctionDef) and node.name=='prune_previous_releases')
-        remaining=[dict(r) for r in releases];deleted=[]
-        def api(endpoint,payload=None,method=None):
-            if method=='DELETE':
-                if failed:raise RuntimeError('Deletion failed')
-                release_id=int(endpoint.rsplit('/',1)[1]);deleted.append(release_id)
-                remaining[:]=[r for r in remaining if r['id']!=release_id]
-            else:return list(remaining)
-        scope={'REPO':'owner/project','api':api}
-        exec(compile(ast.Module(body=[function],type_ignores=[]),'publish.py','exec'),scope)
-        result=scope['prune_previous_releases'](current)
-        return result,deleted,remaining
+    def test_old_releases_are_preserved(self):
+        text = (ROOT/'tools/standalone/publish.py').read_text(encoding='utf-8')
+        self.assertNotIn('prune_previous_releases', text)
+        self.assertNotIn("'DELETE'", text)
+        self.assertNotIn('removed_releases', text)
 
-    def test_pruning_leaves_only_current_release_and_removes_old_drafts(self):
-        current={'id':2,'tag_name':'new','draft':False}
-        old={'id':1,'tag_name':'old','draft':False};draft={'id':3,'tag_name':'draft','draft':True}
-        removed,deleted,remaining=self.prune(current,[old,current,draft])
-        self.assertEqual(removed,['old','draft']);self.assertEqual(deleted,[1,3]);self.assertEqual(remaining,[current])
-
-    def test_pruning_requires_the_current_public_release(self):
-        with self.assertRaisesRegex(RuntimeError,'Cannot prune'):
-            self.prune({'id':1,'draft':True},[{'id':1,'draft':True}])
-        with self.assertRaisesRegex(RuntimeError,'Cannot prune'):
-            self.prune({'id':1,'draft':False},[])
-
-    def test_pruning_surfaces_delete_failures(self):
-        with self.assertRaisesRegex(RuntimeError,'Deletion failed'):
-            self.prune({'id':2,'draft':False},[{'id':1,'draft':False},{'id':2,'draft':False}],failed=True)
+    def test_publish_workflows_are_manual_only(self):
+        for name in ('standalone.yml', 'publish-r2.yml', 'publish-language-r3.yml'):
+            text = (ROOT/'.github/workflows'/name).read_text(encoding='utf-8')
+            self.assertIn('workflow_dispatch:', text)
+            self.assertNotIn('  push:', text)
+        text = (ROOT/'.github/workflows/standalone.yml').read_text(encoding='utf-8')
+        self.assertIn("github.event_name == 'workflow_dispatch' && inputs.publish", text)
 
     def build_tree(self, changes, api):
         source = ast.parse((ROOT / 'tools/standalone/publish.py').read_text(encoding='utf-8'))

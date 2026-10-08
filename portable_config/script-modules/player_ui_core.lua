@@ -1,4 +1,4 @@
--- Pure functions shared by the controller and its regression tests. No mpv side effects.
+﻿-- Pure functions shared by the controller and its regression tests. No mpv side effects.
 local M = {}
 function M.clamp(x, a, b) return math.max(a, math.min(b, x)) end
 function M.finite(x) return type(x)=='number' and x==x and x~=math.huge and x~=-math.huge end
@@ -85,7 +85,7 @@ function M.theme(accent)
         accent=accent,text='F7F3F6',secondary='CEC7CF',muted='A49CA5',
         panel='211F23',surface='2B292E',hover='39353D',selected='493743',
         border='141216',divider='4A454C',track='807982',buffer='C8C1C9',
-        scrim='000000',
+        scrim='000000',current='BBC539',
     }
 end
 M.metrics={
@@ -94,7 +94,8 @@ M.metrics={
     row_padding=16,icon_column=56,separator=16,slider=84,
     control_compact_step=48,control_step=56,control_compact_edge=28,control_edge=42,
     control_y=40,control_width=40,control_hit_height=20,speed_width=58,volume_width=130,volume_offset=8,
-    volume_min_width=36,seek_x=22,seek_track_y=88,seek_top=102,seek_bottom=74,
+    volume_min_width=36,seek_x=26,seek_track_y=88,seek_top=102,seek_bottom=74,
+    time_font=14,title_font=26,detail_font=16,
     network_width=104,network_gap=8,
     menu_speed_bottom=94,menu_bottom=106,
     icon_size=68,small_icon_size=40,icon_hover_radius=14,
@@ -113,11 +114,22 @@ function M.title(title,path)
     if title=='' then title='视频播放' end
     return title
 end
+function M.title_lines(title,path)
+    title=M.title(title,path)
+    local first,last,season,episode=title:find('%f[%a][Ss](%d+)[ ._:%-]*[Ee](%d+%.?%d*)')
+    if not first then return title,'' end
+    local name=title:sub(1,first-1):gsub('%s*%(%d%d%d%d%)%s*$',''):gsub('%s+$','')
+    if name=='' then return title,'' end
+    local detail=string.format('S%d:E%s',tonumber(season),tostring(tonumber(episode)))
+    local episode_title=title:sub(last+1):gsub('^[%s._%-:]+',''):gsub('%s+$','')
+    if episode_title~='' then detail=detail..' - '..episode_title end
+    return name,detail
+end
 -- Player UI layout 1.3.0: the ASS PlayRes IS the window, so glyphs are rasterised at
 -- native size and never resampled -- resampling was what made the text soft.
 -- ui_scale*dpi scales glyph and icon sizes, and shrinks further when the window
 -- is too narrow for the control row.
-function M.layout(pw,ph,dpi,ui_scale)
+function M.layout(pw,ph,dpi,ui_scale,time_width)
     pw,ph=math.max(1,pw),math.max(1,ph)
     local want=M.clamp(tonumber(ui_scale) or 1.00,.45,1.5)*M.clamp(tonumber(dpi) or 1,.75,1.5)
     local w,h=pw,ph
@@ -134,7 +146,7 @@ function M.layout(pw,ph,dpi,ui_scale)
                 y0=y-M.metrics.control_hit_height*want,y1=y+M.metrics.control_hit_height*want}
         end
         button('previous',edge);button('play',edge+step);button('next',edge+2*step);button('volume',edge+3*step)
-        local right={'fullscreen','settings','danmaku','sub','audio','speed'}
+        local right={'fullscreen','settings','danmaku','sub','audio','speed','bangumi'}
         local x=w-edge
         for _,id in ipairs(right) do button(id,x);x=x-step end
         local volume_button=edge+3*step
@@ -145,9 +157,9 @@ function M.layout(pw,ph,dpi,ui_scale)
             y0=y-15*want,y1=y+15*want,y=y}
         local network_x0=volume.x1+network_gap
         local network_x1=network_x0+network_width
-        local speed_x=w-edge-5*step
+        local leftmost_right=w-edge-6*step
         local network={x0=network_x0,x1=network_x1,y0=y-15*want,y1=y+15*want,y=y}
-        local ok=network.x0>=0 and network.x1<=speed_x-M.metrics.control_width*want/2-12*want
+        local ok=network.x0>=0 and network.x1<=leftmost_right-M.metrics.control_width*want/2-12*want
         for i,b in ipairs(controls) do
             if b.x0<0 or b.x1>w or b.y0<0 or b.y1>h then ok=false;break end
             for j=i+1,#controls do
@@ -158,9 +170,9 @@ function M.layout(pw,ph,dpi,ui_scale)
         end
         if ok then
             built={w=w,h=h,scale=1,ui=want,controls=controls,volume=volume,network_rate=network,
-                seek={x0=M.metrics.seek_x*want,x1=w-M.metrics.seek_x*want,
+                seek={x0=(M.metrics.seek_x+(time_width or 62))*want,x1=w-(M.metrics.seek_x+(time_width or 62))*want,
                     y0=h-M.metrics.seek_top*want,y1=h-M.metrics.seek_bottom*want,y=h-M.metrics.seek_track_y*want},
-                title_y=math.max(18*want,h-160*want),detail_y=math.max(42*want,h-126*want),
+                title_y=math.max(18*want,h-176*want),detail_y=math.max(48*want,h-140*want),
                 margin=26*want,compact=compact,small=false}
             break
         end

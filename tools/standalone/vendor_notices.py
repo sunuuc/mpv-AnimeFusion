@@ -20,7 +20,7 @@ def collect(app,evidence):
     def save_proof():
         (evidence/'vendor-notices.json').write_text(json.dumps(proof,ensure_ascii=False,indent=2),encoding='utf-8')
     def fetch(url,path):
-        request=urllib.request.Request(url,headers={'User-Agent':'AnimeVE-license-preservation'})
+        request=urllib.request.Request(url,headers={'User-Agent':'mpv-AnimeFusion-license-preservation'})
         with urllib.request.urlopen(request,timeout=120) as source,path.open('wb') as out:
             final=source.url;shutil.copyfileobj(source,out,1024*1024)
         proof['downloads'].append({'url':url,'final_url':final,'sha256':digest(path),'bytes':path.stat().st_size})

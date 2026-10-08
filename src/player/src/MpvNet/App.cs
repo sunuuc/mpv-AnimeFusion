@@ -11,7 +11,7 @@ public class AppClass
 {
     public List<string> TempFiles { get; } = new ();
 
-    public string ConfPath { get => Player.ConfigFolder + "AnimeVE.conf"; }
+    public string ConfPath { get => Player.ConfigFolder + "mpv-AnimeFusion.conf"; }
     public string ProcessInstance { get; set; } = "single";
     public string DarkMode { get; set; } = "always";
     public string DarkTheme { get; set; } = "dark";
@@ -79,8 +79,8 @@ public class AppClass
         Player.Initialized += Player_Initialized;
     }
 
-    public static string About => $"mpv-AnimeVE v{AppInfo.Version}\n" +
-        "https://github.com/sunuuc/mpv-AnimeVE\n\n" +
+    public static string About => $"mpv-AnimeFusion v{AppInfo.Version}\n" +
+        "https://github.com/sunuuc/mpv-AnimeFusion\n\n" +
         $"{Player.GetPropertyString("mpv-version")}\n" +
         $"ffmpeg {Player.GetPropertyString("ffmpeg-version")}\n" +
         $"MediaInfo v{FileVersionInfo.GetVersionInfo(Path.Combine(AppContext.BaseDirectory, "MediaInfo.dll")).FileVersion}" +

@@ -7,12 +7,32 @@ import configparser, hashlib, json, os, re, shutil, subprocess, sys, time, urlli
 R=Path.cwd(); H=R/'tools/standalone'; ST=R/'stage'; DIST=R/'dist'; E=R/'complete-evidence'
 META=json.loads((R/'release.json').read_text(encoding='utf-8'))
 LOCK=json.loads((H/'dependencies.json').read_text(encoding='utf-8'))
-REPO='sunuuc/mpv-AnimeVE'
+REPO='sunuuc/mpv-AnimeFusion'
 from components import prepare as prepare_components, validate as validate_components
 from security_verify import require_result as require_security_result
 FONTS={'.ttf','.otf','.ttc','.woff','.woff2','.fon','.fnt'}
 SEVEN=shutil.which('7z') or next((str(p) for p in (Path(r'C:\Program Files\7-Zip\7z.exe'),Path(r'D:\Apps\7-Zip\7z.exe')) if p.is_file()),'7z')
 SOURCE_ADDITIONS={
+    'src/auth/mpv-AnimeFusion.Auth.csproj',
+    'src/auth/Program.cs',
+    'src/auth/Dockerfile',
+    'src/auth/.dockerignore',
+    'src/auth/README.md',
+    'src/auth/deploy/compose.yml',
+    'src/auth/deploy/nginx.conf',
+    'src/auth/deploy/bootstrap.conf',
+    'src/auth/deploy/animeve-auth-renew.service',
+    'src/auth/deploy/animeve-auth-renew.timer',
+    'src/player/src/MpvNet.Windows/Bangumi/BangumiStore.cs',
+    'src/player/src/MpvNet.Windows/Bangumi/BangumiOAuth.cs',
+    'src/player/src/MpvNet.Windows/Bangumi/BangumiClient.cs',
+    'src/player/src/MpvNet.Windows/Bangumi/BangumiMedia.cs',
+    'src/player/src/MpvNet.Windows/Bangumi/BangumiPlayback.cs',
+    'src/player/src/MpvNet.Windows/WPF/BangumiMatchWindow.xaml',
+    'src/player/src/MpvNet.Windows/WPF/BangumiMatchWindow.xaml.cs',
+    'tests/bangumi/BangumiChecks.csproj',
+    'tests/bangumi/Program.cs',
+    'docs/bangumi-sources.md',
     'tools/standalone/components.py',
     'tools/standalone/component-catalog.json',
     'tools/standalone/updater-upstream.json',
@@ -24,13 +44,10 @@ SOURCE_ADDITIONS={
     'THIRD_PARTY_LICENSES/NVIDIA/sources.json',
     'tools/standalone/build_libass.py',
     'tools/standalone/libass-build-packages.json',
-    'tools/standalone/build_danmaku_factory.py',
     'tools/standalone/security_verify.py',
     'tools/standalone/security-policy.json',
     'tools/standalone/test_security_verify.py',
     'THIRD_PARTY_LICENSES/PCRE2-BSD.txt',
-    'tests/test_danmaku_canvas.py',
-    'tests/test_mpv_danmaku_viewport.py',
     'tests/manager-profiles/ManagerProfiles.csproj',
     'tests/manager-profiles/Program.cs',
     'tests/danmaku-wpf/DanmakuWpfChecks.csproj',
@@ -38,9 +55,9 @@ SOURCE_ADDITIONS={
     'tests/test_danmaku_search_xaml.py',
     'portable_config/script-modules/player_ui_danmaku_online.lua',
     'portable_config/script-modules/player_ui_danmaku_render.lua',
-    'THIRD_PARTY_LICENSES/DanmakuFactory-MIT.txt',
+    'tools/standalone/build_danmaku_factory.py',
+    'tools/apply_secondary_sub_sync.py',
     'docs/danmaku-renderer.md',
-    'tests/test_danmaku_native.py',
     'portable_config/script-opts/player_ui_danmaku.conf',
     'tests/test_danmaku_online.py',
     'tools/standalone/verify_player_sources.py',
@@ -66,7 +83,7 @@ def download(item):
     url=f'https://github.com/{item["repo"]}/releases/{release_path}/{item["name"]}'
     for attempt in range(3):
         try:
-            req=urllib.request.Request(url,headers={'User-Agent':'AnimeVE-full-build'})
+            req=urllib.request.Request(url,headers={'User-Agent':'mpv-AnimeFusion-full-build'})
             with urllib.request.urlopen(req,timeout=90) as src, dest.open('wb') as out:shutil.copyfileobj(src,out,1024*1024)
             if sha(dest)!=item['sha256']:raise RuntimeError('Download hash mismatch: '+item['name'])
             print('VERIFIED INPUT',item['name'],dest.stat().st_size,flush=True);return dest
@@ -109,6 +126,7 @@ def source_release_files(folders):
         for path in (R/folder).rglob('*'):
             if path.is_symlink() or not path.is_file() or path.suffix.lower() in FONTS or any(x in ('bin','obj','__pycache__','.git') for x in path.relative_to(R/folder).parts):continue
             relative=path.relative_to(R).as_posix()
+            if relative in ('portable_config/bangumi.json','portable_config/bangumi-app.json'):continue
             if relative in tracked or relative in SOURCE_ADDITIONS or relative.startswith(('third_party/danmaku-factory/','third_party/libass/','THIRD_PARTY_LICENSES/')):files.append(path)
     return sorted(files,key=lambda path:path.relative_to(R).as_posix())
 def replace_once(p,old,new):
@@ -121,6 +139,10 @@ def prepare():
     E.mkdir(exist_ok=True)
     if not (R/'src/player').exists():
         raise RuntimeError('Player and manager sources must be present in the source checkout')
+    # Remove the retired renderer from the build copy before updating sources.
+    retired_renderer=(R/'player/src/MpvNet.Windows/Danmaku').resolve()
+    retired_renderer.relative_to(R.resolve())
+    shutil.rmtree(retired_renderer,ignore_errors=True)
     for name in ('player','manager'):cp(R/'src'/name,R/name)
     for name in ('Manager','Player'):
         dest=R/'tests-generated'/(name.lower()+'-tests');dest.mkdir(parents=True,exist_ok=True)
@@ -134,15 +156,28 @@ def stage():
     base=download(LOCK['bootstrap_core']);extract(base,R/'base-unpack')
     cp(app_root(R/'base-unpack'),ST);shutil.rmtree(R/'base-unpack')
     native=download(LOCK['native_and_ui_resources']);extract(native,ST)
+    # Releases use the reviewed, hash-pinned native runtime. An explicitly
+    # supplied native build is reserved for preparing a new runtime revision.
+    native_output=os.environ.get('MPV_NATIVE_OUTPUT')
+    if native_output:
+        native_output=Path(native_output)
+        if not all((native_output/name).is_file() for name in ('mpv.exe','libmpv-2.dll','libass-9.dll')):
+            raise RuntimeError('MPV_NATIVE_OUTPUT is missing native runtime files')
+        for path in native_output.rglob('*'):
+            if path.is_file() and (path.suffix.lower() in ('.dll','.exe') or 'build-info' in path.relative_to(native_output).parts):
+                cp(path,ST/path.relative_to(native_output))
     shutil.rmtree(ST/'portable_config/watch_later',ignore_errors=True)
     shutil.rmtree(ST/'portable_config/scripts',ignore_errors=True)
-    cp(R/'portable_config',ST/'portable_config')
+    shutil.copytree(R/'portable_config',ST/'portable_config',dirs_exist_ok=True,
+        ignore=shutil.ignore_patterns('cache','watch_later','settings.xml','saved-props.json',
+            '*history*.json','*diagnostic*.json*','bangumi*.json','*.bak','*.backup','hills*'))
     cp(R/'animejanai/animejanai.conf',ST/'animejanai/animejanai.conf')
     cp(R/'THIRD_PARTY_LICENSES',ST/'THIRD_PARTY_LICENSES');cp(R/'LICENSE',ST/'LICENSE')
     cp(R/'THIRD_PARTY_LICENSES/DirectML.txt',ST/'animejanai/inference/DirectML_LICENSE.txt')
     cp(R/'docs/open-source-notices.md',ST/'OPEN_SOURCE_NOTICES.md')
     cp(H/'updater-upstream.json',ST/'build-info/standalone/updater-upstream.json')
     run(sys.executable,H/'build_danmaku_factory.py','--output',ST/'animejanai/danmaku/DanmakuFactory.exe')
+    cp(R/'third_party/danmaku-factory/UPSTREAM.json',ST/'build-info/danmaku/upstream.json')
     cp(R/'docs/danmaku-renderer.md',ST/'弹幕说明.md')
 
     # The pinned seed contains the previous frontend binaries. Only the newly
@@ -154,10 +189,12 @@ def stage():
     # retained instead of the Core framework's forwarding assemblies.
     for folder in ('publish-manager','publish-updater','publish-player'):
         for p in (R/folder).rglob('*'):
+            if p.name.startswith(('AnimeVE.','AnimeVEManager.','AnimeVEUpdater.')):continue
             if p.is_file() and p.suffix.lower() in ('.exe','.dll','.json'):cp(p,ST/p.relative_to(R/folder))
-    libass_args=['--output',ST/'libass-9.dll']
-    if os.environ.get('LIBASS_TOOLCHAIN'):libass_args+=['--toolchain',os.environ['LIBASS_TOOLCHAIN']]
-    run(sys.executable,H/'build_libass.py',*libass_args)
+    for p in ST.glob('AnimeVE*'):
+        if p.is_file():p.unlink()
+    # libass is part of the same pinned native input, so a frontend release
+    # cannot silently change its renderer or compiler output.
     cp(R/'third_party/libass/UPSTREAM.json',ST/'build-info/native/libass-source.json')
     cp(R/'third_party/libass/COPYING',ST/'THIRD_PARTY_LICENSES/libass-ISC.txt')
     candidates=list(Path(r'C:\Program Files\Microsoft Visual Studio\2022').glob('*/VC/Redist/MSVC/*/x64/Microsoft.VC143.CRT'))
@@ -182,7 +219,7 @@ def stage():
     dump(ST/'manifest.json',{'name':META['name'],'version':META['version'],'distribution':'portable','repository':REPO,'component_version':'3.6.0','platform':'win-x64'})
     cp(R/'docs/standalone.md',ST/'使用说明.md')
     for name in ('README.md','README.en.md','CHANGELOG.md'):cp(R/name,ST/name)
-    for name in ('standalone.md','build.md','danmaku-renderer.md','open-source-notices.md'):cp(R/'docs'/name,ST/'docs'/name)
+    for name in ('standalone.md','build.md','danmaku-renderer.md','open-source-notices.md','bangumi-sources.md'):cp(R/'docs'/name,ST/'docs'/name)
     organize_payload()
     dump(E/'components.json',validate_components(ST))
     inspect_payload()
@@ -209,34 +246,42 @@ def organize_payload():
         path=docs/name
         path.write_text(path.read_text(encoding='utf-8').replace('(docs/','('),encoding='utf-8')
     for project,published,name in (
-        ('player/src/MpvNet.Windows/MpvNet.Windows.csproj','publish-player','AnimeVE'),
-        ('manager/AnimeJaNaiConfEditor/AnimeJaNaiConfEditor.csproj','publish-manager','AnimeVEManager')):
+        ('player/src/MpvNet.Windows/MpvNet.Windows.csproj','publish-player','mpv-AnimeFusion'),
+        ('manager/AnimeJaNaiConfEditor/AnimeJaNaiConfEditor.csproj','publish-manager','mpv-AnimeFusionManager')):
         run('dotnet','msbuild',R/project,'-t:GeneratePortableAppHost','-p:Configuration=Release',
             '-p:RuntimeIdentifier=win-x64',f'-p:PortableAssembly={R/published/(name+".dll")}',
             f'-p:PortableAppHostPath={ST/(name+".exe")}', '-verbosity:quiet')
         (runtime/(name+'.exe')).unlink()
-    expected={'AnimeVE.exe','AnimeVEManager.exe','app','docs','portable_config','animejanai'}
+    expected={'mpv-AnimeFusion.exe','mpv-AnimeFusionManager.exe','app','docs','portable_config','animejanai'}
     if {p.name for p in ST.iterdir()}!=expected:raise RuntimeError('Unexpected portable root entries')
 
 
 def clean_session_files(app):
     for folder in ('cache','watch_later'):
         shutil.rmtree(app/'portable_config'/folder,ignore_errors=True)
-    for name in ('settings.xml','saved-props.json','startup-diagnostic.json','startup-diagnostic.json.tmp','playback-diagnostic.json'):
+    for name in ('settings.xml','saved-props.json','startup-diagnostic.json','startup-diagnostic.json.tmp','playback-diagnostic.json','bangumi.json','bangumi-app.json'):
         (app/'portable_config'/name).unlink(missing_ok=True)
 
 def inspect_payload():
     clean_session_files(ST)
-    run(sys.executable,R/'tests/test_branding.py',ST)
+    expected={'mpv-AnimeFusion.exe','mpv-AnimeFusionManager.exe','app','docs','portable_config','animejanai'}
+    if {p.name for p in ST.iterdir()}!=expected:raise RuntimeError('Unexpected portable root entries')
+    for name in ('mpv-AnimeFusion','mpv-AnimeFusionManager'):
+        if ('app/'+name+'.dll').encode() not in (ST/(name+'.exe')).read_bytes():
+            raise RuntimeError('Portable apphost points to the wrong assembly: '+name)
+    manifest=json.loads((ST/'app/manifest.json').read_text(encoding='utf-8'))
+    if manifest['name']!=META['name'] or manifest['version']!=META['version']:
+        raise RuntimeError('Package identity does not match release metadata')
     files=[p for p in ST.rglob('*') if p.is_file()]
     dump(E/'file-inventory.json',{p.relative_to(ST).as_posix():p.stat().st_size for p in files})
-    required=['AnimeVE.exe','app/mpv.exe','app/libmpv-2.dll','AnimeVEManager.exe','app/AnimeVEUpdater.exe',
+    required=['mpv-AnimeFusion.exe','app/mpv.exe','app/libmpv-2.dll','mpv-AnimeFusionManager.exe','app/mpv-AnimeFusionUpdater.exe',
        'portable_config/mpv.conf','portable_config/mpv-animejanai.conf','portable_config/input.conf',
        'portable_config/script-opts/player_ui.conf','portable_config/script-opts/player_ui_danmaku.conf',
+       'animejanai/danmaku/DanmakuFactory.exe',
        'portable_config/scripts/network_playback.lua','portable_config/scripts/player_ui.lua','portable_config/scripts/player_ui_danmaku.lua','portable_config/scripts/thumbfast.lua',
        'portable_config/script-modules/player_ui_core.lua','portable_config/script-modules/player_ui_metrics.lua',
        'portable_config/script-modules/player_ui_menu.lua','portable_config/script-modules/player_ui_danmaku_online.lua',
-       'portable_config/script-modules/player_ui_danmaku_render.lua','animejanai/danmaku/DanmakuFactory.exe',
+       'portable_config/script-modules/player_ui_danmaku_render.lua','app/build-info/danmaku/upstream.json',
        'animejanai/animejanai.conf','animejanai/inference/aji.dll','animejanai/inference/aji_trt.dll',
        'animejanai/inference/aji_dml.dll','app/7za.exe','app/manifest.json','docs/OPEN_SOURCE_NOTICES.md','docs/LICENSE',
        'docs/THIRD_PARTY_LICENSES/mpv-source/Copyright','docs/THIRD_PARTY_LICENSES/DirectML.txt',
@@ -249,10 +294,10 @@ def inspect_payload():
        'files':len(files),'unpacked_bytes':sum(p.stat().st_size for p in files),'gpu_inference_tested':False})
 
 def release_notes():
-    text=(R/'README.md').read_text(encoding='utf-8')
-    match=re.search(r'(?ms)^## 功能\n(.*?)(?=^## |\Z)',text)
+    text=(R/'CHANGELOG.md').read_text(encoding='utf-8')
+    match=re.search(r'(?ms)^## \['+re.escape(META['version'])+r'\][^\n]*\n(.*?)(?=^## |\Z)',text)
     if not match or not match.group(1).strip():
-        raise RuntimeError('Missing release features in README.md')
+        raise RuntimeError('Missing version changes in CHANGELOG.md')
     return match.group(1).strip()+'\n'
 
 def package():
@@ -264,7 +309,7 @@ def package():
         results=json.loads((E/'runtime'/n).read_text(encoding='utf-8'))
         if not results or not all(r['passed'] for r in results):raise RuntimeError('Runtime tests failed')
     danmaku=json.loads((E/'danmaku/results.json').read_text(encoding='utf-8'))
-    if len(danmaku)!=4 or not all(r['passed'] for r in danmaku):raise RuntimeError('Native danmaku tests failed')
+    if not danmaku or not all(r['passed'] for r in danmaku):raise RuntimeError('Upstream danmaku package verification failed')
     shutil.rmtree(ST/'portable_config/watch_later',ignore_errors=True)
     inspect_payload();DIST.mkdir(exist_ok=True)
     info=ST/'app/build-info/standalone'

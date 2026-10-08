@@ -62,13 +62,18 @@ def run_case(name):
         return {'case':name,'passed':True}
     with Player() as p:
         if name in ('48fps','pause-redraw'):p.set('vf','lavfi=[fps=48]')
-        if name=='slow-filter':p.set('vf','lavfi=[realtime=speed=0.5]')
+        if name=='72fps':p.set('vf','lavfi=[fps=72]')
+        if name=='slow-filter':
+            # Measure the filter's output cadence, without additionally dropping
+            # its intentionally late frames in the VO.
+            p.set('framedrop','no')
+            p.set('vf','lavfi=[realtime=speed=0.5]')
         if name=='half-speed':p.set('speed','0.5')
         p.command('loadfile',str(media));time.sleep(.5);p.count()
         p.set('pause','no');time.sleep(1.5)
         t0=time.perf_counter();n0=p.count();time.sleep(2);n1=p.count();elapsed=time.perf_counter()-t0
         rate=(n1-n0)/elapsed
-        expected=48 if name in ('48fps','pause-redraw') else 12 if name in ('half-speed','slow-filter') else 24
+        expected=72 if name=='72fps' else 48 if name in ('48fps','pause-redraw') else 12 if name in ('half-speed','slow-filter') else 24
         assert abs(rate-expected)<3,(name,rate,expected)
         if name=='pause-redraw':
             p.set('pause','yes');time.sleep(.3);paused=p.count()
@@ -80,7 +85,7 @@ def run_case(name):
 if len(sys.argv)>3:
     result=run_case(sys.argv[3]);print(json.dumps(result));sys.exit(0)
 results=[]
-for name in ['24fps','48fps','half-speed','slow-filter','pause-redraw','audio-thread-lifetime']:
+for name in ['24fps','48fps','72fps','half-speed','slow-filter','pause-redraw','audio-thread-lifetime']:
     cp=subprocess.run([sys.executable,__file__,str(bundle),str(output),name],capture_output=True,timeout=35)
     (output/(name+'.log')).write_bytes(cp.stdout+cp.stderr)
     result={'case':name,'exit_code':cp.returncode,'passed':cp.returncode==0}

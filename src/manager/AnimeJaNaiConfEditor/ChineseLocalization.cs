@@ -21,7 +21,7 @@ public static class ChineseLocalization
 {
     private static readonly Dictionary<string, string> Exact = new(StringComparer.Ordinal)
     {
-        ["AnimeVE Manager"] = "AnimeVE 管理器",
+        ["mpv-AnimeFusion Manager"] = "mpv-AnimeFusion 管理器",
         ["Profiles"] = "配置方案",
         ["Global Settings"] = "全局设置",
         ["Default Profiles (Read-only)"] = "默认配置（只读）",
@@ -85,7 +85,7 @@ public static class ChineseLocalization
         ["Done."] = "完成。",
         ["unknown error"] = "未知错误",
         ["Could not load component information."] = "无法读取组件信息。",
-        ["AnimeVEUpdater.exe not found next to the install - component management unavailable."] = "安装目录中未找到 AnimeVEUpdater.exe，无法管理组件。",
+        ["mpv-AnimeFusionUpdater.exe not found next to the install - component management unavailable."] = "安装目录中未找到 mpv-AnimeFusionUpdater.exe，无法管理组件。",
         ["GPU: no NVIDIA device detected — the built-in DirectML engine covers AMD and Intel GPUs"] = "GPU：未检测到 NVIDIA 设备；内置 DirectML 后端可用于 AMD 和 Intel GPU",
         ["TensorRT runtime"] = "TensorRT 运行库",
         ["RIFE interpolation models"] = "RIFE 补帧模型",
@@ -136,10 +136,10 @@ public static class ChineseLocalization
         ["Export Current Profile Conf File"] = "导出当前配置文件",
         ["Confirm Full Conf Import"] = "确认导入完整配置",
         ["Confirm Profile Conf Import"] = "确认导入配置",
-        ["AnimeVE Conf File"] = "AnimeVE 配置文件",
-        ["AnimeVE Profile Conf File"] = "AnimeVE 配置方案文件",
-        ["AnimeVE Conf File (*.conf)"] = "AnimeVE 配置文件 (*.conf)",
-        ["AnimeVE Profile Conf File (*.pconf)"] = "AnimeVE 配置方案文件 (*.pconf)",
+        ["mpv-AnimeFusion Conf File"] = "mpv-AnimeFusion 配置文件",
+        ["mpv-AnimeFusion Profile Conf File"] = "mpv-AnimeFusion 配置方案文件",
+        ["mpv-AnimeFusion Conf File (*.conf)"] = "mpv-AnimeFusion 配置文件 (*.conf)",
+        ["mpv-AnimeFusion Profile Conf File (*.pconf)"] = "mpv-AnimeFusion 配置方案文件 (*.pconf)",
     };
 
     private static readonly (string English, string Chinese)[] Phrases =

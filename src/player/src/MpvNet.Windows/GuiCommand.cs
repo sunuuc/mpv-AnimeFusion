@@ -1,4 +1,4 @@
-﻿
+
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -24,6 +24,7 @@ public class GuiCommand
     DanmakuSourcesWindow? _danmakuSourcesWindow;
     DanmakuSearchWindow? _danmakuSearchWindow;
     DanmakuBlocklistWindow? _danmakuBlocklistWindow;
+    BangumiMatchWindow? _bangumiMatchWindow;
 
     public event Action<float>? ScaleWindow;
     public event Action<string>? MoveWindow;
@@ -53,6 +54,8 @@ public class GuiCommand
         ["show-danmaku-sources"] = ShowDanmakuSources,
         ["show-danmaku-search"] = ShowDanmakuSearch,
         ["show-danmaku-blocklist"] = ShowDanmakuBlocklist,
+        ["show-bangumi-match"] = ShowBangumiMatch,
+        ["bangumi-action"] = BangumiAction,
         ["show-demuxers"] = args => ShowDemuxers(),
         ["show-info"] = args => ShowMediaInfo(new[] { "osd" }),
         ["show-input-editor"] = args => ShowDialog(typeof(InputWindow)),
@@ -131,6 +134,43 @@ public class GuiCommand
         };
         ElementHost.EnableModelessKeyboardInterop(window);
         window.Show();
+    }
+
+    void ShowBangumiMatch(IList<string> args)
+    {
+        if (_bangumiMatchWindow is { IsVisible: true })
+        {
+            _bangumiMatchWindow.Activate();
+            return;
+        }
+        var window = new BangumiMatchWindow();
+        new WindowInteropHelper(window).Owner = MainForm.Instance!.Handle;
+        _bangumiMatchWindow = window;
+        window.Closed += (_, _) => { _bangumiMatchWindow = null; RestorePlayerOwner(); };
+        ElementHost.EnableModelessKeyboardInterop(window);
+        window.Show();
+    }
+
+    async void BangumiAction(IList<string> args)
+    {
+        var sync = MpvNet.Windows.Bangumi.BangumiPlayback.Current;
+        try
+        {
+            if (args.Count == 0) return;
+            switch (args[0])
+            {
+                case "login": await sync.AuthorizeAsync(url => ProcessHelp.ShellExecute(url)); break;
+                case "retry-match": sync.RetryResolve(); break;
+                case "logout": await sync.DisconnectAsync(); break;
+                case "setting" when args.Count == 3: sync.SetSetting(args[1], args[2]); break;
+                case "collection" when args.Count == 3:
+                    await sync.ChangeCollectionAsync(int.Parse(args[1]), int.Parse(args[2])); break;
+                case "episode" when args.Count == 5:
+                    await sync.ChangeEpisodeAsync(int.Parse(args[1]), int.Parse(args[2]), args[3] == "through", int.Parse(args[4])); break;
+                case "select-episode" when args.Count == 3: sync.SelectEpisode(int.Parse(args[1]), int.Parse(args[2])); break;
+            }
+        }
+        catch (Exception error) { sync.ReportError(error); }
     }
 
     void ShowDanmakuBlocklist(IList<string> args)
@@ -476,7 +516,7 @@ public class GuiCommand
 
         if (path.Contains(Folder.Startup.TrimEnd(Path.DirectorySeparatorChar), StringComparison.CurrentCultureIgnoreCase))
         {
-            Msg.ShowWarning(_("AnimeVE is already in the Path environment variable."));
+            Msg.ShowWarning(_("mpv-AnimeFusion is already in the Path environment variable."));
             return;
         }
 
@@ -484,7 +524,7 @@ public class GuiCommand
             Folder.Startup.TrimEnd(Path.DirectorySeparatorChar) + ";" + path,
             EnvironmentVariableTarget.User);
 
-        Msg.ShowInfo(_("AnimeVE was successfully added to the Path environment variable."));
+        Msg.ShowInfo(_("mpv-AnimeFusion was successfully added to the Path environment variable."));
     }
 
     void RemoveFromPath()
@@ -493,7 +533,7 @@ public class GuiCommand
 
         if (!path.Contains(Folder.Startup.TrimEnd(Path.DirectorySeparatorChar)))
         {
-            Msg.ShowWarning(_("AnimeVE was not found in the Path environment variable."));
+            Msg.ShowWarning(_("mpv-AnimeFusion was not found in the Path environment variable."));
             return;
         }
 
@@ -502,7 +542,7 @@ public class GuiCommand
 
         Environment.SetEnvironmentVariable("Path", path, EnvironmentVariableTarget.User);
 
-        Msg.ShowInfo(_("AnimeVE was successfully removed from the Path environment variable."));
+        Msg.ShowInfo(_("mpv-AnimeFusion was successfully removed from the Path environment variable."));
     }
 
     // deprecated

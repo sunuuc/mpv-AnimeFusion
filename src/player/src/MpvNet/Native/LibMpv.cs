@@ -26,6 +26,9 @@ public static class LibMpv
     public static extern mpv_error mpv_command(nint mpvHandle, nint strings);
 
     [DllImport("libmpv-2.dll", CallingConvention = CallingConvention.Cdecl)]
+    public static extern mpv_error mpv_command_async(nint mpvHandle, ulong replyUserdata, nint strings);
+
+    [DllImport("libmpv-2.dll", CallingConvention = CallingConvention.Cdecl)]
     public static extern mpv_error mpv_command_string(nint mpvHandle, [MarshalAs(UnmanagedType.LPUTF8Str)] string command);
 
     [DllImport("libmpv-2.dll", CallingConvention = CallingConvention.Cdecl)]

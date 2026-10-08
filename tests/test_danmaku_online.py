@@ -201,7 +201,7 @@ assert(result[2].platforms[1].name=='腾讯视频' and result[2].platforms[2].na
         online_path = lua_long(str(ONLINE).replace(chr(92), "/"))
         lua_eval(f"""
 local online=dofile({online_path})
-local base='无职转生 ～到了异世界就拿出真本事～'
+local base='无职转生 ~到了异世界就拿出真本事~'
 for _,marker in ipairs({{'Ⅲ','III',' 第三季',' Season 3',' S03'}}) do
     local info=online.show_info('无职转生'..marker..' ～到了异世界就拿出真本事～(2026)from dandan')
     assert(info.season==3,marker..' season was not recognized')
@@ -216,6 +216,102 @@ assert(online.season_number('Overlord IV')==4)
 for _,title in ipairs({{'无职转生 OVA(2022)','间谍过家家 代号：白(2023)',
     'Violet Evergarden','SPY x FAMILY','S3Drive','Final Fantasy XIV'}}) do
     assert(online.season_number(title)==nil,'Non-season title was misclassified: '..title)
+end
+""")
+
+    def test_recent_title_matches_fullwidth_punctuation(self):
+        online_path = lua_long(str(ONLINE).replace(chr(92), "/"))
+        lua_eval(f"""
+local online=dofile({online_path})
+local title='无职转生：到了异世界就拿出真本事 (2026) S3E1 - Burn Bright, Mad Dog'
+local info=online.show_info('无职转生Ⅲ ～到了异世界就拿出真本事～(2026)')
+local shows={{{{series=info.series,season=info.season,year=info.year,kind='TV动画',
+    platforms={{{{id='33'}}}}}}}}
+assert(#online.auto_candidates(shows,title)==1,'CJK punctuation excluded the same series')
+local episodes={{{{id='301',number_value=1}}}}
+assert(online.match_verified({{episodeId='301',animeTitle=info.label}},title,episodes))
+shows[1].season=2
+assert(#online.auto_candidates(shows,title)==0,'Wrong season must remain excluded')
+shows[1].season=3;shows[1].year=2024
+assert(#online.auto_candidates(shows,title)==1,'A year difference alone must not exclude a title and season match')
+shows[1].year=2026;shows[1].series=info.series..' OVA'
+assert(#online.auto_candidates(shows,title)==0,'Different works must remain excluded')
+""")
+
+    def test_matching_uses_provider_aliases_and_limited_character_differences(self):
+        online_path = lua_long(str(ONLINE).replace(chr(92), "/"))
+        lua_eval(f"""
+local online=dofile({online_path})
+local data={{animes={{{{animeId=51,animeTitle='星海中的旅行者 第二季(2024)',source='qq',
+    aliases={{'Voyagers of the Stars Season 2','星海旅行记 第二季','星海の旅人Ⅱ'}},episodeCount=12}}}}}}
+local shows=online.search_results('x','',function()return data end)
+for _,title in ipairs({{'Voyagers of the Stars (2025) S2E5.mkv',
+    '星海旅行记 (2024) S2E5','星海の旅人 S2E5',
+    '星海里的旅行者 (2024) S2E5','星海中的旅者 (2024) S2E5'}}) do
+    local candidates=online.auto_candidates(shows,title)
+    assert(#candidates==1 and candidates[1].id=='51','Generic alias/typo matching failed: '..title)
+end
+assert(#online.auto_candidates(shows,'另一个完全不同的故事 S2E5')==0)
+assert(#online.auto_candidates(shows,'星海中的旅行者 S3E5')==0)
+assert(#online.auto_candidates(shows,'星海中的旅行者 第5集')==0,'Unknown season must not guess season two')
+local episodes={{{{id='5',number_value=5}},{{id='6',number_value=6}},{{id='50',number_value=5,extra=true}}}}
+local title='星海里的旅行者 S2E5'
+assert(online.auto_episode(episodes,title).id=='5')
+assert(online.match_verified({{episodeId='5',animeTitle=data.animes[1].animeTitle}},title,episodes))
+assert(not online.match_verified({{episodeId='6',animeTitle=data.animes[1].animeTitle}},title,episodes))
+assert(not online.match_verified({{episodeId='50',animeTitle=data.animes[1].animeTitle}},title,episodes))
+""")
+
+    def test_close_works_are_ambiguous_and_exact_title_wins(self):
+        online_path = lua_long(str(ONLINE).replace(chr(92), "/"))
+        lua_eval(f"""
+local online=dofile({online_path})
+local shows={{
+    {{series='星海中的旅行者',season=2,year=2024,platforms={{{{id='51'}}}}}},
+    {{series='星海外的旅行者',season=2,year=2025,platforms={{{{id='52'}}}}}},
+}}
+local candidates,reason=online.auto_candidates(shows,'星海里的旅行者 (2024) S2E5')
+assert(#candidates==0 and reason=='ambiguous','Close scores must not choose a work by API order or year')
+local exact=online.auto_candidates(shows,'星海中的旅行者 S2E5')
+assert(#exact==1 and exact[1].id=='51','Exact title should outrank a similar work')
+shows[2].series=shows[1].series;shows[2].year=2024
+assert(#online.auto_candidates(shows,'星海中的旅行者 S2E5')==2,'Same work across platforms remains available')
+shows[2].part=2
+local split,why=online.auto_candidates(shows,'星海中的旅行者 S2E5')
+assert(#split==0 and why=='ambiguous','Unspecified split parts must not pick different local episodes')
+local shorts={{{{series='星旅',season=1,platforms={{{{id='1'}}}}}}}}
+assert(#online.auto_candidates(shorts,'星语 S1E1')==0,'Short unrelated titles must not match')
+local numbers={{{{series='星海中的第86位旅行者',season=1,platforms={{{{id='1'}}}}}}}}
+assert(#online.auto_candidates(numbers,'星海中的第87位旅行者 S1E1')==0,'Title numbers are not fuzzy')
+""")
+
+    def test_alias_seasons_and_filename_metadata_are_parsed_without_guessing(self):
+        online_path = lua_long(str(ONLINE).replace(chr(92), "/"))
+        lua_eval(f"""
+local online=dofile({online_path})
+local data={{animes={{{{animeId=51,animeTitle='星海旅行记',source='qq',
+    aliases={{'Voyagers of the Stars Season 2','星海旅行记 第二季'}}}}}}}}
+local shows=online.search_results('x','',function()return data end)
+assert(shows[1].season==2,'Consistent provider aliases should identify a season')
+assert(#online.auto_candidates(shows,'星海旅行记 S2E5')==1)
+data.animes[1].aliases[2]='星海旅行记 第三季'
+shows=online.search_results('x','',function()return data end)
+assert(#online.auto_candidates(shows,'星海旅行记 S2E5')==0,'Conflicting seasons must remain unresolved')
+for _,title in ipairs({{'[发布组] 星海旅行记 Ｓ０２．Ｅ０５ [1080p][ABC123].mkv',
+    '星海旅行记 S02_E05.mkv','星海旅行记 S02 E05.mkv','星海旅行记 第二季 - 05 [HEVC].mkv',
+    '星海旅行记 第二季 第05集.mkv'}}) do
+    local anime,episode,season=online.episode_query(title)
+    assert(anime=='星海旅行记' and episode==5 and season==2,'Filename metadata mismatch: '..title)
+end
+for _,title in ipairs({{'星海旅行记 S2E5.5.mkv','星海旅行记 S2E5.5','星海旅行记 第二季 EP5.5'}}) do
+    local _,episode=online.episode_query(title)
+    assert(episode==5.5,'Fractional episode must not truncate to episode five: '..title)
+end
+assert(not online.auto_episode({{{{id='5',number_value=5}}}},'星海旅行记 S2E5.5.mkv'))
+assert(online.search_keyword('[发布组] 星海旅行记【字幕组】 第二季 S2.E05 [HEVC].mkv')=='星海旅行记',
+    'The one automatic search must omit release tags and season metadata')
+for _,title in ipairs({{'星海旅行记 第二季 S3E5','星海旅行记 S0E5','星海旅行记 S2E0'}}) do
+    assert(not online.episode_query(title),'Invalid/conflicting season or episode must not guess: '..title)
 end
 """)
 
@@ -346,6 +442,29 @@ local xml,xml_error=online.parse_comments('<i><d p="1,1,1,16777215">弹幕</d></
 assert(not xml and xml_error)
 """
         lua_eval(code)
+
+    def test_renren_members_scroll_normally_and_keep_color(self):
+        core_path = lua_long(str(ROOT / 'portable_config/script-modules/player_ui_core.lua').replace(chr(92), '/'))
+        online_path = lua_long(str(ONLINE).replace(chr(92), '/'))
+        lua_eval(f"""
+local online=dofile({online_path})
+local core=dofile({core_path})
+local data={{comments={{
+  {{p='9,2,14463824,[renren]',m='member'}},
+  {{p='10,1,14463824,[renren]',m='normal yellow'}},
+  {{p='11,6,16777215,[bilibili]user',m='real reverse'}},
+  {{p='12,4,16777215,[renren]',m='bottom'}},
+  {{p='13,5,16777215,[renren]',m='top'}},
+  {{p='14,2,16777215,[other]',m='other source'}}
+}}}}
+local list,err=online.parse_comments('x',function()return data end,core)
+assert(list and #list==6,err)
+assert(list[1].mode==1 and list[1].color==14463824,'Renren membership must not change scroll direction or color')
+assert(list[2].mode==1 and list[2].color==14463824)
+assert(list[3].mode==6,'true reverse comments must remain reverse')
+assert(list[4].mode==4 and list[5].mode==5,'fixed comments must remain fixed')
+assert(list[6].mode==2,'source-specific correction must not affect other providers')
+""")
 
     def test_hash_command_uses_the_first_sixteen_mib(self):
         with tempfile.TemporaryDirectory() as directory:

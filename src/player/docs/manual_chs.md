@@ -106,7 +106,7 @@ mpv.net在以下路径寻找设置文件夹：
 1. <程序启动目录>\portable_config
 2. %APPDATA%\mpv.net (`C:\Users\%USERNAME%\AppData\Roaming\mpv.net`)
 
-mpv的选项保存在mpv.conf文件中，mpv.net的专属选项保存在 AnimeVE.conf 文件中，参数解释请参阅 [此处](#mpvnet的专属选项)
+mpv的选项保存在mpv.conf文件中，mpv.net的专属选项保存在 mpv-AnimeFusion.conf 文件中，参数解释请参阅 [此处](#mpvnet的专属选项)
 
 
 快捷键和上下文菜单
@@ -361,7 +361,7 @@ mpv.net的专属选项
 
 这些专属选项可以在 conf editor 中使用关键词 "mpv.net" 检索。
 
-这些专属选项被修改后被保存在 AnimeVE.conf 文件中。
+这些专属选项被修改后被保存在 mpv-AnimeFusion.conf 文件中。
 
 #### --autofit-audio \<integer\>
 音频文件的初始窗口高度，以百分比为单位。默认：70
@@ -626,9 +626,9 @@ C#脚本的host类似于[扩展](../../../tree/master/src/Extensions)，在打�
 - 下载安装 [Visual Studio Community](https://visualstudio.microsoft.com) 。
 - 创建新的项目类型 **Class Library .NET Framework** 并确保项目名称以 **Extension** 作结尾。
 - 增加一个 reference 到 **System.ComponentModel.Composition**.
-- 增加一个 reference 到 AnimeVE.exe ，在 Solution Explorer 中选择 mpvnet 的 reference ，打开 Properties 窗口并设置 **Copy Local** 为 false 来阻止在项目编译时 AnimeVE.exe 被复制到输出目录。
+- 增加一个 reference 到 mpv-AnimeFusion.exe ，在 Solution Explorer 中选择 mpvnet 的 reference ，打开 Properties 窗口并设置 **Copy Local** 为 false 来阻止在项目编译时 mpv-AnimeFusion.exe 被复制到输出目录。
 - 现在打开 project properties 并在 Build 标签页设置 output path ，扩展类似于位于配置文件夹中的脚本，例如： `<config folder>\extensions\ExampleExtension\ExampleExtension.dll`
-- 同样在 project properties 的 Debug 标签页中选择选项 **Start external program** 并且定义到 AnimeVE.exe 的路径。在 Debug 标签页中你还可以定义 command line arguments ，例如开始调试时要播放的视频文件。
+- 同样在 project properties 的 Debug 标签页中选择选项 **Start external program** 并且定义到 mpv-AnimeFusion.exe 的路径。在 Debug 标签页中你还可以定义 command line arguments ，例如开始调试时要播放的视频文件。
 
 
 ### 代码样本
@@ -753,7 +753,7 @@ mpv的属性 [idle](https://mpv.io/manual/master/#options-idle) 在mpv.net中也
 
 在config editor中输入 `mpv.net` 检索这些选项，在[此处](#mpvnet的专属选项)的手册中有对应说明。
 
-mpv.net的专属选项保存在 AnimeVE.conf 文件中，与mpv一样可由命令行界面获取。
+mpv.net的专属选项保存在 mpv-AnimeFusion.conf 文件中，与mpv一样可由命令行界面获取。
 
 
 技术概览
@@ -1422,7 +1422,7 @@ sec是跳转的相对秒数，使用no osd前缀是因为mpv.net包含一个脚�
 
 mpv.conf 文件内涵mpv的设置
 
-AnimeVE.conf 文件内涵mpvnet的设置
+mpv-AnimeFusion.conf 文件内涵mpvnet的设置
 
 input.conf 文件内涵mpv的键鼠绑定
 
