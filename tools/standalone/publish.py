@@ -5,6 +5,7 @@ from build import R,H,E,DIST,REPO,META,LOCK,FONTS,sha,dump,run,api,source_releas
 from security_verify import require_result as require_security_result
 
 require_security_result(R/'clean-install',E/'security/results.json')
+require_security_result(DIST/'installer',E/'installer/security/results.json')
 
 run(sys.executable,H/'verify_player_sources.py')
 

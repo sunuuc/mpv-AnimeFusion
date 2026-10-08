@@ -10,6 +10,7 @@ LOCK=json.loads((H/'dependencies.json').read_text(encoding='utf-8'))
 REPO='sunuuc/mpv-AnimeFusion'
 from components import prepare as prepare_components, validate as validate_components
 from security_verify import require_result as require_security_result
+from build_installer import build as build_installer
 FONTS={'.ttf','.otf','.ttc','.woff','.woff2','.fon','.fnt'}
 SEVEN=shutil.which('7z') or next((str(p) for p in (Path(r'C:\Program Files\7-Zip\7z.exe'),Path(r'D:\Apps\7-Zip\7z.exe')) if p.is_file()),'7z')
 SOURCE_ADDITIONS={
@@ -324,6 +325,11 @@ def package():
       'run_id':os.environ['GITHUB_RUN_ID'],'dependencies':LOCK,'self_contained_dotnet':True,
       'gpu_inference_tested':False,'player_ui_server_tested':False})
     dump(info/'SHA256.json',{p.relative_to(ST).as_posix():sha(p) for p in ST.rglob('*') if p.is_file() and p!=info/'SHA256.json'})
+    installer=build_installer(ST,DIST/'installer',E/'installer')
+    run(sys.executable,H/'security_verify.py','scan',DIST/'installer',E/'installer/security')
+    require_security_result(DIST/'installer',E/'installer/security/results.json')
+    cp(installer,DIST/installer.name)
+    installer=DIST/installer.name
     archive=DIST/f'{META["name"]}-{META["version"]}-win-x64.7z'
     run(SEVEN,'a','-t7z','-mx=3','-mmt=2','-bd',archive,'.',cwd=ST,stdout=subprocess.DEVNULL)
     run(SEVEN,'t',archive,stdout=subprocess.DEVNULL)
@@ -343,7 +349,8 @@ def package():
                 archives.append(part);index+=1
         archive.unlink()
     native=LOCK['native_and_ui_resources'];cp(download(native),DIST/native['name'])
-    dump(DIST/'artifacts.json',json.loads((E/'component-assets.json').read_text())+[native]+[{'repo':REPO,'tag':META['tag'],'name':p.name,'sha256':sha(p),'bytes':p.stat().st_size} for p in archives])
+    user_packages=archives+[installer]
+    dump(DIST/'artifacts.json',json.loads((E/'component-assets.json').read_text())+[native]+[{'repo':REPO,'tag':META['tag'],'name':p.name,'sha256':sha(p),'bytes':p.stat().st_size} for p in user_packages])
     shutil.rmtree(ST);extract(archives[0],R/'clean-install')
     require_security_result(R/'clean-install',E/'security/results.json')
     run(sys.executable,R/'tests/test_optional_components.py',R/'clean-install')
@@ -359,7 +366,7 @@ def package():
         for p in source_release_files(('src','tools','tests','portable_config','animejanai','THIRD_PARTY_LICENSES','third_party','docs')):
             if p.suffix.lower() not in FONTS:z.write(p,p.relative_to(R).as_posix())
         for n in ('LICENSE','release.json','README.md','README.en.md','CHANGELOG.md'):z.write(R/n,n)
-    (DIST/'SHA256SUMS.txt').write_text(''.join(sha(p)+'  '+p.name+'\n' for p in archives+[DIST/native['name']]+[DIST/a['name'] for a in json.loads((E/'component-assets.json').read_text())]+[sourcezip]),encoding='utf-8')
+    (DIST/'SHA256SUMS.txt').write_text(''.join(sha(p)+'  '+p.name+'\n' for p in user_packages+[DIST/native['name']]+[DIST/a['name'] for a in json.loads((E/'component-assets.json').read_text())]+[sourcezip]),encoding='utf-8')
     (DIST/'RELEASE.md').write_text(release_notes(),encoding='utf-8')
     cp(E/'payload.json',DIST/'payload-verification.json')
     print('FULL PACKAGE VERIFIED',[(p.name,p.stat().st_size) for p in archives],flush=True)

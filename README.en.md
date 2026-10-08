@@ -37,6 +37,6 @@ Thanks to these projects and their contributors. Their roles are listed below; p
 | [Avalonia](https://github.com/AvaloniaUI/Avalonia), [FluentAvalonia](https://github.com/amwx/FluentAvalonia), [ReactiveUI](https://github.com/reactiveui/ReactiveUI) | Manager UI and state binding |
 | [SkiaSharp / HarfBuzzSharp](https://github.com/mono/SkiaSharp), [Inter](https://github.com/rsms/inter) | Manager drawing, text shaping and fonts |
 | [Nginx](https://nginx.org/), [Certbot](https://github.com/certbot/certbot) | HTTPS endpoint and certificate renewal for authorization |
+| [Inno Setup](https://github.com/jrsoftware/issrc) | EXE installer and uninstaller |
 
 TensorRT, CUDA and DirectML use their respective vendor licenses; notices are preserved in the package. AnimeJaNai models and the project use CC BY-NC-SA 4.0. Each component remains subject to its own license.
-

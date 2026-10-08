@@ -12,6 +12,7 @@
 | libass / libass contributors | <https://github.com/libass/libass> | ISC，`docs/THIRD_PARTY_LICENSES/libass-ISC.txt`；修改源码在 `third_party/libass` |
 | thumbfast / po5 | <https://github.com/po5/thumbfast> | `docs/THIRD_PARTY_LICENSES/thumbfast-LICENSE.txt` |
 | PCRE2 / Philip Hazel 及贡献者 | <https://github.com/PCRE2Project/pcre2> | BSD，`docs/THIRD_PARTY_LICENSES/PCRE2-BSD.txt` |
+| Inno Setup / Jordan Russell、Martijn Laan 及贡献者 | <https://github.com/jrsoftware/issrc> | 安装与卸载程序，6.7.3，`docs/THIRD_PARTY_LICENSES/Inno-Setup.txt` |
 
 组件管理源码来源及版本见 `app/build-info/standalone/updater-upstream.json`。
 
@@ -34,6 +35,8 @@ BangumiNet.Api（MIT）用于 API 请求；mpv_bangumi_sync（MIT）提供标题
 - mpv 所使用的 FFmpeg、MSYS2 及其他依赖的逐项原许可保留在 `docs/THIRD_PARTY_LICENSES/MSYS2/` 与 `docs/licenses/`。新增许可文件的来源与 SHA-256 在 `docs/THIRD_PARTY_LICENSES/sources.json`。
 
 ## 修改源码
+
+EXE 安装定义位于 `src/player/src/Setup/Inno`。简体中文安装界面采用 Inno Setup `is-6_7_3` 标签中的 `Files/Languages/Unofficial/ChineseSimplified.isl`，维护者 Zhenghan Yang，SHA-256 为 `7d544b9bb1d142cfa11f2e5d3cc8abe2e55f8e066c5124e3772675aa236e1278`，保留原文件署名。构建时用 [innoextract_win](https://github.com/UserUnknownFactor/innoextract_win) 670 解包编译器；它基于 [innoextract](https://github.com/dscharrer/innoextract)，仅为构建工具，不进入发行包。
 
 播放器、管理器、弹幕转换与渲染的修改源码位于 `src` 和 `third_party`，构建记录位于 `app/build-info`。
 

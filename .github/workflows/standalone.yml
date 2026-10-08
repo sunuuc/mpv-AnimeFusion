@@ -1,4 +1,4 @@
-name: Standalone complete portable release
+name: Standalone portable and installer release
 on:
   workflow_dispatch:
     inputs:
@@ -136,7 +136,11 @@ jobs:
         if: ${{ success() && !inputs.publish }}
         with:
           name: standalone-complete-package
-          path: dist/*.7z*
+          path: |
+            dist/*.7z*
+            dist/*-setup-x64.exe
+            dist/*-sources.zip
+            dist/SHA256SUMS.txt
           compression-level: 0
           if-no-files-found: error
           retention-days: 3
