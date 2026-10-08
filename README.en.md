@@ -10,8 +10,8 @@ A Windows anime player with AI upscaling, RIFE frame interpolation, online/local
 
 - **AI upscaling and interpolation**: multiple-model processing chains, RIFE interpolation, adjustable multipliers and custom profiles activated by resolution and frame rate.
 - **Downloads on demand**: the manager detects your GPU and recommends components; models and GPU components can also be selected manually. The player package contains no models.
-- **Danmaku**: parallel search across routes; remembers the working API, platform and episode mapping per show and season, reuses that source for subsequent episodes and searches again on loading failure. Supports local XML, speed, font size, opacity, display area, type filters and blocked words.
-- **Bangumi sync**: sign in through browser authorization without creating your own application. The bottom-bar avatar panel shows cover art, rating, seasonal episodes and watch status. Automatic collection and watched-episode updates have separate playback thresholds; manual single-episode and cumulative progress updates are available.
+- **Danmaku**: parallel route search and automatic matching; supports local XML, speed, font size, opacity, display area, type filters and blocked words.
+- **Bangumi sync**: browser authorization, cover art, ratings and episode watch status; separate playback thresholds for automatic collection and watched-episode updates, plus manual individual and cumulative progress updates.
 - **Playback and subtitles**: local files, network video, playlists, resume, chapters, audio-track selection and dual subtitles.
 
 ## Installation
@@ -26,23 +26,23 @@ Requires 64-bit Windows.
 
 ### Upscaling and interpolation
 
-Choose recommended components or select them manually under **Components**, then click **Apply** to download. NVIDIA GPUs can use TensorRT; AMD and Intel GPUs can use DirectML. Select the backend, models, interpolation multiplier and activation conditions in the manager. TensorRT builds a local engine cache on first use.
-
-The initial profiles offer 2× interpolation and 2× interpolation with 2K upscaling. Other slots are available for your own profiles.
+1. Open **Components** in the manager, choose recommended items or select models and GPU components manually, then click **Apply** to download.
+2. Under **Profiles**, choose models, the interpolation multiplier and activation conditions, then set a default profile.
+3. During playback, press Ctrl+1–9 to select a profile or Ctrl+0 to disable AI processing.
 
 ### Danmaku
 
-Add and sort routes under **Settings → Danmaku settings → Danmaku routes**. Matching runs automatically; the bottom-bar danmaku menu also provides manual search, episode selection and local XML import. Matching uses titles, aliases, seasons and episodes, tolerating limited title differences while requiring the correct season and episode.
-
-Sources are remembered separately for each show and season. Low comment counts, including a successful empty response, do not trigger source switching. Loading failure or a missing episode triggers another search; the next successful source becomes the remembered source. Personal routes and source history are excluded from releases.
-
-Configure speed, size, opacity, display area and filters under **Danmaku settings**. The loaded entry displays its actual route, platform and comment count. Loading and completion notices show preparation status and the comment count. Renren member comments retain their source color and scroll normally.
+1. Add and sort routes under **Settings → Danmaku settings → Danmaku routes**.
+2. Open a video to load danmaku automatically. For manual selection, open the bottom-bar danmaku menu → **Search danmaku**, search for a show and choose an episode.
+3. Adjust font size, speed, opacity, display area and filters under **Danmaku settings**.
+4. Use **Import local danmaku** in the danmaku menu to load a local XML file.
 
 ### Bangumi
 
-Click the account icon in the bottom bar and authorize in your browser. A circular avatar appears after login. Its panel shows the cover, title, rating, current episode and episode states. Failed matching can be retried, and subjects can also be selected manually.
-
-Set separate thresholds for automatic collection and watched-episode updates under **Settings → Sync settings**. Existing collections are preserved; the latest collection state is checked before progress is submitted. For a collected subject, mark one episode watched or mark progress cumulatively through the selected regular episode. The application secret remains on the authorization service and is not bundled in the player.
+1. Click the account icon in the bottom bar, sign in through your browser and authorize the player.
+2. Click your avatar to view the show and episodes. Choose a collection status, then click an episode to mark it watched or mark progress through it.
+3. Under **Settings → Sync settings**, enable automatic collection and watched-episode updates separately and set their playback thresholds.
+4. Retry failed matching, or use **Select subject** to choose another show.
 
 ### Keyboard shortcuts
 

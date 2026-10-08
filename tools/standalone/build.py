@@ -294,11 +294,9 @@ def inspect_payload():
        'files':len(files),'unpacked_bytes':sum(p.stat().st_size for p in files),'gpu_inference_tested':False})
 
 def release_notes():
-    text=(R/'CHANGELOG.md').read_text(encoding='utf-8')
-    match=re.search(r'(?ms)^## \['+re.escape(META['version'])+r'\][^\n]*\n(.*?)(?=^## |\Z)',text)
-    if not match or not match.group(1).strip():
-        raise RuntimeError('Missing version changes in CHANGELOG.md')
-    return match.group(1).strip()+'\n'
+    text=(R/'docs/release-features.md').read_text(encoding='utf-8').strip()
+    if not text:raise RuntimeError('Missing release feature descriptions')
+    return text+'\n'
 
 def package():
     require_security_result(ST,E/'security/results.json')
