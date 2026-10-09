@@ -20,6 +20,13 @@
 - **Bangumi 同步**：自动同步收藏与观看进度。
 <img width="1213" height="1121" alt="image" src="https://github.com/user-attachments/assets/be033a4f-dfde-47be-8f05-7758bec43b91" />
 
+## 社区
+
+本项目认可并感谢 [LINUX DO](https://linux.do) 社区。「Where possible begins.」
+
+This project recognizes and thanks the [LINUX DO](https://linux.do) community.
+
+
 ## 开源来源与致谢
 
 感谢以下项目及其贡献者，修改范围和逐项许可证见[来源与第三方许可](docs/open-source-notices.md)。
@@ -47,3 +54,5 @@
 | [curl](https://github.com/curl/curl) | 在线弹幕请求 |
 
 TensorRT、CUDA 和 DirectML 按各厂商许可证使用，相关声明随包保留。AnimeJaNai 模型及项目采用 CC BY-NC-SA 4.0，各组件分别遵循其原许可证。
+
+
