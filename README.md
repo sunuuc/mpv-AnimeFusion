@@ -2,7 +2,7 @@
 
 简体中文 | [English](README.en.md)
 
-动漫专用mpv融合怪，集百家功能于一身，详细请看下方来源，支持 AI 超分、RIFE 补帧、弹幕和 Bangumi 观看进度同步。
+动漫专用mpv融合怪，集百家功能于一身，详细请看下方来源，支持 AI 超分、补帧、弹幕和 Bangumi 观看进度同步。
 
 [下载](https://github.com/sunuuc/mpv-AnimeFusion/releases/latest) · [更新日志](CHANGELOG.md) · [问题反馈](https://github.com/sunuuc/mpv-AnimeFusion/issues)
 
