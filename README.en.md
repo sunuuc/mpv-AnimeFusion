@@ -2,21 +2,27 @@
 
 [简体中文](README.md) | English
 
-A Windows anime player with AI upscaling, RIFE frame interpolation, online/local danmaku and Bangumi watch-progress sync.
+An mpv-based player built for anime, bringing together features from many projects. See the sources below. Supports AI upscaling, frame interpolation, danmaku and Bangumi watch-progress sync.
 
 [Download](https://github.com/sunuuc/mpv-AnimeFusion/releases/latest) · [Changelog](CHANGELOG.md) · [Report an issue](https://github.com/sunuuc/mpv-AnimeFusion/issues)
 
 ## Features
 
 - **AI upscaling and interpolation**: improve image quality and playback smoothness.
-- **Downloads on demand**: download models and GPU components.
+  <img width="1898" height="1061" alt="image" src="https://github.com/user-attachments/assets/25d92e1d-db68-4327-bff5-1acc6fe29b2e" />
+
+- **Downloads on demand**: download the models and GPU components you need.
+  <img width="1898" height="1061" alt="image" src="https://github.com/user-attachments/assets/759796a2-a195-48f7-a791-ae2179e339d3" />
+
 - **Danmaku**: online and local comments.
-- **Bangumi sync**: sync collections and watch progress.
-- **Playback and subtitles**: local and network videos, playlists and subtitles.
+<img width="2560" height="1494" alt="image" src="https://github.com/user-attachments/assets/6bdd6d74-6248-450c-b015-12f309820c14" />
+
+- **Bangumi sync**: automatically sync collections and watch progress.
+<img width="1213" height="1121" alt="image" src="https://github.com/user-attachments/assets/be033a4f-dfde-47be-8f05-7758bec43b91" />
 
 ## Open-source credits
 
-Thanks to these projects and their contributors. Their roles are listed below; pinned versions, modifications and individual licenses are documented in [Sources and third-party licenses](docs/open-source-notices.md).
+Thanks to these projects and their contributors. Modifications and individual licenses are documented in [Sources and third-party licenses](docs/open-source-notices.md).
 
 | Project | Contribution |
 | --- | --- |

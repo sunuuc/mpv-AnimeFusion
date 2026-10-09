@@ -82,8 +82,7 @@ double osd_get_force_video_pts(struct osd_state *osd)
          '        .can_drop = opts->frame_dropping & 1,\n        .playback_speed = mpctx->video_speed,')
     edit('video/out/vo.c', '    bool request_redraw;            // redraw request from player to VO',
          '    double secondary_anchor_pts;\n    int64_t secondary_anchor_ns;\n'
-         '    int64_t secondary_end_ns;\n    int64_t secondary_next_ns;\n'
-         '    int64_t secondary_sample_ns;\n    double secondary_last_pts;\n'
+         '    double secondary_clock_speed;\n    int64_t secondary_next_ns;\n'
          '    bool secondary_clock_valid;\n'
          '    bool request_redraw;            // redraw request from player to VO')
     edit('video/out/vo.c', 'static bool render_frame(struct vo *vo)\n', '''// The video frame remains immutable. Only secondary ASS receives this clock;
@@ -99,14 +98,14 @@ static int64_t secondary_next_deadline(struct vo *vo, int64_t now)
     return (now / interval + 1) * interval;
 }
 
-static bool secondary_redraw_due(struct vo *vo, int64_t now)
+static bool secondary_redraw_due(struct vo *vo)
 {
     struct vo_internal *in = vo->in;
     struct vo_frame *frame = in->current_frame;
     if (!frame || frame->playback_speed <= 0 || frame->display_synced ||
         in->paused ||
         !in->hasframe || !in->visible || in->vsync_interval <= 1 ||
-        now >= in->secondary_end_ns || !osd_secondary_needs_redraw(vo->osd))
+        !in->secondary_clock_valid || !osd_secondary_needs_redraw(vo->osd))
         return false;
     // Video at or above the ASS cadence already supplies enough presentations.
     // Extra swaps compete with those frames; only fill low-cadence gaps.
@@ -115,48 +114,52 @@ static bool secondary_redraw_due(struct vo *vo, int64_t now)
     return duration > secondary_interval(vo);
 }
 
+static double secondary_clock_pts(struct vo_internal *in, int64_t now)
+{
+    if (!in->secondary_clock_valid)
+        return MP_NOPTS_VALUE;
+    double elapsed = in->paused ? 0 :
+        MP_TIME_NS_TO_S(MPMAX(0, now - in->secondary_anchor_ns));
+    return in->secondary_anchor_pts + elapsed * in->secondary_clock_speed;
+}
+
 static void update_secondary_clock(struct vo *vo, bool new_frame)
 {
     struct vo_internal *in = vo->in;
     struct vo_frame *frame = in->current_frame;
     int64_t now = mp_time_ns();
     int64_t sample_time = now;
-    double pts = MP_NOPTS_VALUE;
-    if (frame && frame->current && frame->playback_speed > 0) {
-        if (new_frame) {
-            in->secondary_anchor_pts = frame->current->pts;
-            if (frame->display_synced)
-                in->secondary_anchor_pts += frame->ideal_frame_vsync;
-            in->secondary_anchor_ns = frame->display_synced ? now : frame->pts;
-            double duration = frame->duration >= 0 ? MP_TIME_NS_TO_S(frame->duration)
-                : frame->approx_duration / frame->playback_speed;
-            in->secondary_end_ns = in->secondary_anchor_ns + MP_TIME_S_TO_NS(MPMAX(0, duration));
-            // Video may be prepared early; publish ASS for its presentation,
-            // not for the earlier render call's wall-clock bucket.
-            sample_time = MPMAX(now, in->secondary_anchor_ns);
-        }
-        if (new_frame && in->paused)
-            pts = frame->current->pts;
-        if (!in->paused && in->secondary_anchor_ns) {
-            int64_t sample = MPMIN(sample_time, in->secondary_end_ns);
-            pts = in->secondary_anchor_pts +
-                MP_TIME_NS_TO_S(MPMAX(0, sample - in->secondary_anchor_ns)) * frame->playback_speed;
-            // Small cadence corrections must not move rolling text backwards.
-            // A seek clears validity in forget_frames; paused seek frames are
-            // also allowed to publish their exact requested timestamp.
-            if (in->secondary_clock_valid)
-                pts = MPMAX(pts, in->secondary_last_pts);
-        }
+    if (!frame || !frame->current || frame->current->pts == MP_NOPTS_VALUE ||
+        frame->playback_speed <= 0) {
+        osd_set_secondary_pts(vo->osd, MP_NOPTS_VALUE);
+        return;
     }
-    bool sample_due = !in->secondary_sample_ns ||
-        sample_time / secondary_interval(vo) >
-            in->secondary_sample_ns / secondary_interval(vo);
-    if (!frame || (new_frame && in->paused) || (!in->paused && sample_due)) {
-        osd_set_secondary_pts(vo->osd, pts);
-        in->secondary_sample_ns = sample_time - sample_time % secondary_interval(vo);
-        in->secondary_last_pts = pts;
-        in->secondary_clock_valid = pts != MP_NOPTS_VALUE;
+    if (new_frame && !frame->display_synced)
+        sample_time = MPMAX(now, frame->pts);
+
+    double video_pts = frame->current->pts;
+    if (frame->display_synced)
+        video_pts += frame->ideal_frame_vsync;
+    if (!in->secondary_clock_valid || (new_frame && in->paused)) {
+        in->secondary_anchor_pts = video_pts;
+        in->secondary_anchor_ns = sample_time;
+        in->secondary_clock_speed = frame->playback_speed;
+        in->secondary_clock_valid = true;
+    } else if (new_frame) {
+        // Rebase without changing the current position. Correct clock drift
+        // over one second, with at most a 1% rate adjustment, rather than
+        // snapping to each video's PTS or clamping to its frame end.
+        double pts = secondary_clock_pts(in, sample_time);
+        double max_correction = frame->playback_speed * 0.01;
+        double correction = MPCLAMP(video_pts - pts,
+                                    -max_correction, max_correction);
+        in->secondary_anchor_pts = pts;
+        in->secondary_anchor_ns = sample_time;
+        in->secondary_clock_speed = frame->playback_speed + correction;
     }
+    // Every presentation samples the continuous clock. The refresh deadline
+    // controls when to draw, not which older timestamp to reuse for that draw.
+    osd_set_secondary_pts(vo->osd, secondary_clock_pts(in, sample_time));
 }
 
 static bool render_frame(struct vo *vo)
@@ -166,7 +169,7 @@ static bool render_frame(struct vo *vo)
     // presentation is due. Consuming it early would block this thread in
     // wait_until() and starve the secondary subtitle deadlines.
     if (in->frame_queued && !in->frame_queued->display_synced &&
-        secondary_redraw_due(vo, mp_time_ns()) &&
+        secondary_redraw_due(vo) &&
         in->frame_queued->pts - in->flip_queue_offset > mp_time_ns())
         goto done;
 
@@ -185,7 +188,7 @@ static bool render_frame(struct vo *vo)
          '            in->secondary_next_ns = secondary_next_deadline(vo, now);')
     edit('video/out/vo.c', '        bool redraw = in->request_redraw;', '''        // Render deadlines, not a player/Lua poll. The existing VO condition
         // variable sleeps until the configured ASS deadline while it is visible.
-        bool secondary_active = secondary_redraw_due(vo, now);
+        bool secondary_active = secondary_redraw_due(vo);
         if (!secondary_active) {
             in->secondary_next_ns = 0;
         } else if (!in->secondary_next_ns) {
@@ -219,9 +222,21 @@ static bool render_frame(struct vo *vo)
     edit('video/out/vo.c', '    in->hasframe = false;\n    in->hasframe_rendered = false;',
          '    in->hasframe = false;\n    in->hasframe_rendered = false;\n'
          '    in->secondary_clock_valid = false;\n'
-         '    in->secondary_anchor_ns = 0;\n    in->secondary_end_ns = 0;\n'
-         '    in->secondary_next_ns = 0;\n    in->secondary_sample_ns = 0;\n'
+         '    in->secondary_anchor_ns = 0;\n    in->secondary_clock_speed = 0;\n'
+         '    in->secondary_next_ns = 0;\n'
          '    osd_set_secondary_pts(vo->osd, MP_NOPTS_VALUE);')
+    edit('video/out/vo.c', '    if (in->paused != paused) {\n        in->paused = paused;',
+         '''    if (in->paused != paused) {
+        // The core uses this transition for both user pause and cache pause.
+        // Preserve the position and restart only the wall-clock anchor.
+        int64_t now = mp_time_ns();
+        if (in->secondary_clock_valid) {
+            in->secondary_anchor_pts = secondary_clock_pts(in, now);
+            in->secondary_anchor_ns = now;
+            osd_set_secondary_pts(vo->osd, in->secondary_anchor_pts);
+        }
+        in->secondary_next_ns = 0;
+        in->paused = paused;''')
 
     # The upstream ahead cache samples at video_fps. A display-paced secondary
     # track must render its requested timestamp, not reuse a video-frame sample.
