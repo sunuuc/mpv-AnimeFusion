@@ -38,5 +38,6 @@ Windows 动漫播放器，支持 AI 超分、RIFE 补帧、在线／本地弹幕
 | [SkiaSharp / HarfBuzzSharp](https://github.com/mono/SkiaSharp)、[Inter](https://github.com/rsms/inter) | 管理器绘制、文字排版和字体 |
 | [Nginx](https://nginx.org/)、[Certbot](https://github.com/certbot/certbot) | 授权服务的 HTTPS 入口及证书续期 |
 | [Inno Setup](https://github.com/jrsoftware/issrc) | EXE 安装包与卸载程序 |
+| [curl](https://github.com/curl/curl) | 在线弹幕请求 |
 
 TensorRT、CUDA 和 DirectML 按各厂商许可证使用，相关声明随包保留。AnimeJaNai 模型及项目采用 CC BY-NC-SA 4.0，各组件分别遵循其原许可证。

@@ -80,7 +80,7 @@
       "url": "https://github.com/the-database/mpv-AnimeJaNai/releases/download/3.6.0/component-rife.7z",
       "sha256": "bb002ecc92cb628c1627ba687d5e709d4d201e432e06a94ba0028aff5f631f0f",
       "requires": [],
-      "recommended": false,
+      "recommended": true,
       "title": "RIFE interpolation models",
       "description": "Interpolation models, including Lite and ensemble variants."
     },

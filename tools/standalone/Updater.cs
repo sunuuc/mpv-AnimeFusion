@@ -35,7 +35,8 @@ try
         ?? throw new InvalidDataException("Missing component catalog.");
     ValidateIndex(index);
     var gpu = DetectGpu();
-    var recommended = RecommendedPacks(index, gpu.Nvidia, gpu.Sm);
+    var recommended = RecommendedPacks(index, gpu.Nvidia, gpu.Sm,
+        Path.Combine(installDir, "animejanai", "animejanai.conf"));
     if (mode == "--components")
     {
         Console.WriteLine(JsonSerializer.Serialize(new {
@@ -241,15 +242,25 @@ void RemoveComponent(Pack pack, PackIndex index)
     Console.WriteLine(pack.name + " removed. Custom models and configurations are preserved.");
 }
 
-static List<string> RecommendedPacks(PackIndex index, bool nvidia, string sm)
+static List<string> RecommendedPacks(PackIndex index, bool nvidia, string sm, string configPath)
 {
-    var rec = index.packs.Where(p => p.recommended).Select(p => p.name).ToList();
+    var config = File.Exists(configPath) ? File.ReadAllText(configPath) : "";
+    var models = Regex.Matches(config, @"(?m)^\s*chain_\d+_model_\d+_name\s*=\s*([^\r\n;#]+)")
+        .Select(m => m.Groups[1].Value.Trim() + ".onnx").ToHashSet(StringComparer.OrdinalIgnoreCase);
+    var rec = index.packs.Where(p => p.recommended && p.name != "rife" &&
+        (!p.name.StartsWith("upscale-model-", StringComparison.Ordinal) || models.Count == 0))
+        .Select(p => p.name).ToList();
+    if (Regex.IsMatch(config, @"(?im)^\s*chain_\d+_rife\s*=\s*yes\s*$") ||
+        config.Length == 0 && index.packs.Any(p => p.name == "rife" && p.recommended))
+        rec.Add("rife");
+    rec.AddRange(index.packs.Where(p => p.name.StartsWith("upscale-model-", StringComparison.Ordinal) &&
+        p.files.Any(f => models.Contains(Path.GetFileName(f)))).Select(p => p.name));
     if (nvidia)
     {
         rec.Add("trt-runtime");
         rec.Add(index.packs.Any(p => p.name == "trt-" + sm) ? "trt-" + sm : "trt-ptx");
     }
-    return rec;
+    return rec.Distinct().ToList();
 }
 
 static (bool Nvidia, string Sm, string Name) DetectGpu()

@@ -1,5 +1,6 @@
 """Build the offline catalog and optional model assets using upstream component packs."""
 from pathlib import Path
+import configparser
 import hashlib
 import json
 import shutil
@@ -14,6 +15,10 @@ def sha(path):
 
 def prepare(app, dist, meta, seven):
     catalog = json.loads(CATALOG.read_text(encoding='utf-8'))
+    defaults = configparser.ConfigParser(interpolation=None)
+    defaults.read(app/'animejanai/animejanai.conf', encoding='utf-8-sig')
+    configured_models = {value for section in defaults.values() for key, value in section.items()
+                         if key.startswith('chain_') and '_model_' in key and key.endswith('_name') and value}
     dist.mkdir(parents=True, exist_ok=True)
     assets = []
     # The upstream core ships its small upscaling models. Split each one so the
@@ -29,14 +34,14 @@ def prepare(app, dist, meta, seven):
                  'url': f'https://github.com/sunuuc/mpv-AnimeFusion/releases/latest/download/{archive.name}',
                  'sha256': sha(archive), 'bytes': archive.stat().st_size,
                  'installed_bytes': model.stat().st_size, 'files': [relative],
-                 'requires': [], 'recommended': False, 'title': model_title(model.stem),
+                 'requires': [], 'recommended': model.stem in configured_models, 'title': model_title(model.stem),
                  'description': model.stem}
         catalog['packs'].append(entry)
         assets.append({'repo': 'sunuuc/mpv-AnimeFusion', 'tag': meta['tag'],
                        'name': archive.name, 'sha256': entry['sha256'], 'bytes': entry['bytes']})
     if not assets:
         raise RuntimeError('No upscaling models found in the pinned upstream core')
-    # Model selection is explicit: no model is marked for automatic installation.
+    # Recommendations never install a model without the user's Apply action.
     for folder in ('onnx', 'rife'):
         shutil.rmtree(app/'animejanai'/folder, ignore_errors=True)
     # These files are downloaded from the pinned official upstream release.

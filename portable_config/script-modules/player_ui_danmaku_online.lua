@@ -1,4 +1,4 @@
--- Pure online danmaku helpers. The caller owns mpv state and asynchronous jobs.
+-- Online danmaku helpers. The caller owns mpv state and asynchronous jobs.
 local M = {}
 
 local alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
@@ -38,102 +38,110 @@ function M.base64(value)
     return table.concat(out)
 end
 
-local function ps_b64(value)
-    return "[Convert]::FromBase64String('" .. M.base64(value) .. "')"
-end
-
 local function safe_url(url)
     return type(url) == 'string' and not url:find('[%z\r\n]')
         and url:lower():match('^https?://[^/%?#]+') ~= nil
 end
 
--- Build a PowerShell command containing only ASCII and base64 data. This avoids
--- Windows -Command quoting and UTF-8 byte/codepoint confusion for CJK titles.
-function M.request_command(url, body, options)
-    options = options or {}
-    assert(safe_url(url), 'invalid HTTP URL')
-    assert(body == nil or type(body) == 'string', 'request body must be a string')
-
-    local timeout = math.floor(math.max(1, math.min(120, tonumber(options.timeout) or 30)))
-    local response_limit = math.floor(math.max(65536, math.min(16 * 1024 * 1024,
-        tonumber(options.response_limit) or 8 * 1024 * 1024)))
-    local parts = {
-        "$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';try{",
-        '[Console]::OutputEncoding=[Text.Encoding]::UTF8;',
-        '$utf8=[System.Text.UTF8Encoding]::new($false);',
-        '$url=$utf8.GetString(' .. ps_b64(url) .. ');',
-        '$request=[System.Net.HttpWebRequest]::Create($url);',
-        "$request.UserAgent='mpv-AnimeFusion/1.1.9';",
-        "$request.Timeout=" .. tostring(timeout * 1000) .. ';',
-        "$request.ReadWriteTimeout=" .. tostring(timeout * 1000) .. ';',
-        '[System.Net.ServicePointManager]::SecurityProtocol=[System.Net.SecurityProtocolType]::Tls12;',
-    }
-
-    if body ~= nil then
-        parts[#parts + 1] = "$request.Method='POST';$request.ContentType='application/json; charset=utf-8';"
-        parts[#parts + 1] = '$body=$utf8.GetString(' .. ps_b64(body) .. ');$bytes=$utf8.GetBytes($body);'
-        parts[#parts + 1] = '$request.ContentLength=$bytes.Length;'
-    else
-        parts[#parts + 1] = "$request.Method='GET';"
+-- Use the Windows crypto and file APIs directly; no shell or hash subprocess.
+local crypto
+local function windows_crypto()
+    if crypto then return crypto end
+    local ffi=require 'ffi'
+    ffi.cdef[[
+    int __stdcall MultiByteToWideChar(unsigned int, unsigned long, const char*, int, uint16_t*, int);
+    void* __stdcall CreateFileW(const uint16_t*, unsigned long, unsigned long, void*, unsigned long, unsigned long, void*);
+    int __stdcall ReadFile(void*, void*, unsigned long, unsigned long*, void*);
+    int __stdcall CloseHandle(void*);
+    long __stdcall BCryptOpenAlgorithmProvider(void**, const uint16_t*, const uint16_t*, unsigned long);
+    long __stdcall BCryptHash(void*, unsigned char*, unsigned long, const unsigned char*, unsigned long, unsigned char*, unsigned long);
+    long __stdcall BCryptCloseAlgorithmProvider(void*, unsigned long);
+    ]]
+    local kernel,bcrypt=ffi.load('kernel32'),ffi.load('bcrypt')
+    local function wide(value)
+        assert(not value:find('%z'),'invalid Windows path')
+        local n=kernel.MultiByteToWideChar(65001,8,value,#value,nil,0)
+        assert(n>0,'invalid UTF-8 text')
+        local buffer=ffi.new('uint16_t[?]',n+1)
+        assert(kernel.MultiByteToWideChar(65001,8,value,#value,buffer,n)==n,'UTF-8 conversion failed')
+        return buffer
     end
-
-    local app_id = tostring(options.app_id or '')
-    local app_secret = tostring(options.app_secret or '')
-    if app_id ~= '' and app_secret ~= '' then
-        local path = url:match('^https?://[^/]+(/[^?#]*)') or '/'
-        parts[#parts + 1] = '$appId=$utf8.GetString(' .. ps_b64(app_id) .. ');'
-        parts[#parts + 1] = '$secret=$utf8.GetString(' .. ps_b64(app_secret) .. ');'
-        parts[#parts + 1] = '$path=$utf8.GetString(' .. ps_b64(path) .. ');'
-        parts[#parts + 1] = '$timestamp=[string][DateTimeOffset]::UtcNow.ToUnixTimeSeconds();'
-        parts[#parts + 1] = '$signing=$appId+$timestamp+$path+$secret;'
-        parts[#parts + 1] = '$sha=[Security.Cryptography.SHA256]::Create();'
-        parts[#parts + 1] = '$signature=[Convert]::ToBase64String($sha.ComputeHash($utf8.GetBytes($signing)));'
-        parts[#parts + 1] = "$request.Headers.Add('X-AppId',$appId);"
-        parts[#parts + 1] = "$request.Headers.Add('X-Timestamp',$timestamp);"
-        parts[#parts + 1] = "$request.Headers.Add('X-Signature',$signature);"
+    local function digest(algorithm,data,length,size)
+        local handle=ffi.new('void*[1]')
+        assert(bcrypt.BCryptOpenAlgorithmProvider(handle,wide(algorithm),nil,0)==0,'hash provider unavailable')
+        local output=ffi.new('unsigned char[?]',size)
+        local status=bcrypt.BCryptHash(handle[0],nil,0,data,length,output,size)
+        bcrypt.BCryptCloseAlgorithmProvider(handle[0],0)
+        assert(status==0,'hash calculation failed')
+        return ffi.string(output,size)
     end
-
-    if body ~= nil then
-        parts[#parts + 1] = '$requestStream=$request.GetRequestStream();'
-        parts[#parts + 1] = '$requestStream.Write($bytes,0,$bytes.Length);$requestStream.Dispose();'
-    end
-
-    parts[#parts + 1] = '$response=$request.GetResponse();try{$stream=$response.GetResponseStream();'
-    parts[#parts + 1] = '$decoder=$utf8.GetDecoder();$buffer=New-Object byte[] 8192;$characters=New-Object char[] 8192;$total=0;'
-    parts[#parts + 1] = 'while(($read=$stream.Read($buffer,0,$buffer.Length)) -gt 0){'
-    parts[#parts + 1] = '$total+=$read;if($total -gt ' .. tostring(response_limit) .. "){throw 'Response exceeds configured limit'};"
-    parts[#parts + 1] = '$count=$decoder.GetChars($buffer,0,$read,$characters,0,$false);[Console]::Out.Write($characters,0,$count)};'
-    parts[#parts + 1] = '$count=$decoder.GetChars($buffer,0,0,$characters,0,$true);[Console]::Out.Write($characters,0,$count);'
-    parts[#parts + 1] = '[Console]::Out.Flush();$stream.Dispose()}finally{$response.Dispose()}'
-    parts[#parts + 1] = "}catch{$exception=$_.Exception;while($exception.InnerException){$exception=$exception.InnerException};$message=$exception.Message;$failed=$exception.Response;"
-    parts[#parts + 1] = "if($failed){try{$reader=New-Object IO.StreamReader($failed.GetResponseStream(),$utf8);"
-    parts[#parts + 1] = "$buffer=New-Object char[] 4096;$count=$reader.Read($buffer,0,$buffer.Length);"
-    parts[#parts + 1] = "$body=New-Object string($buffer,0,$count);$reader.Dispose();if($body.Trim()){"
-    parts[#parts + 1] = "try{$errorBody=$body|ConvertFrom-Json;$detail=$errorBody.errorMessage;if(-not $detail){$detail=$errorBody.message};"
-    parts[#parts + 1] = "if(-not $detail){$detail=$errorBody.error};if($detail){$message=[string]$detail}else{$message=$body}}catch{$message=$body}"
-    parts[#parts + 1] = "}}catch{}finally{$failed.Dispose()}};[Console]::Error.WriteLine($message);exit 1}"
-
-    return table.concat(parts)
+    crypto={ffi=ffi,kernel=kernel,wide=wide,digest=digest}
+    return crypto
 end
 
--- Dandanplay identifies local files by the MD5 of their first 16 MiB. Keep the
--- read bounded and pass the path as base64 so arbitrary filenames cannot alter
--- the PowerShell command line.
-function M.hash_command(path)
-    assert(type(path) == 'string' and path ~= '', 'file path must not be empty')
-    return table.concat({
-        "$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';try{",
-        '$utf8=[System.Text.UTF8Encoding]::new($false);',
-        '$path=$utf8.GetString(' .. ps_b64(path) .. ');',
-        '$stream=[System.IO.File]::OpenRead($path);try{',
-        '$length=[int][Math]::Min($stream.Length,16777216);$buffer=New-Object byte[] $length;$read=0;',
-        'while($read -lt $length){$count=$stream.Read($buffer,$read,$length-$read);if($count -le 0){break};$read+=$count};',
-        '$md5=[Security.Cryptography.MD5]::Create();try{',
-        '$digest=$md5.ComputeHash($buffer,0,$read);',
-        "[Console]::Out.Write(([BitConverter]::ToString($digest)).Replace('-','').ToLowerInvariant())",
-        '}finally{$md5.Dispose()}}finally{$stream.Dispose()}',
-        "}catch{[Console]::Error.WriteLine($_.Exception.Message);exit 1}",
-    })
+function M.file_hash(path)
+    assert(type(path)=='string' and path~='','file path must not be empty')
+    local c=windows_crypto()
+    local file=c.kernel.CreateFileW(c.wide(path),0x80000000,7,nil,3,0x08000080,nil)
+    assert(file~=c.ffi.cast('void*',-1),'cannot open video file')
+    local ok,result=pcall(function()
+        local limit=16*1024*1024
+        local buffer=c.ffi.new('unsigned char[?]',limit)
+        local count=c.ffi.new('unsigned long[1]')
+        local total=0
+        while total<limit do
+            assert(c.kernel.ReadFile(file,buffer+total,limit-total,count,nil)~=0,'cannot read video file')
+            if count[0]==0 then break end
+            total=total+tonumber(count[0])
+        end
+        local digest=c.digest('MD5',buffer,total,16)
+        return (digest:gsub('.',function(char)return string.format('%02x',char:byte())end))
+    end)
+    c.kernel.CloseHandle(file)
+    if not ok then error(result) end
+    return result
+end
+
+local function curl_quote(value)
+    return '"'..tostring(value):gsub('\\','\\\\'):gsub('"','\\"')
+        :gsub('\r','\\r'):gsub('\n','\\n'):gsub('\t','\\t')..'"'
+end
+
+-- mpv's subprocess API passes the curl configuration through stdin. Titles,
+-- request bodies and API credentials never become executable shell text.
+function M.request_spec(url,body,options)
+    options=options or {}
+    assert(safe_url(url),'invalid HTTP URL')
+    assert(body==nil or type(body)=='string','request body must be a string')
+    local timeout=math.floor(math.max(1,math.min(120,tonumber(options.timeout) or 30)))
+    local limit=math.floor(math.max(65536,math.min(16*1024*1024,tonumber(options.response_limit) or 8*1024*1024)))
+    local config={
+        'url = '..curl_quote(url),
+        'user-agent = "mpv-AnimeFusion/1.3.0"',
+        'connect-timeout = '..timeout,
+        'max-time = '..timeout,
+        'max-filesize = '..limit,
+        'proto = "=http,https"',
+        'proto-redir = "=http,https"',
+        'location', 'max-redirs = 5', 'silent', 'show-error', 'fail-with-body',
+    }
+    if body~=nil then
+        config[#config+1]='header = "Content-Type: application/json; charset=utf-8"'
+        config[#config+1]='data-raw = '..curl_quote(body)
+    end
+    local app_id,secret=tostring(options.app_id or ''),tostring(options.app_secret or '')
+    if app_id~='' and secret~='' then
+        assert(not app_id:find('[%z\r\n]'),'invalid app ID')
+        local timestamp=tostring(os.time())
+        local path=url:match('^https?://[^/]+(/[^?#]*)') or '/'
+        local text=app_id..timestamp..path..secret
+        local signature=M.base64(windows_crypto().digest('SHA256',text,#text,32))
+        config[#config+1]='header = '..curl_quote('X-AppId: '..app_id)
+        config[#config+1]='header = '..curl_quote('X-Timestamp: '..timestamp)
+        config[#config+1]='header = '..curl_quote('X-Signature: '..signature)
+    end
+    return {args={assert(os.getenv('SystemRoot'),'Windows system directory unavailable')..'/System32/curl.exe','--disable','--config','-'},
+        stdin_data=table.concat(config,'\n')..'\n',capture_size=limit+4096}
 end
 
 local function trim(value)

@@ -1513,7 +1513,12 @@ namespace AnimeJaNaiConfEditor.ViewModels
         public List<string> RifeModelList
         {
             get => _rifeModelList;
-            set => this.RaiseAndSetIfChanged(ref _rifeModelList, value);
+            set
+            {
+                if (!string.IsNullOrEmpty(_rifeModel) && !value.Contains(_rifeModel))
+                    value.Add(_rifeModel);
+                this.RaiseAndSetIfChanged(ref _rifeModelList, value);
+            }
         }
 
         private string _rifeModel = MainWindowViewModel.RifeModels.FirstOrDefault("");
@@ -1521,7 +1526,13 @@ namespace AnimeJaNaiConfEditor.ViewModels
         public string RifeModel
         {
             get => _rifeModel;
-            set => this.RaiseAndSetIfChanged(ref _rifeModel, value);
+            set
+            {
+                if (value is null) return;
+                if (value.Length > 0 && !_rifeModelList.Contains(value))
+                    _rifeModelList.Add(value);
+                this.RaiseAndSetIfChanged(ref _rifeModel, value);
+            }
         }
 
         private bool _rifeEnsemble = false;
@@ -1627,7 +1638,12 @@ namespace AnimeJaNaiConfEditor.ViewModels
         public AvaloniaList<string> AllModels
         {
             get => _allModels;
-            set => this.RaiseAndSetIfChanged(ref _allModels, value);
+            set
+            {
+                if (!string.IsNullOrEmpty(_name) && !value.Contains(_name))
+                    value.Add(_name);
+                this.RaiseAndSetIfChanged(ref _allModels, value);
+            }
         }
 
         private string _modelNumber = string.Empty;
@@ -1665,7 +1681,13 @@ namespace AnimeJaNaiConfEditor.ViewModels
         public string Name
         {
             get => _name;
-            set => this.RaiseAndSetIfChanged(ref _name, value);
+            set
+            {
+                if (value is null) return;
+                if (value.Length > 0 && !_allModels.Contains(value))
+                    _allModels.Add(value);
+                this.RaiseAndSetIfChanged(ref _name, value);
+            }
         }
     }
 

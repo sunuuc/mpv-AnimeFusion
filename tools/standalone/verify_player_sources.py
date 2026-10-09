@@ -84,8 +84,8 @@ forbid(
 )
 require(
     "portable_config/script-modules/player_ui_danmaku_online.lua",
-    "function M.request_command(url, body, options)",
-    "function M.hash_command(path)",
+    "function M.request_spec(url,body,options)",
+    "function M.file_hash(path)",
     "function M.limit_text(value,limit,clean)",
     'fields[#fields+1]=\'"fileHash":"\'..file_hash:lower()..\'"\'',
 )

@@ -107,9 +107,9 @@ class DanmakuOnlineTests(unittest.TestCase):
         cls.thread.join(timeout=2)
 
     def build(self, url: str, body: str | None, *, timeout=5, response_limit=8 * 1024 * 1024,
-              app_id="", secret="") -> str:
+              app_id="", secret="") -> dict:
         with tempfile.TemporaryDirectory() as directory:
-            output = Path(directory) / "request.ps1"
+            output = Path(directory) / "request.json"
             options = "{timeout=" + str(timeout) + ",response_limit=" + str(response_limit)
             if app_id:
                 options += ",app_id=" + lua_long(app_id) + ",app_secret=" + lua_long(secret)
@@ -118,15 +118,15 @@ class DanmakuOnlineTests(unittest.TestCase):
             code = (
                 "local module=dofile(" + lua_long(str(ONLINE).replace("\\", "/")) + ");"
                 "local file=assert(io.open(" + lua_long(str(output).replace("\\", "/")) + ",'wb'));"
-                "file:write(module.request_command(" + lua_long(url) + "," + body_arg + "," + options + "));file:close()"
+                "file:write(require('mp.utils').format_json(module.request_spec(" + lua_long(url) + "," + body_arg + "," + options + ")));file:close()"
             )
             lua_eval(code)
-            return output.read_text(encoding="ascii")
+            return json.loads(output.read_text(encoding="utf-8"))
 
-    def run_request(self, command: str, *, process_timeout=8) -> subprocess.CompletedProcess[bytes]:
-        self.assertNotIn('"', command, "-Command payload must contain no raw double quotes")
+    def run_request(self, command: dict, *, process_timeout=8) -> subprocess.CompletedProcess[bytes]:
         return subprocess.run(
-            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
+            command["args"],
+            input=command["stdin_data"].encode("utf-8"),
             capture_output=True,
             timeout=process_timeout,
             check=False,
@@ -155,14 +155,14 @@ class DanmakuOnlineTests(unittest.TestCase):
 
     def test_server_error_body_is_reported_without_extra_guidance(self):
         result = self.run_request(self.build(self.base + "/failure", None))
-        self.assertEqual(result.returncode, 1)
-        self.assertEqual(result.stderr.decode("utf-8").strip(), "服务器维护中")
+        self.assertEqual(result.returncode, 22)
+        self.assertEqual(json.loads(result.stdout.decode("utf-8"))["errorMessage"], "服务器维护中")
 
     def test_response_is_capped_before_capture(self):
         command = self.build(self.base + "/large", None, response_limit=65536)
         result = self.run_request(command)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn(b"configured limit", result.stderr)
+        self.assertIn(b"file", result.stderr.lower())
 
     def test_http_timeout_is_applied(self):
         command = self.build(self.base + "/slow", None, timeout=1)
@@ -466,23 +466,20 @@ assert(list[4].mode==4 and list[5].mode==5,'fixed comments must remain fixed')
 assert(list[6].mode==2,'source-specific correction must not affect other providers')
 """)
 
-    def test_hash_command_uses_the_first_sixteen_mib(self):
+    def test_file_hash_uses_the_first_sixteen_mib(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "剧集 sample.mkv"
             sample = b"animejanai" * (16 * 1024 * 1024 // 11 + 2)
             path.write_bytes(sample)
-            output = Path(directory) / "hash.ps1"
+            output = Path(directory) / "hash.txt"
             code = (
                 "local module=dofile(" + lua_long(str(ONLINE).replace(chr(92), "/")) + ");"
                 "local file=assert(io.open(" + lua_long(str(output).replace(chr(92), "/")) + ",'wb'));"
-                "file:write(module.hash_command(" + lua_long(str(path)) + "));file:close()"
+                "file:write(module.file_hash(" + lua_long(str(path)) + "));file:close()"
             )
             lua_eval(code)
-            command = output.read_text(encoding="ascii")
-            result = self.run_request(command, process_timeout=15)
-            self.assertEqual(result.returncode, 0, result.stderr.decode("utf-8", "replace"))
             expected = hashlib.md5(sample[:16 * 1024 * 1024]).hexdigest().encode("ascii")
-            self.assertEqual(result.stdout, expected)
+            self.assertEqual(output.read_bytes(), expected)
 
 
 if __name__ == "__main__":

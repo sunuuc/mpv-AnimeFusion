@@ -39,6 +39,7 @@ public class GuiCommand
         ["edit-conf-file"] = EditCongFile,
         ["load-audio"] = LoadAudio,
         ["load-sub"] = LoadSubtitle,
+        ["load-danmaku"] = LoadDanmaku,
         ["move-window"] = args => MoveWindow?.Invoke(args[0]),
         ["open-clipboard"] = OpenFromClipboard,
         ["open-files"] = OpenFiles,
@@ -206,6 +207,21 @@ public class GuiCommand
             owner.Activate();
             owner.BringToFront();
         }));
+    }
+
+    void LoadDanmaku(IList<string> args)
+    {
+        using var dialog = new OpenFileDialog
+        {
+            Filter = "弹幕文件 (*.xml;*.ass;*.json)|*.xml;*.ass;*.json",
+            Title = "选择弹幕文件"
+        };
+        string path = Player.GetPropertyString("path");
+        if (File.Exists(path))
+            dialog.InitialDirectory = Path.GetDirectoryName(path);
+
+        if (dialog.ShowDialog() == DialogResult.OK && Player.GetPropertyString("path") == path)
+            Player.CommandV("script-message", "player_ui-danmaku-load", dialog.FileName);
     }
 
     void LoadSubtitle(IList<string> args)

@@ -147,7 +147,14 @@ local function render()
     line = line .. '    GPU ' .. (gpu and string.format('%.0f%%',gpu) or '—')
     -- Like mpv's built-in stats persistent_overlay, keep statistics out of
     -- the transient show-text slot used by playback and danmaku notices.
-    mp.set_osd_ass(0,0,mp.command_native({'escape-ass',ai_status(now)..'\n\n'..line}))
+    -- Follow upstream stats.lua's 288-line ASS canvas and 20-point font.
+    -- This panel has its own typography instead of inheriting message OSD size.
+    local scale=288/720
+    if not mp.get_property_bool('osd-scale-by-window',true) then
+        scale=288/math.max(1,mp.get_property_number('osd-height',720))
+    end
+    local style=string.format('{\\r\\an7\\fs%.2f\\bord%.2f\\shad0\\q0}',20*scale,1.65*scale)
+    mp.set_osd_ass(0,0,style..mp.command_native({'escape-ass',ai_status(now)..'\n\n'..line}))
 end
 
 local function toggle()
