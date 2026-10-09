@@ -14,7 +14,7 @@
 - **按需下载**：按需下载需要的模型和显卡组件。
   <img width="1898" height="1061" alt="image" src="https://github.com/user-attachments/assets/759796a2-a195-48f7-a791-ae2179e339d3" />
 
-- **弹幕**：支持在线和本地弹幕。
+- **弹幕**：支持在线弹幕及本地 XML、JSON、ASS 弹幕文件。在线弹幕兼容弹弹play API v2 接口，不内置或提供任何弹幕线路，用户需自行添加兼容的第三方弹幕 API。
 <img width="2560" height="1494" alt="image" src="https://github.com/user-attachments/assets/6bdd6d74-6248-450c-b015-12f309820c14" />
 
 - **Bangumi 同步**：自动同步收藏与观看进度。
