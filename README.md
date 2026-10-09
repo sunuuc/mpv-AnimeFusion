@@ -2,7 +2,7 @@
 
 简体中文 | [English](README.en.md)
 
-Windows 动漫播放器，支持 AI 超分、RIFE 补帧、在线／本地弹幕和 Bangumi 观看进度同步。
+动漫专用mpv融合怪，集百家功能于一身，详细请看下方来源，支持 AI 超分、RIFE 补帧、弹幕和 Bangumi 观看进度同步。
 
 [下载](https://github.com/sunuuc/mpv-AnimeFusion/releases/latest) · [更新日志](CHANGELOG.md) · [问题反馈](https://github.com/sunuuc/mpv-AnimeFusion/issues)
 
@@ -22,7 +22,7 @@ Windows 动漫播放器，支持 AI 超分、RIFE 补帧、在线／本地弹幕
 
 ## 开源来源与致谢
 
-感谢以下项目及其贡献者。这里说明各项目在本项目中的用途；固定版本、修改范围和逐项许可证见[来源与第三方许可](docs/open-source-notices.md)。
+感谢以下项目及其贡献者，修改范围和逐项许可证见[来源与第三方许可](docs/open-source-notices.md)。
 
 | 项目 | 用途 |
 | --- | --- |
