@@ -14,7 +14,7 @@ An mpv-based player built for anime, bringing together features from many projec
 - **Downloads on demand**: download the models and GPU components you need.
   <img width="1898" height="1061" alt="image" src="https://github.com/user-attachments/assets/759796a2-a195-48f7-a791-ae2179e339d3" />
 
-- **Danmaku**: online and local comments.
+- **Danmaku**: online comments and local XML, JSON and ASS danmaku files. Online danmaku supports the Dandanplay API v2 interface. No danmaku routes are bundled or provided; users need to add compatible third-party danmaku APIs themselves.
 <img width="2560" height="1494" alt="image" src="https://github.com/user-attachments/assets/6bdd6d74-6248-450c-b015-12f309820c14" />
 
 - **Bangumi sync**: automatically sync collections and watch progress.
