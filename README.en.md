@@ -20,6 +20,10 @@ An mpv-based player built for anime, bringing together features from many projec
 - **Bangumi sync**: automatically sync collections and watch progress.
 <img width="1213" height="1121" alt="image" src="https://github.com/user-attachments/assets/be033a4f-dfde-47be-8f05-7758bec43b91" />
 
+## Community
+
+This project recognizes and thanks the [LINUX DO](https://linux.do) community.
+
 ## Open-source credits
 
 Thanks to these projects and their contributors. Modifications and individual licenses are documented in [Sources and third-party licenses](docs/open-source-notices.md).
