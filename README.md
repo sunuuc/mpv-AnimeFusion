@@ -22,10 +22,7 @@
 
 ## 社区
 
-本项目认可并感谢 [LINUX DO](https://linux.do) 社区。「Where possible begins.」
-
-This project recognizes and thanks the [LINUX DO](https://linux.do) community.
-
+本项目认可并感谢 [LINUX DO](https://linux.do) 社区。
 
 ## 开源来源与致谢
 
