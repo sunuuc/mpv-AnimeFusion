@@ -2,21 +2,27 @@
 
 简体中文 | [English](README.en.md)
 
-Windows 动漫播放器，支持 AI 超分、RIFE 补帧、在线／本地弹幕和 Bangumi 观看进度同步。
+动漫专用mpv融合怪，集百家功能于一身，详细请看下方来源，支持 AI 超分、补帧、弹幕和 Bangumi 观看进度同步。
 
 [下载](https://github.com/sunuuc/mpv-AnimeFusion/releases/latest) · [更新日志](CHANGELOG.md) · [问题反馈](https://github.com/sunuuc/mpv-AnimeFusion/issues)
 
 ## 功能
 
 - **AI 超分与补帧**：提升画质与播放流畅度。
-- **按需下载**：下载模型和显卡组件。
+  <img width="1898" height="1061" alt="image" src="https://github.com/user-attachments/assets/25d92e1d-db68-4327-bff5-1acc6fe29b2e" />
+
+- **按需下载**：按需下载需要的模型和显卡组件。
+  <img width="1898" height="1061" alt="image" src="https://github.com/user-attachments/assets/759796a2-a195-48f7-a791-ae2179e339d3" />
+
 - **弹幕**：支持在线和本地弹幕。
-- **Bangumi 同步**：同步收藏与观看进度。
-- **播放与字幕**：支持本地和网络视频、播放列表及字幕。
+<img width="2560" height="1494" alt="image" src="https://github.com/user-attachments/assets/6bdd6d74-6248-450c-b015-12f309820c14" />
+
+- **Bangumi 同步**：自动同步收藏与观看进度。
+<img width="1213" height="1121" alt="image" src="https://github.com/user-attachments/assets/be033a4f-dfde-47be-8f05-7758bec43b91" />
 
 ## 开源来源与致谢
 
-感谢以下项目及其贡献者。这里说明各项目在本项目中的用途；固定版本、修改范围和逐项许可证见[来源与第三方许可](docs/open-source-notices.md)。
+感谢以下项目及其贡献者，修改范围和逐项许可证见[来源与第三方许可](docs/open-source-notices.md)。
 
 | 项目 | 用途 |
 | --- | --- |
