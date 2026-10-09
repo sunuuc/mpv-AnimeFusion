@@ -18,7 +18,7 @@
 
 弹幕使用 DanmakuFactory 排布与转换，mpv/libass 第二字幕轨负责呈现。恢复版本的渲染与设置见 [弹幕说明](danmaku-renderer.md)。
 
-在线弹幕通过 mpv 原生 `subprocess` 异步调用 Windows 自带的 [curl](https://github.com/curl/curl)；请求参数经标准输入传递，不通过 PowerShell。curl 使用 curl license，由系统提供，本包不重新分发。视频识别仅读取开头 16 MiB，通过 Windows BCrypt API 计算 MD5；本地导入使用 mpv.net 的原生文件选择窗口。
+在线弹幕通过 mpv 原生 `subprocess` 异步调用 Windows 自带的 [curl](https://github.com/curl/curl)；请求参数通过 mpv 的参数数组传递，不通过 PowerShell。curl 使用 curl license，由系统提供，本包不重新分发。视频识别仅读取开头 16 MiB，通过 Windows BCrypt API 计算 MD5；本地导入使用 mpv.net 的原生文件选择窗口。
 
 ## Bangumi 同步
 

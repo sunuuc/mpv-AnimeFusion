@@ -124,13 +124,23 @@ class DanmakuOnlineTests(unittest.TestCase):
             return json.loads(output.read_text(encoding="utf-8"))
 
     def run_request(self, command: dict, *, process_timeout=8) -> subprocess.CompletedProcess[bytes]:
-        return subprocess.run(
-            command["args"],
-            input=command["stdin_data"].encode("utf-8"),
-            capture_output=True,
-            timeout=process_timeout,
-            check=False,
-        )
+        # Execute through mpv, including its Windows subprocess implementation.
+        # Running curl via Python alone would miss dropped stdin_data in mpv.
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "response.json"
+            code = (
+                "local mp=require 'mp';local utils=require 'mp.utils';"
+                "local spec=utils.parse_json(" + lua_long(json.dumps(command)) + ");"
+                "spec.name='subprocess';spec.playback_only=false;"
+                "spec.capture_stdout=true;spec.capture_stderr=true;"
+                "local result=assert(mp.command_native(spec));"
+                "local file=assert(io.open(" + lua_long(str(output).replace(chr(92), '/')) + ",'wb'));"
+                "file:write(utils.format_json(result));file:close()"
+            )
+            lua_eval(code)
+            response = json.loads(output.read_text(encoding="utf-8"))
+            return subprocess.CompletedProcess(command["args"], response["status"],
+                response.get("stdout", "").encode("utf-8"), response.get("stderr", "").encode("utf-8"))
 
     def test_utf8_json_and_official_signature(self):
         body = json.dumps({"fileName": TITLE}, ensure_ascii=False, separators=(",", ":"))

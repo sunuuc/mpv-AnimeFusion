@@ -102,32 +102,22 @@ function M.file_hash(path)
     return result
 end
 
-local function curl_quote(value)
-    return '"'..tostring(value):gsub('\\','\\\\'):gsub('"','\\"')
-        :gsub('\r','\\r'):gsub('\n','\\n'):gsub('\t','\\t')..'"'
-end
-
--- mpv's subprocess API passes the curl configuration through stdin. Titles,
--- request bodies and API credentials never become executable shell text.
+-- Use mpv's subprocess argument array directly. The Windows subprocess backend
+-- does not write stdin_data; curl options and request bodies are not shell text.
 function M.request_spec(url,body,options)
     options=options or {}
     assert(safe_url(url),'invalid HTTP URL')
     assert(body==nil or type(body)=='string','request body must be a string')
     local timeout=math.floor(math.max(1,math.min(120,tonumber(options.timeout) or 30)))
     local limit=math.floor(math.max(65536,math.min(16*1024*1024,tonumber(options.response_limit) or 8*1024*1024)))
-    local config={
-        'url = '..curl_quote(url),
-        'user-agent = "mpv-AnimeFusion/1.3.0"',
-        'connect-timeout = '..timeout,
-        'max-time = '..timeout,
-        'max-filesize = '..limit,
-        'proto = "=http,https"',
-        'proto-redir = "=http,https"',
-        'location', 'max-redirs = 5', 'silent', 'show-error', 'fail-with-body',
-    }
+    local args={assert(os.getenv('SystemRoot'),'Windows system directory unavailable')..'/System32/curl.exe',
+        '--disable','--url',url,'--user-agent','mpv-AnimeFusion/1.3.0',
+        '--connect-timeout',tostring(timeout),'--max-time',tostring(timeout),
+        '--max-filesize',tostring(limit),'--proto','=http,https','--proto-redir','=http,https',
+        '--location','--max-redirs','5','--silent','--show-error','--fail-with-body'}
     if body~=nil then
-        config[#config+1]='header = "Content-Type: application/json; charset=utf-8"'
-        config[#config+1]='data-raw = '..curl_quote(body)
+        args[#args+1]='--header';args[#args+1]='Content-Type: application/json; charset=utf-8'
+        args[#args+1]='--data-raw';args[#args+1]=body
     end
     local app_id,secret=tostring(options.app_id or ''),tostring(options.app_secret or '')
     if app_id~='' and secret~='' then
@@ -136,12 +126,11 @@ function M.request_spec(url,body,options)
         local path=url:match('^https?://[^/]+(/[^?#]*)') or '/'
         local text=app_id..timestamp..path..secret
         local signature=M.base64(windows_crypto().digest('SHA256',text,#text,32))
-        config[#config+1]='header = '..curl_quote('X-AppId: '..app_id)
-        config[#config+1]='header = '..curl_quote('X-Timestamp: '..timestamp)
-        config[#config+1]='header = '..curl_quote('X-Signature: '..signature)
+        for _,header in ipairs({'X-AppId: '..app_id,'X-Timestamp: '..timestamp,'X-Signature: '..signature}) do
+            args[#args+1]='--header';args[#args+1]=header
+        end
     end
-    return {args={assert(os.getenv('SystemRoot'),'Windows system directory unavailable')..'/System32/curl.exe','--disable','--config','-'},
-        stdin_data=table.concat(config,'\n')..'\n',capture_size=limit+4096}
+    return {args=args,capture_size=limit+4096}
 end
 
 local function trim(value)

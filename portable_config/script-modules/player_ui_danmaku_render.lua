@@ -65,7 +65,7 @@ return function(mp, utils, on_change)
         M.ready=false
     end
     local function select_track()
-        if not ass_path or not M.ready or M.track then return end
+        if not ass_path or M.track then return end
         local path=ass_path:gsub('\\','/')
         for _,track in ipairs(mp.get_property_native('track-list',{}) or {}) do
             local external=tostring(track['external-filename'] or ''):gsub('\\','/')
@@ -87,7 +87,7 @@ return function(mp, utils, on_change)
         end
     end
     local function attach()
-        if not M.ready or M.track or mp.get_property_bool('idle-active',true) then return end
+        if not ass_path or M.track or mp.get_property_bool('idle-active',true) then return end
         mp.commandv('sub-add',ass_path,'auto','弹幕 · DanmakuFactory','danmaku')
         select_track()
     end
@@ -142,7 +142,7 @@ return function(mp, utils, on_change)
             end
             detach();M.count=0
             for _ in text:gmatch('\nDialogue:') do M.count=M.count+1 end
-            ass_path=output;M.ready=true;attach();on_change()
+            ass_path=output;M.ready=true;on_change();attach()
         end)
     end
     local function xml_escape(text)
@@ -161,6 +161,50 @@ return function(mp, utils, on_change)
         local ok,why=write(path,table.concat(lines,'\n'))
         if not ok then M.error='无法保存弹幕数据：'..tostring(why);on_change();return end
         M.convert(path,true)
+    end
+    local function ass_time(value)
+        local cs=math.max(0,math.floor(value*100+.5))
+        return string.format('%d:%02d:%02d.%02d',math.floor(cs/360000),
+            math.floor(cs/6000)%60,math.floor(cs/100)%60,cs%100)
+    end
+    function M.notice(text)
+        if M.enabled==false or M.track then return end
+        local time=mp.get_property_number('time-pos',0)+.1
+        local body=ass_path and read(ass_path,32*1024*1024)
+        if not body then
+            -- A pending HTTP request or conversion has no ASS document yet.
+            -- Use the converter's R2L style in the existing secondary decoder;
+            -- this one event has no layout pool or Lua animation loop.
+            local style=string.format('Style: R2L,%s,%d,&H%02XFFFFFF,&H00FFFFFF,&H00000000,&H00000000,%d,0,0,0,100,100,0,0,1,%g,%g,8,0,0,0,1',
+                M.settings.fontname:gsub('[,\r\n]',''),M.settings.fontsize,255-M.settings.opacity,
+                M.settings.bold and -1 or 0,M.settings.outline,M.settings.shadow)
+            body=table.concat({'[Script Info]','ScriptType: v4.00+',
+                'PlayResX: '..M.settings.resolution[1],'PlayResY: '..M.settings.resolution[2],
+                'WrapStyle: 2','ScaledBorderAndShadow: yes','[V4+ Styles]',
+                'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
+                style,'[Events]','Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text'},'\n')
+        end
+        local width=M.settings.resolution[1]
+        local height=M.settings.resolution[2]
+        local size=M.settings.fontsize
+        local chars=0
+        for _ in text:gmatch('[%z\1-\127\194-\244][\128-\191]*') do chars=chars+1 end
+        local half=math.ceil(chars*size/2)
+        -- Keep the notice just below the configured comment area when possible.
+        local y=math.min(height-size,math.floor(height*M.settings.displayArea))
+        local escaped=text:gsub('\\','\\\\'):gsub('{','\\{'):gsub('}','\\}')
+            :gsub('[\r\n]+',' ')
+        local line=string.format('\nDialogue: 0,%s,%s,R2L,,0000,0000,0000,,{\\move(%d,%d,%d,%d)}%s\n',
+            ass_time(time),ass_time(time+M.settings.scrolltime*playback_speed),
+            width+half,y,-half,y,escaped)
+        -- Add the event before attach opens the completed ASS file. mpv owns
+        -- motion; the notice never needs an overlay, reload or animation timer.
+        local path=ass_path or (os.getenv('TEMP') or root)..'/mpv-AnimeFusion-notice-'
+            ..tostring(utils.getpid())..'-'..serial..'.ass'
+        if write(path,body..line) then
+            ass_path=path
+            if not M.ready then attach() end
+        end
     end
     function M.set(key,value)
         if not M.config_path then return end

@@ -462,16 +462,16 @@ local function suite()
    for id=after+1,next_async do
     local job=pending_async[id]
     if job and not job.aborted and not job.completed
-     and job.spec.stdin_data and job.spec.stdin_data:find(encoded,1,true) then return job,id end
+     and job.spec.args and table.concat(job.spec.args,' '):find(encoded,1,true) then return job,id end
    end
    local seen={}
    for id=after+1,next_async do
     local job=pending_async[id]
-    if job and job.spec.stdin_data then
+    if job and job.spec.args then
      for _,candidate in ipairs({'https://danmaku.example/api/v2/match',
       'https://danmaku.example/api/v2/search/anime?keyword=Anime%20title',
       'https://danmaku2.example/api/v2/match'}) do
-      if job.spec.stdin_data:find(candidate,1,true) then seen[#seen+1]=candidate end
+      if table.concat(job.spec.args,' '):find(candidate,1,true) then seen[#seen+1]=candidate end
      end
     end
    end
@@ -616,7 +616,7 @@ local function suite()
   event_handlers['file-loaded'][#event_handlers['file-loaded']]()
  local search_job=pending_async[next_async]
  local anime_keyword=online_api.urlencode('间谍过家家')
- check(search_job.spec.stdin_data:find(('https://danmaku.example/api/v2/search/anime?keyword='..anime_keyword),1,true),
+ check(table.concat(search_job.spec.args,' '):find(('https://danmaku.example/api/v2/search/anime?keyword='..anime_keyword),1,true),
   'automatic search starts directly without video hashing or duplicate match requests')
  json_responses['auto-season-two']={animes={{animeId=101,animeTitle='间谍过家家 第二季(2023)',source='qq',episodeCount=12}}}
  complete_async(search_job,'auto-season-two')
@@ -650,7 +650,7 @@ local function suite()
  -- Last priority route responds first; do not wait for the earlier routes.
  complete_async(searches[3],first_search_json)
  local fastest_detail=pending_async[next_async]
- check(fastest_detail.spec.stdin_data:find(('https://danmaku3.example/api/v2/bangumi/21'),1,true),
+ check(table.concat(fastest_detail.spec.args,' '):find(('https://danmaku3.example/api/v2/bangumi/21'),1,true),
   'first matching search response is attempted immediately while other searches are pending')
  complete_async(fastest_detail,'auto-episode-one')
  complete_async(pending_async[next_async],empty_comments_json)
@@ -658,7 +658,7 @@ local function suite()
  complete_async(searches[2],second_search_json)
  check(next_async==after_empty,'empty fastest route waits for the higher priority route, not the next response')
  complete_async(searches[1],first_search_json)
- check(pending_async[next_async].spec.stdin_data:find(('https://danmaku.example/api/v2/bangumi/21'),1,true),
+ check(table.concat(pending_async[next_async].spec.args,' '):find(('https://danmaku.example/api/v2/bangumi/21'),1,true),
   'fallback proceeds from the top of the saved route order')
  complete_async(pending_async[next_async],'auto-episode-one')
  complete_async(pending_async[next_async],comments_json)
@@ -711,14 +711,14 @@ local function suite()
    'choosing Search Danmaku opens the native search window with the detected title')
   messages['player_ui-danmaku-search-query']('Anime title','0','1')
   local search_1=pending_async[next_async-1]
-  check(search_1.spec.stdin_data:find(('https://danmaku.example/api/v2/search/anime?keyword=Anime%20title'),1,true)~=nil,
+  check(table.concat(search_1.spec.args,' '):find(('https://danmaku.example/api/v2/search/anime?keyword=Anime%20title'),1,true)~=nil,
    'manual search requests every configured route')
   search_1.callback(true,{status=0,stdout=first_search_json,stderr=''},nil)
   danmaku_state=props['user-data/player_ui/danmaku']
   check(#danmaku_state.results==1 and danmaku_state.results[1].season==1
    and danmaku_state.results[1].server_index==1,'manual search preserves season and route classification')
   local search_2=pending_async[next_async]
-  check(search_2.spec.stdin_data:find(('https://danmaku2.example/api/v2/search/anime?keyword=Anime%20title'),1,true)~=nil,
+  check(table.concat(search_2.spec.args,' '):find(('https://danmaku2.example/api/v2/search/anime?keyword=Anime%20title'),1,true)~=nil,
    'manual search also requests the other configured route')
   local next_before_cache=next_async
   messages['player_ui-danmaku-search-query']('Anime title','2','1')
@@ -729,7 +729,7 @@ local function suite()
    and danmaku_state.results[1].platforms[1].name=='爱奇艺','route filter keeps the selected platform result')
   messages['player_ui-danmaku-show']('22','2')
   local selected_detail=pending_async[next_async]
-  check(selected_detail.spec.stdin_data:find(('https://danmaku2.example/api/v2/bangumi/22'),1,true)~=nil,
+  check(table.concat(selected_detail.spec.args,' '):find(('https://danmaku2.example/api/v2/bangumi/22'),1,true)~=nil,
    'selecting a platform requests only its episode list')
   selected_detail.callback(true,{status=0,stdout=search_detail_json,stderr=''},nil)
   danmaku_state=props['user-data/player_ui/danmaku']
@@ -738,7 +738,7 @@ local function suite()
   local load_generation=danmaku_state.episode_load_generation or 0
   messages['player_ui-danmaku-pick']('23','Anime title · 第1集','2')
   local selected_search=pending_async[next_async]
-  check(selected_search.spec.stdin_data:find(('https://danmaku2.example/api/v2/comment/23?withRelated=true'),1,true)~=nil,
+  check(table.concat(selected_search.spec.args,' '):find(('https://danmaku2.example/api/v2/comment/23?withRelated=true'),1,true)~=nil,
    'selecting an episode fetches comments from its chosen source')
   danmaku_state=props['user-data/player_ui/danmaku']
   check(not danmaku_state.loaded and danmaku_state.status=='获取弹幕中…'
@@ -766,7 +766,7 @@ local function suite()
   event_handlers['start-file'][#event_handlers['start-file']]()
   event_handlers['file-loaded'][#event_handlers['file-loaded']]()
   local stale=find_async_after(stale_start,'https://danmaku.example/api/v2/search/anime?keyword='..online_api.urlencode('Anime title'))
-  local stale_command=stale.spec.stdin_data
+  local stale_command=table.concat(stale.spec.args,' ')
   local has_match=true
   check(has_match,'media without a local hash still attempts filename recognition')
   event_handlers['start-file'][#event_handlers['start-file']]()
