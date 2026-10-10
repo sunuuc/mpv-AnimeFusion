@@ -330,37 +330,44 @@ public class GuiCommand
     void OpenFromClipboard(IList<string> args)
     {
         bool append = args.Count == 1 && args[0] == "append";
+        var data = System.Windows.Forms.Clipboard.GetDataObject();
+        IEnumerable<string> entries;
 
-        if (System.Windows.Forms.Clipboard.ContainsFileDropList())
+        if (data?.GetData(System.Windows.Forms.DataFormats.FileDrop) is string[] droppedFiles)
         {
-            string[] files = System.Windows.Forms.Clipboard.GetFileDropList().Cast<string>().ToArray();
-            Player.LoadFiles(files, false, append);
-
-            if (append)
-                Player.CommandV("show-text", _("Files/URLs were added to the playlist"));
+            entries = droppedFiles;
         }
         else
         {
-            string clipboard = System.Windows.Forms.Clipboard.GetText();
-            List<string> files = [];
-
-            foreach (string i in clipboard.Split(BR.ToCharArray(), StringSplitOptions.RemoveEmptyEntries))
-            {
-                if (i.Contains("://") || File.Exists(i))
-                    files.Add(i);
-            }
-
-            if (files.Count == 0)
-            {
-                Terminal.WriteError(_("The clipboard does not contain a valid URL or file."));
-                return;
-            }
-
-            Player.LoadFiles(files.ToArray(), false, append);
-
-            if (append)
-                Player.CommandV("show-text", _("Files/URLs were added to the playlist"));
+            string clipboard = data?.GetData(System.Windows.Forms.DataFormats.UnicodeText) as string
+                ?? data?.GetData(System.Windows.Forms.DataFormats.Text) as string ?? "";
+            entries = clipboard.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries);
         }
+
+        List<string> files = [];
+
+        foreach (string entry in entries)
+        {
+            string file = entry.Trim().Trim('"').Trim();
+
+            if (file.StartsWith("file://", StringComparison.OrdinalIgnoreCase)
+                && Uri.TryCreate(file, UriKind.Absolute, out var uri) && uri.IsFile)
+                file = uri.LocalPath;
+
+            if (file.Contains("://") || File.Exists(file))
+                files.Add(file);
+        }
+
+        if (files.Count == 0)
+        {
+            Terminal.WriteError(_("The clipboard does not contain a valid URL or file."));
+            return;
+        }
+
+        Player.LoadFiles(files.ToArray(), false, append);
+
+        if (append)
+            Player.CommandV("show-text", _("Files/URLs were added to the playlist"));
     }
 
     void LoadAudio(IList<string> args)
