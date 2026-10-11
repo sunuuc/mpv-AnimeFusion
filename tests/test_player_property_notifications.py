@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class PlayerPropertyNotificationsTest(unittest.TestCase):
     def test_progress_and_window_state_never_wait_for_native_properties(self):
         source = (ROOT / 'src/player/src/MpvNet.Windows/WinForms/MainForm.cs').read_text(encoding='utf-8-sig')
-        self.assertIn('ObservePropertyDouble("time-pos", PropChangeTimePosition)', source)
+        self.assertIn('ObservePropertyDouble("time-pos", value => Volatile.Write(ref _playbackPosition, value))', source)
         self.assertIn('ObservePropertyBool("window-maximized", PropChangeWindowMaximized)', source)
         self.assertIn('ObservePropertyBool("window-minimized", PropChangeWindowMinimized)', source)
         progress = source[source.index('    void UpdateProgressBar()'):source.index('    void PropChangeOnTop(')]
@@ -61,7 +61,7 @@ class Taskbar { public double Position; public void SetValue(double position, do
 class TestForm : Form {
     public static readonly FakePlayer Player = new();
     Taskbar? _taskbar = new();
-    double _timePosition;
+    double _playbackPosition;
     bool _shutdownStarted;
     bool WasShown = true;
     bool _wasMaximized;
@@ -72,7 +72,7 @@ class TestForm : Form {
     public FormWindowState WindowState;
     void BeginInvoke(Action callback) => pending.Enqueue(callback);
     public void Pump() { while (pending.TryDequeue(out var callback)) callback(); }
-    public void Position(double value) => PropChangeTimePosition(value);
+    public void Position(double value) => Volatile.Write(ref _playbackPosition, value);
     public void Progress() => UpdateProgressBar();
     public double PositionShown => _taskbar!.Position;
     public void Maximized(bool value) => PropChangeWindowMaximized(value);

@@ -334,8 +334,9 @@ function M.read(now)
 end
 return M
 end)()
-local o={hide_timeout=1.6,network_speed=true,show_clock=true,volume_step=5,ui_scale=1.00,text_outline=0,font='Microsoft YaHei',accent='9F74D0'}
+local o={hide_timeout=1.6,network_speed=true,show_clock=true,auto_next=false,volume_step=5,ui_scale=1.00,text_outline=0,font='Microsoft YaHei',accent='9F74D0'}
 options.read_options(o,'player_ui')
+mp.set_property('keep-open',o.auto_next and 'yes' or 'always')
 o.ui_scale=core.clamp(tonumber(o.ui_scale) or 1.00,.45,1.5)
 o.text_outline=core.clamp(tonumber(o.text_outline) or 0,0,4)
 o.hide_timeout=core.clamp(o.hide_timeout,1,20);o.volume_step=core.clamp(o.volume_step,1,20)
@@ -344,7 +345,7 @@ local THEME,METRICS=core.theme(o.accent),core.metrics
 local ui=mp.create_osd_overlay('ass-events');ui.z=20
 local volume_osd=mp.create_osd_overlay('ass-events');volume_osd.z=25
 local state={visible=false,x=-1,y=-1,hover=nil,menu=nil,scroll=0,drag=nil,pressed=nil,
-    thumb=nil,thumb_time=nil,rate=nil,fps=nil,cpu=nil,memory=nil}
+    rate=nil,fps=nil,cpu=nil,memory=nil}
 local playback_ready=false
 local loading=false
 local layout,buttons,menu_box,menu_items,menus
@@ -353,7 +354,10 @@ local trakt_account={}
 local mal_account={}
 local sync_services={bangumi=true,trakt=false,mal=false}
 local draw_cover,remove_cover,cover_seen
-local render_timer,hide_timer,pulse,network_timer,thumb_timer,clock_timer,loading_timer,volume_osd_timer
+local render_timer,hide_timer,pulse,network_timer,clock_timer,loading_timer,volume_osd_timer
+local timed_pause_timer,timed_pause_at
+local pause_minutes=30
+local mirror_shader=mp.command_native({'expand-path','~~/shaders/hdr-toys-transform.glsl'})
 local render,request_render,show,sync_timers,open_menu
 local show_volume_osd
 local samples=core.fps_sampler()
@@ -368,12 +372,45 @@ local function prop(name,default) return mp.get_property_native(name,default) en
 local function num(name,default) return mp.get_property_number(name,default) end
 local function bool(name,default) return mp.get_property_bool(name,default or false) end
 local function cmd(...) return mp.commandv(...) end
+local function save_option(key,value)
+    local path=mp.command_native({'expand-path','~~/script-opts/player_ui.conf'})
+    local f=io.open(path,'rb');local content=f and f:read('*a') or ''
+    if f then f:close() end
+    local line=key..'='..(value and 'yes' or 'no')
+    local found=false
+    content=content:gsub('[^\r\n]+',function(current)
+        if current:match('^%s*'..key..'%s*=') then found=true;return line end
+        return current
+    end)
+    if not found then
+        local ending=content:find('\r\n',1,true) and '\r\n' or '\n'
+        if #content>0 and not content:match('[\r\n]$') then content=content..ending end
+        content=content..line..ending
+    end
+    f=io.open(path,'wb')
+    if not f then mp.msg.error('无法保存播放设置');return false end
+    local ok=f:write(content);f:close()
+    if not ok then mp.msg.error('无法保存播放设置');return false end
+    o[key]=value
+    return true
+end
 playback_ready=not bool('idle-active',true) and not bool('core-idle',false)
 state.visible=playback_ready
 local function kill(t) if t then t:kill() end end
-local function hide_thumb()
-    kill(thumb_timer);thumb_timer=nil
-    if state.thumb_time then cmd('script-message-to','thumbfast','clear');state.thumb_time=nil end
+local function start_timed_pause()
+    kill(timed_pause_timer)
+    timed_pause_at=os.time()+pause_minutes*60
+    timed_pause_timer=mp.add_timeout(pause_minutes*60,function()
+        timed_pause_timer=nil;timed_pause_at=nil
+        mp.set_property_bool('pause',true)
+        menus.invalidate();request_render()
+    end)
+end
+local function mirror_enabled()
+    for _,shader in ipairs(prop('glsl-shaders',{})) do
+        if shader==mirror_shader then return true end
+    end
+    return false
 end
 local function format_num(value,unit,decimals)
     return core.finite(value) and string.format('%.'..(decimals or 1)..'f',value)..(unit or '') or '—'
@@ -393,7 +430,7 @@ local function escape()
     show()
 end
 local function open_file(kind)
-    state.menu=nil;hide_thumb()
+    state.menu=nil
     cmd('script-message-to','mpvnet',kind=='audio' and 'load-audio' or 'load-sub')
 end
 local function current_slot() return num('user-data/animejanai/requested-slot',-1) end
@@ -462,7 +499,7 @@ return function(c)
     end
     function M.close()
         local was_open=s.menu~=nil
-        close_timer();dismiss_timer();M.invalidate();M.boxes={};M.rows={};s.menu=nil;s.parent=nil;s.scroll=0;s.parent_scroll=0;s.menu_drag=nil
+        close_timer();dismiss_timer();M.invalidate();M.boxes={};M.rows={};M.bridge=nil;s.menu=nil;s.parent=nil;s.scroll=0;s.parent_scroll=0;s.menu_drag=nil
         if was_open and c.on_close then c.on_close() end
     end
     function M.open(kind,parent)
@@ -547,6 +584,7 @@ return function(c)
         local function action(...)c.command('script-message-to','mpvnet',provider..'-action',...)end
         local function enabled(fn)return not account.busy and fn or nil end
         if kind=='settings' then
+            link('播放设置','playback-settings')
             link('缩放模式','scale')
             link('超分与补帧','ai')
             link('字幕设置','sub-settings','sub')
@@ -554,6 +592,12 @@ return function(c)
             link('同步设置','sync-settings','bangumi')
             link('统计信息','stats','info')
             row('显示时间',c.toggle_clock,c.clock(),{stay=true})
+        elseif kind=='playback-settings' then
+            row('自动连播',c.toggle_auto_next,c.auto_next(),{stay=true})
+            row('镜像反转',c.toggle_mirror,c.mirror(),{stay=true})
+            row('定时暂停',c.toggle_timed_pause,c.timed_pause(),{stay=true,value=c.timed_pause() and '开启' or '关闭'})
+            row('暂停时间',nil,false,{slider={value=c.pause_minutes(),min=1,max=180,step=1,format='%.0f 分钟',
+                set=c.set_pause_minutes}})
         elseif kind=='sync-settings' then
             local services=c.sync_services()
             for _,item in ipairs({{'bangumi','Bangumi'},{'trakt','Trakt'},{'mal','MyAnimeList'}}) do local id,label=item[1],item[2]
@@ -742,7 +786,7 @@ return function(c)
         return title,a
     end
     M.allowed={settings='设置',speed='播放速度',sub='字幕',audio='音轨',danmaku='弹幕',ai='超分与补帧',scale='缩放模式',
-        ['sub-settings']='字幕设置',['danmaku-settings']='弹幕设置',
+        ['playback-settings']='播放设置',['sub-settings']='字幕设置',['danmaku-settings']='弹幕设置',
         ['audio-settings']='音频设置',stats='统计信息',chapters='章节',
         bangumi='Bangumi',trakt='Trakt',mal='MyAnimeList',['sync-settings']='同步设置',['bangumi-collection']='收藏',['bangumi-episode']='剧集',['trakt-episode']='剧集',['mal-episode']='剧集'}
     local function width(kind,l)
@@ -757,7 +801,7 @@ return function(c)
         local y,rows=0,{}
         for _,r in ipairs(items) do
             local indent=r.icon and metrics.icon_column*u or metrics.row_padding*u+8*u
-            local available=w-indent-30*u-(r.hint and 52*u or 0)-(r.target and 28*u or 0)
+            local available=w-indent-30*u-(r.value and core.ass_text_width(r.value,metrics.row_text*u)+16*u or r.hint and 52*u or 0)-(r.target and 28*u or 0)
             local lines=core.wrap(r.text or '',available,metrics.row_text*u,r.wrap or 2)
             local height=r.h and r.h*u or r.separator and metrics.separator*u or r.slider and metrics.slider*u
                 or math.max(kind=='ai' and 48*u or metrics.row_min*u,
@@ -787,7 +831,7 @@ return function(c)
             view=math.max(0,h-hh-pad*2),content=y+hh+pad,ui=u}
     end
     function M.draw(l,d,buttons)
-        M.boxes={};M.rows={}
+        M.boxes={};M.rows={};M.bridge=nil
         if not s.menu then return M.rows end
         local function add(b) b.menu=true;buttons[#buttons+1]=b end
         local function drawbox(b,scroll_key,is_child)
@@ -884,6 +928,7 @@ return function(c)
                             end
                             if r.detail then d.text(left,ty+2*u,metrics.row_detail*u,r.detail,7,muted,false,w-(left-b.x0)-24*u,.8) end
                             if r.target then d.text(b.x1-25*u,yy+entry.height/2,27*u,'›',6,theme.secondary,false,nil,.8)
+                            elseif r.value then d.text(b.x1-19*u,yy+entry.height/2,metrics.row_text*u,r.value,6,muted,false,nil,.8)
                             elseif r.hint then d.text(b.x1-19*u,yy+entry.height/2,13*u,r.hint,6,muted,false,nil,.8) end
                         end
                     end)
@@ -901,14 +946,28 @@ return function(c)
         if s.parent then
             local parent=makebox(l,s.parent)
             local u=l.ui or 1;local gap=8*u;local margin=metrics.menu_margin*u
+            drawbox(parent,'parent_scroll',false)
             local child_width=b.x1-b.x0;local left=parent.x0-child_width-gap
             if left<margin then
                 local right=parent.x1+gap
                 left=right+child_width<=l.w-margin and right or margin
             end
-            local dx=left-b.x0;local dy=parent.y1-b.y1
+            local row_top,row_bottom=parent.content,parent.content
+            for _,entry in ipairs(parent.rows) do
+                if entry.row.target==s.menu then
+                    row_top=core.clamp(parent.content+entry.top-parent.offset,parent.content,parent.content+parent.view)
+                    row_bottom=core.clamp(row_top+entry.height,parent.content,parent.content+parent.view)
+                    break
+                end
+            end
+            local top=core.clamp(row_top,margin,math.max(margin,l.h-margin-(b.y1-b.y0)))
+            local dx=left-b.x0;local dy=top-b.y0
             b.x0=b.x0+dx;b.x1=b.x1+dx;b.y0=b.y0+dy;b.y1=b.y1+dy;b.content=b.content+dy
-            drawbox(parent,'parent_scroll',false)
+            if b.x1<=parent.x0 then
+                M.bridge={x0=b.x1,x1=parent.x0,y0=math.min(row_top,b.y0),y1=math.max(row_bottom,b.y1)}
+            elseif b.x0>=parent.x1 then
+                M.bridge={x0=parent.x1,x1=b.x0,y0=math.min(row_top,b.y0),y1=math.max(row_bottom,b.y1)}
+            end
             drawbox(b,'scroll',true)
         else drawbox(b,'scroll',false) end
         return M.rows
@@ -988,6 +1047,7 @@ return function(c)
         if not s.menu then return b end
         if b and b.menu then return b end
         for _,box in ipairs(M.boxes) do if core.inside(box,x,y) then return {id='menu-surface',menu=true} end end
+        if core.inside(M.bridge,x,y) then return {id='menu-surface',menu=true} end
         if b and (b.id=='settings' or b.id=='speed' or b.id=='audio'
             or b.id=='sub' or b.id=='danmaku' or b.id=='bangumi' or b.id=='trakt' or b.id=='mal') then return b end
         return {id='menu-dismiss',menu=true}
@@ -1003,19 +1063,36 @@ end)()({
     read_presets=read_presets,presets=function()return presets end,current_slot=current_slot,select_slot=ai_select,
     clock=function()return o.show_clock end,
     toggle_clock=function()
-        local path=mp.command_native({'expand-path','~~/script-opts/player_ui.conf'})
-        local f=io.open(path,'rb');local content=f and f:read('*a') or ''
-        if f then f:close() end
-        local value=not o.show_clock
-        local line='show_clock='..(value and 'yes' or 'no')
-        if content:find('show_clock%s*=') then
-            content=content:gsub('([\r\n]?)show_clock%s*=[^\r\n]*',function(prefix)return prefix..line end)
-        else content=content..'\n'..line..'\n' end
-        f=io.open(path,'wb')
-        if not f then mp.msg.error('无法保存时间显示设置');return end
-        local ok=f:write(content);f:close()
-        if not ok then mp.msg.error('无法保存时间显示设置');return end
-        o.show_clock=value;menus.invalidate();sync_timers();request_render()
+        if save_option('show_clock',not o.show_clock) then menus.invalidate();sync_timers();request_render() end
+    end,
+    auto_next=function()return o.auto_next end,
+    toggle_auto_next=function()
+        if save_option('auto_next',not o.auto_next) then
+            mp.set_property('keep-open',o.auto_next and 'yes' or 'always')
+            menus.invalidate();request_render()
+        end
+    end,
+    mirror=mirror_enabled,
+    toggle_mirror=function()
+        if mirror_enabled() then
+            cmd('no-osd','change-list','glsl-shaders','remove',mirror_shader)
+            cmd('no-osd','change-list','glsl-shader-opts','remove','hdr-toys-transform/scale_x')
+        elseif cmd('no-osd','change-list','glsl-shader-opts','append','hdr-toys-transform/scale_x=-1') then
+            cmd('no-osd','change-list','glsl-shaders','append',mirror_shader)
+        end
+        menus.invalidate();request_render()
+    end,
+    timed_pause=function()return timed_pause_timer~=nil end,
+    pause_minutes=function()return pause_minutes end,
+    toggle_timed_pause=function()
+        if timed_pause_timer then kill(timed_pause_timer);timed_pause_timer=nil;timed_pause_at=nil
+        else start_timed_pause() end
+        menus.invalidate();request_render()
+    end,
+    set_pause_minutes=function(value)
+        pause_minutes=core.clamp(math.floor(value+.5),1,180)
+        if timed_pause_timer then start_timed_pause() end
+        menus.invalidate();request_render()
     end,
     open_file=open_file,info=info_data,after=mp.add_timeout,on_close=function()if show then show()end end,
     open=function(kind,parent)open_menu(kind,parent)end,
@@ -1024,7 +1101,7 @@ end)()({
 open_menu=function(kind,parent)
     if not playback_ready then return end
     if kind=='more' then kind='settings' end
-    hide_thumb();samples:reset();state.fps=nil;state.cpu=nil;state.memory=nil;state.gpu=nil
+    samples:reset();state.fps=nil;state.cpu=nil;state.memory=nil;state.gpu=nil
     if metrics.reset then metrics.reset() end
     menus.open(kind,parent)
     if state.menu=='stats' then actual_sample() end
@@ -1131,21 +1208,6 @@ local function icon(id,x,y,active,disabled,small)
     local size=(small and METRICS.small_icon_size or METRICS.icon_size)*sc
     line(string.format('{\\rDefault\\an7\\pos(%.2f,%.2f)\\bord0\\shad0\\fscx%d\\fscy%d\\1c&H%s&\\1a&H%02X&\\p1}%s{\\p0}',x-16*size/100,y-16*size/100,size,size,color,disabled and 160 or 0,icons[id] or icons.more))
 end
-local function thumb(t,x)
-    if not core.local_media(mp.get_property('path',''),mp.get_property('stream-open-filename',''),bool('demuxer-via-network')) then hide_thumb();return end
-    if not state.thumb or state.thumb.disabled or not state.thumb.available then return end
-    if state.thumb_time and math.abs(state.thumb_time-t)<.2 then return end
-    kill(thumb_timer)
-    thumb_timer=mp.add_timeout(.06,function()
-        thumb_timer=nil
-        if not core.local_media(mp.get_property('path',''),mp.get_property('stream-open-filename',''),bool('demuxer-via-network')) then hide_thumb();return end
-        state.thumb_time=t
-        local width=state.thumb.width or 160;local height=state.thumb.height or 90
-        local px=core.clamp(x*layout.scale-width/2,12,layout.w*layout.scale-width-12)
-        local py=(layout.seek.y0-14*(layout.ui or 1))*layout.scale-height
-        cmd('script-message-to','thumbfast','thumb',tostring(t),tostring(math.floor(px)),tostring(math.floor(py)))
-    end)
-end
 local function seek_value(x)
     return core.clamp((x-layout.seek.x0)/(layout.seek.x1-layout.seek.x0),0,1)*num('duration',0)
 end
@@ -1158,8 +1220,17 @@ local function hit(x,y)
     return menus.hit_override(found,x,y)
 end
 local mouse_bound=false
+local input_blocked_until=0
+local function cancel_pointer()
+    state.drag=nil;state.menu_drag=nil;state.pressed=nil;state.pressed_key=nil;state.hover=nil
+end
+local function layout_current()
+    local w,h=mp.get_osd_size()
+    return layout and w==layout.w*layout.scale and h==layout.h*layout.scale
+end
 local function mouse_button(event)
-    if event and event.canceled then state.drag=nil;state.menu_drag=nil;state.pressed=nil;hide_thumb();request_render();return end
+    if event and event.canceled then cancel_pointer();request_render();return end
+    if mp.get_time()<input_blocked_until or not layout_current() then cancel_pointer();request_render();return end
     local e=event and event.event or 'press'
     local px,py=mp.get_mouse_pos()
     if layout and core.finite(px) and core.finite(py) then
@@ -1170,7 +1241,7 @@ local function mouse_button(event)
         if b then
             state.pressed=b.id;state.pressed_key=b.key
             if b.menu and menus.press(b,state.x,state.y) then state.drag='menu'
-            elseif b.id=='seek' and num('duration',0)>0 and bool('seekable') then state.drag='seek';hide_thumb()
+            elseif b.id=='seek' and num('duration',0)>0 and bool('seekable') then state.drag='seek'
             elseif b.id=='volume-slider' then state.drag='volume-slider' end
         end
     end
@@ -1197,6 +1268,7 @@ local function wheel(delta)
     request_render()
 end
 local function bind_mouse(enabled)
+    enabled=enabled and mp.get_time()>=input_blocked_until
     if mouse_bound==enabled then return end
     mouse_bound=enabled
     if enabled then
@@ -1321,12 +1393,11 @@ render=function()
             local x=seek.x0+core.clamp(p/dur,0,1)*(seek.x1-seek.x0)
             rect(seek.x0,seek.y-2.5*u,x,seek.y+2.5*u,ACCENT);circle(x,seek.y,9*u,THEME.selected,0);circle(x,seek.y,5*u,ACCENT)
             buttons[#buttons+1]={id='seek',x0=seek.x0,x1=seek.x1,y0=seek.y0,y1=seek.y1}
-            if core.inside(seek,state.x,state.y) and not state.menu then
+            if state.drag=='seek' and not state.menu then
                 local target=seek_value(state.x)
                 round(state.x-40*u,seek.y0-34*u,state.x+40*u,seek.y0-3*u,8*u,PANEL,8)
                 text(state.x,seek.y0-19*u,14*u,core.time(target),5)
-                if not state.drag then thumb(target,state.x) end
-            else hide_thumb() end
+            end
         end
         for _,b in ipairs(layout.controls) do
             local id=b.id;local disabled=false
@@ -1362,11 +1433,13 @@ render=function()
             local b=layout.network_rate
             text((b.x0+b.x1)/2,b.y+1*u,14*u,core.rate(state.rate),5,WHITE,true)
         end
-    else hide_thumb() end
+    end
     for provider in pairs(avatar_keys) do if not avatar_seen[provider] then remove_provider_avatar(provider) end end
     -- The clock remains at the top while playback controls stay in the bottom row.
     if o.show_clock and playing then
-        text(0,0,22*u,os.date('%H:%M'),7,THEME.secondary,false,nil,0.6)
+        local clock=os.date('%H:%M')
+        if timed_pause_at then clock=clock..' / '..os.date('%H:%M',timed_pause_at) end
+        text(0,0,22*u,clock,7,THEME.secondary,false,nil,0.6)
     end
     -- Keep the current title visible while either the bottom controls or a
     -- bottom-row menu is open.
@@ -1462,7 +1535,7 @@ local function hide()
     hide_timer=nil
     if state.menu or state.drag or bool('pause') or bool('idle-active',true) then return end
     if pointer_over_hud() then hide_timer=mp.add_timeout(o.hide_timeout,hide);return end
-    state.visible=false;state.hover=nil;bind_mouse(false);hide_thumb();sync_timers();request_render()
+    state.visible=false;state.hover=nil;bind_mouse(false);sync_timers();request_render()
 end
 show=function()
     if not playback_ready then
@@ -1475,6 +1548,7 @@ end
 local function mouse_move()
     if not playback_ready then return end
     local x,y=mp.get_mouse_pos()
+    if not layout_current() then cancel_pointer();buttons={};show();return end
     if not layout then local w,h=mp.get_osd_size();layout=core.layout(w,h,num('display-hidpi-scale',1),o.ui_scale,nil,sync_services) end
     state.x=x/layout.scale;state.y=y/layout.scale
     if state.drag=='volume-slider' and layout.volume then
@@ -1491,7 +1565,7 @@ mp.add_forced_key_binding('mouse_leave','player_ui-leave',function()
         local b=hit(state.x,state.y);state.hover=b and b.id or nil;menus.hover(b);show()
         return
     end
-    menus.hover(nil);state.x=-1;state.y=-1;state.hover=nil;state.drag=nil;state.pressed=nil;hide_thumb();hide()
+    menus.hover(nil);state.x=-1;state.y=-1;state.hover=nil;state.drag=nil;state.pressed=nil;hide()
 end)
 mp.add_key_binding('UP','player_ui-volume-up',function()volume(o.volume_step)end,{repeatable=true})
 mp.add_key_binding('DOWN','player_ui-volume-down',function()volume(-o.volume_step)end,{repeatable=true})
@@ -1501,13 +1575,16 @@ mp.register_script_message('player_ui-menu',function(kind)
 end)
 mp.register_script_message('player_ui-show',show)
 mp.register_script_message('player_ui-hide',function()menus.close();state.hover=nil;hide()end)
-mp.register_script_message('thumbfast-info',function(json)local info=utils.parse_json(json);if type(info)=='table' then state.thumb=info end end)
 mp.add_key_binding(nil,'visibility',function()if state.visible then state.menu=nil;hide() else show() end end)
 local last_volume=num('volume',100)
 for _,p in ipairs({'pause','idle-active','paused-for-cache','demuxer-via-network','window-minimized','fullscreen',
-    'volume','mute','speed','sid','sub-visibility','sub-delay','sub-scale','sub-pos','audio-delay','display-hidpi-scale','keepaspect','panscan','video-unscaled','track-list','playlist','playlist-pos','media-title','duration','video-params','osd-dimensions',
+    'volume','mute','speed','sid','sub-visibility','sub-delay','sub-scale','sub-pos','audio-delay','display-hidpi-scale','keepaspect','panscan','video-unscaled','glsl-shaders','track-list','playlist','playlist-pos','media-title','duration','video-params','osd-dimensions',
     'user-data/player_ui/danmaku','user-data/animejanai/requested-slot'}) do
     mp.observe_property(p,'native',function(_,value)
+        if p=='fullscreen' or p=='osd-dimensions' or p=='display-hidpi-scale' then
+            input_blocked_until=mp.get_time()+num('input-doubleclick-time',300)/1000
+            cancel_pointer();buttons={};bind_mouse(false)
+        end
         -- Property changes can update the title or the open menu.
         if state.menu then menus.invalidate() end
         if p=='volume' and core.finite(tonumber(value)) then
@@ -1521,7 +1598,7 @@ end
 mp.register_event('start-file',function()
     remove_avatar();playback_ready=false;volume_osd:remove();kill(volume_osd_timer);loading=true;state.visible=false;state.rate=nil;state.menu=nil
     menus.close();state.drag=nil;state.pressed=nil;state.fps=nil
-    samples:reset();hide_thumb();sync_timers();request_render()
+    samples:reset();sync_timers();request_render()
 end)
 local function paused_video_ready()
     if bool('pause') and bool('vo-configured') and not bool('idle-active',true) then
@@ -1540,10 +1617,10 @@ end)
 mp.register_event('seek',function()samples:reset()end)
 mp.register_event('end-file',function()
     remove_avatar();playback_ready=false;loading=false;state.visible=false;state.menu=nil;state.rate=nil
-    hide_thumb();sync_timers();request_render()
+    sync_timers();request_render()
 end)
 mp.register_event('shutdown',function()
     if metrics.reset then metrics.reset() end
-    remove_avatar();menus.shutdown();kill(render_timer);kill(hide_timer);kill(pulse);kill(network_timer);kill(thumb_timer);kill(clock_timer);kill(loading_timer);kill(volume_osd_timer);ui:remove();volume_osd:remove();bind_mouse(false)
+    remove_avatar();menus.shutdown();kill(timed_pause_timer);kill(render_timer);kill(hide_timer);kill(pulse);kill(network_timer);kill(clock_timer);kill(loading_timer);kill(volume_osd_timer);ui:remove();volume_osd:remove();bind_mouse(false)
 end)
 show()

@@ -8,11 +8,11 @@
   },
   "native_and_ui_resources": {
     "repo": "sunuuc/mpv-AnimeFusion",
-    "tag": "standalone-v1.3.1",
+    "tag": "standalone-v1.3.2",
     "name": "native-build-inputs.7z",
-    "sha256": "4959f6f0baaeb808b0eb781a5995677420899752b6b4939b646b80ed491787de",
-    "bytes": 86257957,
-    "origin": "Pinned native runtime with continuous secondary ASS timeline; individual hashes and source patch included in build-info/native."
+    "sha256": "c3011d795af92b43e03d6efdf6d22268617a7d0dc4be756b8337e51e4128ffbe",
+    "bytes": 86206912,
+    "origin": "Pinned native runtime with continuous secondary ASS timeline and upstream libplacebo swapchain fixes; hashes and source patches included in build-info/native."
   },
   "libass": {
     "repo": "libass/libass",

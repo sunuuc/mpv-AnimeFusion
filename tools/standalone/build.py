@@ -148,9 +148,7 @@ def stage():
         if p.is_file() and p.suffix.lower() in FONTS:p.unlink()
     (ST/'portable_config/scripts/modernx.lua').unlink(missing_ok=True)
     (ST/'portable_config/script-opts/modernx.conf').unlink(missing_ok=True)
-    p=ST/'portable_config/scripts/thumbfast.lua';s=p.read_text(encoding='utf-8')
-    s=s.replace('local mpv_path = options.mpv_path','local mpv_path = options.mpv_path == "mpv" and mp.command_native({"expand-path", "~~/../app/mpv.exe"}) or options.mpv_path')
-    p.write_text(s,encoding='utf-8')
+    (ST/'portable_config/script-opts/thumbfast.conf').unlink(missing_ok=True)
     for n in ('input.conf','input-animejanai.conf'):
         p=ST/'portable_config'/n;s=p.read_text(encoding='utf-8')
         s=s.replace('apply-profile upscale-on; script-message aji-slot','script-message aji-slot')
@@ -220,7 +218,7 @@ def inspect_payload():
        'portable_config/mpv.conf','portable_config/mpv-animejanai.conf','portable_config/input.conf',
        'portable_config/script-opts/player_ui.conf','portable_config/script-opts/player_ui_danmaku.conf',
        'animejanai/danmaku/DanmakuFactory.exe',
-       'portable_config/scripts/network_playback.lua','portable_config/scripts/player_ui.lua','portable_config/scripts/player_ui_danmaku.lua','portable_config/scripts/thumbfast.lua',
+       'portable_config/scripts/network_playback.lua','portable_config/scripts/player_ui.lua','portable_config/scripts/player_ui_danmaku.lua',
        'portable_config/script-modules/player_ui_core.lua','portable_config/script-modules/player_ui_metrics.lua',
        'portable_config/script-modules/player_ui_menu.lua','portable_config/script-modules/player_ui_danmaku_online.lua',
        'portable_config/script-modules/player_ui_danmaku_render.lua','app/build-info/danmaku/upstream.json',

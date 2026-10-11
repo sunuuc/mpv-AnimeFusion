@@ -10,7 +10,6 @@
 | mpv.net / stax76 及贡献者 | <https://github.com/mpvnet-player/mpvnet> | `docs/THIRD_PARTY_LICENSES/mpv.net-LICENSE.txt` |
 | DanmakuFactory / hihkm 及贡献者 | <https://github.com/hihkm/DanmakuFactory> | MIT，`docs/THIRD_PARTY_LICENSES/DanmakuFactory-MIT.txt`；转换源码在 `third_party/danmaku-factory` |
 | libass / libass contributors | <https://github.com/libass/libass> | ISC，`docs/THIRD_PARTY_LICENSES/libass-ISC.txt`；修改源码在 `third_party/libass` |
-| thumbfast / po5 | <https://github.com/po5/thumbfast> | `docs/THIRD_PARTY_LICENSES/thumbfast-LICENSE.txt` |
 | PCRE2 / Philip Hazel 及贡献者 | <https://github.com/PCRE2Project/pcre2> | BSD，`docs/THIRD_PARTY_LICENSES/PCRE2-BSD.txt` |
 | Inno Setup / Jordan Russell、Martijn Laan 及贡献者 | <https://github.com/jrsoftware/issrc> | 安装与卸载程序，6.7.3，`docs/THIRD_PARTY_LICENSES/Inno-Setup.txt` |
 
@@ -51,6 +50,8 @@ EXE 安装定义位于 `src/player/src/Setup/Inno`。简体中文安装界面采
 播放器、管理器、弹幕转换与渲染的修改源码位于 `src` 和 `third_party`，构建记录位于 `app/build-info`。
 
 ## 再分发
+
+镜像反转通过 mpv 的 `glsl-shaders` 接口使用 [hdr-toys](https://github.com/natural-harmonia-gropius/hdr-toys) 原版 `utils/transform.glsl`，固定版本 `41d1044e64e3ba06de966c09b72e23b76690cf4a`，源码不作修改。作者 natural-harmonia-gropius，MIT；许可证见 `THIRD_PARTY_LICENSES/hdr-toys-MIT.txt`。
 
 保留版权声明、许可证原文和所分发二进制对应的修改源码。各组件适用各自的许可证。
 

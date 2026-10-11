@@ -48,6 +48,9 @@ Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{a
 Name: "{group}\{#MyAppName} Manager"; Filename: "{app}\mpv-AnimeFusionManager.exe"; WorkingDir: "{app}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
 
+[InstallDelete]
+Type: files; Name: "{app}\portable_config\scripts\thumbfast.lua"
+
 [Files]
 ; Program files are replaced on upgrade. User-created files are never swept.
 Source: "{#MyAppSourceDir}\mpv-AnimeFusion.exe"; DestDir: "{app}"; Flags: ignoreversion

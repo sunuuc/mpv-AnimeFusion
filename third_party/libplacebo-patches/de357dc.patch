@@ -1,0 +1,102 @@
+From de357dcdd817b72e4acf81fcb0acff0a60ef5cf4 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Kacper=20Michaj=C5=82ow?= <kasper93@gmail.com>
+Date: Thu, 3 Sep 2026 01:34:16 +0200
+Subject: [PATCH] vulkan/swapchain: submit the present command under the
+ recording lock
+
+Since 11b3350f every command begun on a queue takes the next value of
+that queue's timeline semaphore, so commands have to be submitted in the
+order they were begun. The pl_gpu recording lock guarantees that for every
+command except the one pl_vk_steal_cmd hands to the swapchain, which is
+begun and submitted outside of it. When another thread begins and submits
+a command on the graphics queue in between, the values are submitted out
+of order, which trips the assertion in vk_cmd_submit or worse...
+
+Begin and submit the command carrying the present callback through the
+regular CMD_BEGIN and CMD_SUBMIT path instead, and present on the queue
+that command went to. Drop pl_vk_steal_cmd, which cannot be used safely
+anymore.
+
+Fixes: 11b3350f
+Fixes: https://github.com/haasn/libplacebo/issues/377
+---
+ src/vulkan/gpu.c       | 19 -------------------
+ src/vulkan/gpu.h       |  5 -----
+ src/vulkan/swapchain.c |  6 +++---
+ 3 files changed, 3 insertions(+), 27 deletions(-)
+
+diff --git a/src/vulkan/gpu.c b/src/vulkan/gpu.c
+index b43693c..57bd49a 100644
+--- a/src/vulkan/gpu.c
++++ b/src/vulkan/gpu.c
+@@ -772,25 +772,6 @@ static bool vk_gpu_is_failed(pl_gpu gpu)
+     return vk->failed;
+ }
+ 
+-struct vk_cmd *pl_vk_steal_cmd(pl_gpu gpu)
+-{
+-    struct pl_vk *p = PL_PRIV(gpu);
+-    struct vk_ctx *vk = p->vk;
+-
+-    pl_mutex_lock(&p->recording);
+-    struct vk_cmd *cmd = p->cmd;
+-    p->cmd = NULL;
+-    pl_mutex_unlock(&p->recording);
+-
+-    struct vk_cmdpool *pool = vk->pool_graphics;
+-    if (!cmd || cmd->pool != pool) {
+-        vk_cmd_submit(&cmd);
+-        cmd = vk_cmd_begin(pool, NULL);
+-    }
+-
+-    return cmd;
+-}
+-
+ void pl_vk_print_heap(pl_gpu gpu, enum pl_log_level lev)
+ {
+     struct pl_vk *p = PL_PRIV(gpu);
+diff --git a/src/vulkan/gpu.h b/src/vulkan/gpu.h
+index 0318eae..90d6e1d 100644
+--- a/src/vulkan/gpu.h
++++ b/src/vulkan/gpu.h
+@@ -29,11 +29,6 @@
+ 
+ pl_gpu pl_gpu_create_vk(struct vk_ctx *vk);
+ 
+-// This function takes the current graphics command and steals it from the
+-// GPU, so the caller can do custom vk_cmd_ calls on it. The caller should
+-// submit it as well.
+-struct vk_cmd *pl_vk_steal_cmd(pl_gpu gpu);
+-
+ // Print memory usage statistics
+ void pl_vk_print_heap(pl_gpu, enum pl_log_level);
+ 
+diff --git a/src/vulkan/swapchain.c b/src/vulkan/swapchain.c
+index 90f5da3..c4b6952 100644
+--- a/src/vulkan/swapchain.c
++++ b/src/vulkan/swapchain.c
+@@ -975,7 +975,7 @@ static bool vk_sw_submit_frame(pl_swapchain sw)
+         return false;
+     }
+ 
+-    struct vk_cmd *cmd = pl_vk_steal_cmd(gpu);
++    struct vk_cmd *cmd = CMD_BEGIN(GRAPHICS);
+     if (!cmd) {
+         pl_mutex_unlock(&p->lock);
+         return false;
+@@ -983,13 +983,13 @@ static bool vk_sw_submit_frame(pl_swapchain sw)
+ 
+     pl_rc_ref(&p->frames_in_flight);
+     vk_cmd_callback(cmd, VK_CB_FUNC(present_cb), p, NULL);
+-    if (!vk_cmd_submit(&cmd)) {
++    int qidx = cmd->qindex;
++    if (!CMD_SUBMIT(&cmd)) {
+         pl_mutex_unlock(&p->lock);
+         return false;
+     }
+ 
+     struct vk_cmdpool *pool = vk->pool_graphics;
+-    int qidx = pool->idx_queues;
+     VkQueue queue = pool->queues[qidx];
+ 
+     vk_rotate_queues(p->vk);

@@ -40,6 +40,8 @@ public partial class MainForm : Form
     int _lastCycleFullscreen;
     int _taskbarButtonCreatedMessage;
     int _cursorAutohide = 1000;
+    double _playbackPosition;
+    string _geometry = "";
 
     bool _contextMenuIsReady;
     bool _wasMaximized;
@@ -63,7 +65,6 @@ public partial class MainForm : Form
             Player.FileLoaded += Player_FileLoaded;
             Player.Pause += Player_Pause;
             Player.PlaylistPosChanged += Player_PlaylistPosChanged;
-            Player.Seek += UpdateProgressBar;
             Player.Shutdown += Player_Shutdown;
             Player.VideoSizeChanged += Player_VideoSizeChanged;
             Player.ClientMessage += Player_ClientMessage;
@@ -74,13 +75,16 @@ public partial class MainForm : Form
             GuiCommand.Current.ShowMenu += GuiCommand_ShowMenu;
 
             Player.Init(Handle, true);
+            _geometry = Player.GetPropertyString("geometry");
         Sync.SyncPreferences.Initialize();
         Bangumi.BangumiPlayback.Initialize();
         Trakt.TraktPlayback.Initialize();
         MyAnimeList.MalPlayback.Initialize();
 
-            Player.ObserveProperty("window-maximized", PropChangeWindowMaximized); // bool methods not working correctly
-            Player.ObserveProperty("window-minimized", PropChangeWindowMinimized); // bool methods not working correctly
+            Player.ObservePropertyBool("window-maximized", PropChangeWindowMaximized);
+            Player.ObservePropertyBool("window-minimized", PropChangeWindowMinimized);
+            Player.ObservePropertyDouble("time-pos", value => Volatile.Write(ref _playbackPosition, value));
+            Player.ObservePropertyString("geometry", value => Volatile.Write(ref _geometry, value));
             Player.ObserveProperty("cursor-autohide", PropChangeCursorAutohide);
 
             Player.ObservePropertyBool("border", PropChangeBorder);
@@ -746,7 +750,7 @@ public partial class MainForm : Form
 
         if (load)
         {
-            string geometryString = Player.GetPropertyString("geometry");
+            string geometryString = Volatile.Read(ref _geometry);
 
             if (!string.IsNullOrEmpty(geometryString))
             {
@@ -1319,7 +1323,7 @@ public partial class MainForm : Form
     void UpdateProgressBar()
     {
         if (!_shutdownStarted && Player.TaskbarProgress && _taskbar != null)
-            _taskbar.SetValue(Player.GetPropertyDouble("time-pos", false), Player.Duration.TotalSeconds);
+            _taskbar.SetValue(Volatile.Read(ref _playbackPosition), Player.Duration.TotalSeconds);
     }
 
     void PropChangeOnTop(bool value) => BeginInvoke(() => TopMost = value);
@@ -1334,7 +1338,7 @@ public partial class MainForm : Form
     
     void PropChangeEdition(int value) => Player.Edition = value;
     
-    void PropChangeWindowMaximized()
+    void PropChangeWindowMaximized(bool value)
     {
         if (!WasShown)
             return;
@@ -1344,7 +1348,7 @@ public partial class MainForm : Form
             if (_shutdownStarted)
                 return;
 
-            Player.WindowMaximized = Player.GetPropertyBool("window-maximized");
+            Player.WindowMaximized = value;
 
             if (Player.WindowMaximized && WindowState != FormWindowState.Maximized)
                 WindowState = FormWindowState.Maximized;
@@ -1353,7 +1357,7 @@ public partial class MainForm : Form
         });
     }
 
-    void PropChangeWindowMinimized()
+    void PropChangeWindowMinimized(bool value)
     {
         if (!WasShown)
             return;
@@ -1363,7 +1367,7 @@ public partial class MainForm : Form
             if (_shutdownStarted)
                 return;
 
-            Player.WindowMinimized = Player.GetPropertyBool("window-minimized");
+            Player.WindowMinimized = value;
 
             if (Player.WindowMinimized && WindowState != FormWindowState.Minimized)
                 WindowState = FormWindowState.Minimized;
@@ -1443,7 +1447,7 @@ public partial class MainForm : Form
         base.OnShown(e);
 
         if (WindowState == FormWindowState.Maximized)
-            Player.SetPropertyBool("window-maximized", true);
+            Player.CommandVAsync("set", "window-maximized", "yes");
 
         WpfApplication.Init();
         Theme.UpdateWpfColors();
@@ -1475,14 +1479,14 @@ public partial class MainForm : Form
         if (WasShown && !_shutdownStarted)
         {
             if (WindowState == FormWindowState.Minimized)
-                Player.SetPropertyBool("window-minimized", true);
+                Player.CommandVAsync("set", "window-minimized", "yes");
             else if (WindowState == FormWindowState.Normal)
             {
-                Player.SetPropertyBool("window-maximized", false);
-                Player.SetPropertyBool("window-minimized", false);
+                Player.CommandVAsync("set", "window-maximized", "no");
+                Player.CommandVAsync("set", "window-minimized", "no");
             }
             else if (WindowState == FormWindowState.Maximized)
-                Player.SetPropertyBool("window-maximized", true);
+                Player.CommandVAsync("set", "window-maximized", "yes");
         }
     }
 

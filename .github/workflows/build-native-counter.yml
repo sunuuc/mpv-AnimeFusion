@@ -45,6 +45,7 @@ jobs:
         run: |
           import subprocess,sys
           subprocess.run([sys.executable,'project/tools/apply_native_r2.py','mpv-source'],check=True)
+          subprocess.run([sys.executable,'project/tools/apply_libplacebo_fixes.py','libplacebo-source'],check=True)
       - name: Start Windows audio services
         shell: pwsh
         run: |

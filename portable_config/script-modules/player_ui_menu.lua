@@ -17,7 +17,7 @@ return function(c)
     end
     function M.close()
         local was_open=s.menu~=nil
-        close_timer();dismiss_timer();M.invalidate();M.boxes={};M.rows={};s.menu=nil;s.parent=nil;s.scroll=0;s.parent_scroll=0;s.menu_drag=nil
+        close_timer();dismiss_timer();M.invalidate();M.boxes={};M.rows={};M.bridge=nil;s.menu=nil;s.parent=nil;s.scroll=0;s.parent_scroll=0;s.menu_drag=nil
         if was_open and c.on_close then c.on_close() end
     end
     function M.open(kind,parent)
@@ -102,6 +102,7 @@ return function(c)
         local function action(...)c.command('script-message-to','mpvnet',provider..'-action',...)end
         local function enabled(fn)return not account.busy and fn or nil end
         if kind=='settings' then
+            link('播放设置','playback-settings')
             link('缩放模式','scale')
             link('超分与补帧','ai')
             link('字幕设置','sub-settings','sub')
@@ -109,6 +110,12 @@ return function(c)
             link('同步设置','sync-settings','bangumi')
             link('统计信息','stats','info')
             row('显示时间',c.toggle_clock,c.clock(),{stay=true})
+        elseif kind=='playback-settings' then
+            row('自动连播',c.toggle_auto_next,c.auto_next(),{stay=true})
+            row('镜像反转',c.toggle_mirror,c.mirror(),{stay=true})
+            row('定时暂停',c.toggle_timed_pause,c.timed_pause(),{stay=true,value=c.timed_pause() and '开启' or '关闭'})
+            row('暂停时间',nil,false,{slider={value=c.pause_minutes(),min=1,max=180,step=1,format='%.0f 分钟',
+                set=c.set_pause_minutes}})
         elseif kind=='sync-settings' then
             local services=c.sync_services()
             for _,item in ipairs({{'bangumi','Bangumi'},{'trakt','Trakt'},{'mal','MyAnimeList'}}) do local id,label=item[1],item[2]
@@ -297,7 +304,7 @@ return function(c)
         return title,a
     end
     M.allowed={settings='设置',speed='播放速度',sub='字幕',audio='音轨',danmaku='弹幕',ai='超分与补帧',scale='缩放模式',
-        ['sub-settings']='字幕设置',['danmaku-settings']='弹幕设置',
+        ['playback-settings']='播放设置',['sub-settings']='字幕设置',['danmaku-settings']='弹幕设置',
         ['audio-settings']='音频设置',stats='统计信息',chapters='章节',
         bangumi='Bangumi',trakt='Trakt',mal='MyAnimeList',['sync-settings']='同步设置',['bangumi-collection']='收藏',['bangumi-episode']='剧集',['trakt-episode']='剧集',['mal-episode']='剧集'}
     local function width(kind,l)
@@ -312,7 +319,7 @@ return function(c)
         local y,rows=0,{}
         for _,r in ipairs(items) do
             local indent=r.icon and metrics.icon_column*u or metrics.row_padding*u+8*u
-            local available=w-indent-30*u-(r.hint and 52*u or 0)-(r.target and 28*u or 0)
+            local available=w-indent-30*u-(r.value and core.ass_text_width(r.value,metrics.row_text*u)+16*u or r.hint and 52*u or 0)-(r.target and 28*u or 0)
             local lines=core.wrap(r.text or '',available,metrics.row_text*u,r.wrap or 2)
             local height=r.h and r.h*u or r.separator and metrics.separator*u or r.slider and metrics.slider*u
                 or math.max(kind=='ai' and 48*u or metrics.row_min*u,
@@ -342,7 +349,7 @@ return function(c)
             view=math.max(0,h-hh-pad*2),content=y+hh+pad,ui=u}
     end
     function M.draw(l,d,buttons)
-        M.boxes={};M.rows={}
+        M.boxes={};M.rows={};M.bridge=nil
         if not s.menu then return M.rows end
         local function add(b) b.menu=true;buttons[#buttons+1]=b end
         local function drawbox(b,scroll_key,is_child)
@@ -439,6 +446,7 @@ return function(c)
                             end
                             if r.detail then d.text(left,ty+2*u,metrics.row_detail*u,r.detail,7,muted,false,w-(left-b.x0)-24*u,.8) end
                             if r.target then d.text(b.x1-25*u,yy+entry.height/2,27*u,'›',6,theme.secondary,false,nil,.8)
+                            elseif r.value then d.text(b.x1-19*u,yy+entry.height/2,metrics.row_text*u,r.value,6,muted,false,nil,.8)
                             elseif r.hint then d.text(b.x1-19*u,yy+entry.height/2,13*u,r.hint,6,muted,false,nil,.8) end
                         end
                     end)
@@ -456,14 +464,28 @@ return function(c)
         if s.parent then
             local parent=makebox(l,s.parent)
             local u=l.ui or 1;local gap=8*u;local margin=metrics.menu_margin*u
+            drawbox(parent,'parent_scroll',false)
             local child_width=b.x1-b.x0;local left=parent.x0-child_width-gap
             if left<margin then
                 local right=parent.x1+gap
                 left=right+child_width<=l.w-margin and right or margin
             end
-            local dx=left-b.x0;local dy=parent.y1-b.y1
+            local row_top,row_bottom=parent.content,parent.content
+            for _,entry in ipairs(parent.rows) do
+                if entry.row.target==s.menu then
+                    row_top=core.clamp(parent.content+entry.top-parent.offset,parent.content,parent.content+parent.view)
+                    row_bottom=core.clamp(row_top+entry.height,parent.content,parent.content+parent.view)
+                    break
+                end
+            end
+            local top=core.clamp(row_top,margin,math.max(margin,l.h-margin-(b.y1-b.y0)))
+            local dx=left-b.x0;local dy=top-b.y0
             b.x0=b.x0+dx;b.x1=b.x1+dx;b.y0=b.y0+dy;b.y1=b.y1+dy;b.content=b.content+dy
-            drawbox(parent,'parent_scroll',false)
+            if b.x1<=parent.x0 then
+                M.bridge={x0=b.x1,x1=parent.x0,y0=math.min(row_top,b.y0),y1=math.max(row_bottom,b.y1)}
+            elseif b.x0>=parent.x1 then
+                M.bridge={x0=parent.x1,x1=b.x0,y0=math.min(row_top,b.y0),y1=math.max(row_bottom,b.y1)}
+            end
             drawbox(b,'scroll',true)
         else drawbox(b,'scroll',false) end
         return M.rows
@@ -543,6 +565,7 @@ return function(c)
         if not s.menu then return b end
         if b and b.menu then return b end
         for _,box in ipairs(M.boxes) do if core.inside(box,x,y) then return {id='menu-surface',menu=true} end end
+        if core.inside(M.bridge,x,y) then return {id='menu-surface',menu=true} end
         if b and (b.id=='settings' or b.id=='speed' or b.id=='audio'
             or b.id=='sub' or b.id=='danmaku' or b.id=='bangumi' or b.id=='trakt' or b.id=='mal') then return b end
         return {id='menu-dismiss',menu=true}

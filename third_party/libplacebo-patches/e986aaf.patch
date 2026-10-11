@@ -1,0 +1,34 @@
+From e986aaf6696c8d16c428d589f3028d79224a75d2 Mon Sep 17 00:00:00 2001
+From: Niklas Haas <git@haasn.dev>
+Date: Mon, 1 Jun 2026 20:22:57 +0200
+Subject: [PATCH] vulkan/swapchain: re-acquire swapchain semaphore after out of
+ date
+
+`sem_in` is stale after recreating the current swapchain.
+
+Sponsored-by: nxtedition AB
+Signed-off-by: Niklas Haas <git@haasn.dev>
+---
+ src/vulkan/swapchain.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/src/vulkan/swapchain.c b/src/vulkan/swapchain.c
+index 4d0614d..90f5da3 100644
+--- a/src/vulkan/swapchain.c
++++ b/src/vulkan/swapchain.c
+@@ -884,11 +884,11 @@ static bool vk_sw_start_frame(pl_swapchain sw,
+         return false;
+     }
+ 
+-    VkSemaphore sem_in = p->current->sems_in.elem[p->current->idx_sems_in];
+-    p->current->idx_sems_in = (p->current->idx_sems_in + 1) % p->current->sems_in.num;
+-    PL_TRACE(vk, "vkAcquireNextImageKHR signals 0x%"PRIx64, (uint64_t) sem_in);
+-
+     for (int attempts = 0; attempts < 2; attempts++) {
++        VkSemaphore sem_in = p->current->sems_in.elem[p->current->idx_sems_in];
++        p->current->idx_sems_in = (p->current->idx_sems_in + 1) % p->current->sems_in.num;
++        PL_TRACE(vk, "vkAcquireNextImageKHR signals 0x%"PRIx64, (uint64_t) sem_in);
++
+         uint32_t imgidx = 0;
+         VkResult res = vk->AcquireNextImageKHR(vk->dev, p->current->swapchain, UINT64_MAX,
+                                                sem_in, VK_NULL_HANDLE, &imgidx);

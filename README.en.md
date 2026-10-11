@@ -36,7 +36,6 @@ Thanks to these projects and their contributors. Modifications and individual li
 | [mpv.net](https://github.com/mpvnet-player/mpv.net) | Windows frontend, menus and settings windows |
 | [DanmakuFactory](https://github.com/hihkm/DanmakuFactory) | Danmaku layout, collision avoidance and ASS conversion |
 | [libass](https://github.com/libass/libass) | ASS subtitle and danmaku rendering |
-| [thumbfast](https://github.com/po5/thumbfast) | Seek-bar thumbnails |
 | [BangumiNet](https://github.com/ajtn123/BangumiNet) | Bangumi API client |
 | [Trakt API](https://github.com/trakt/trakt-api) | Trakt API and synchronization contracts |
 | [BangumiExtLinker](https://github.com/Rhilip/BangumiExtLinker) | Cross-site anime IDs and title data |
@@ -52,5 +51,6 @@ Thanks to these projects and their contributors. Modifications and individual li
 | [Nginx](https://nginx.org/), [Certbot](https://github.com/certbot/certbot) | HTTPS endpoint and certificate renewal for authorization |
 | [Inno Setup](https://github.com/jrsoftware/issrc) | EXE installer and uninstaller |
 | [curl](https://github.com/curl/curl) | Online danmaku requests |
+| [hdr-toys](https://github.com/natural-harmonia-gropius/hdr-toys) | GPU mirror shader |
 
 TensorRT, CUDA and DirectML use their respective vendor licenses; notices are preserved in the package. AnimeJaNai models and the project use CC BY-NC-SA 4.0. Each component remains subject to its own license.

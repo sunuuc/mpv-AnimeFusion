@@ -237,12 +237,9 @@ bundled_private_configs = [
 ]
 if bundled_private_configs:
     raise RuntimeError(f"Private danmaku config must stay outside release inputs: {bundled_private_configs!r}")
-require(
-    "portable_config/scripts/thumbfast.lua",
-    "local function local_file_only()",
-    "if disabled or not local_file_only() then return end",
-)
-require("portable_config/script-opts/thumbfast.conf", "network=no")
+forbid("portable_config/scripts/player_ui.lua", "thumbfast", "thumb_timer", "local function thumb(")
+if (ROOT / "portable_config/scripts/thumbfast.lua").exists():
+    raise RuntimeError("Seek preview decoder must not be bundled")
 require(
     "portable_config/scripts/animejanai_slot.lua",
     "mp.commandv('vf-command', 'aji', 'slot', slot)",

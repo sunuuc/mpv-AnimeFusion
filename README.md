@@ -36,7 +36,6 @@
 | [mpv.net](https://github.com/mpvnet-player/mpv.net) | Windows 播放器前端、菜单和设置窗口 |
 | [DanmakuFactory](https://github.com/hihkm/DanmakuFactory) | 弹幕排布、防碰撞及 ASS 转换 |
 | [libass](https://github.com/libass/libass) | ASS 字幕与弹幕渲染 |
-| [thumbfast](https://github.com/po5/thumbfast) | 进度条缩略图 |
 | [BangumiNet](https://github.com/ajtn123/BangumiNet) | Bangumi API 客户端 |
 | [Trakt API](https://github.com/trakt/trakt-api) | Trakt 接口与同步数据结构 |
 | [BangumiExtLinker](https://github.com/Rhilip/BangumiExtLinker) | 跨站作品 ID 和名称数据 |
@@ -52,7 +51,6 @@
 | [Nginx](https://nginx.org/)、[Certbot](https://github.com/certbot/certbot) | 授权服务的 HTTPS 入口及证书续期 |
 | [Inno Setup](https://github.com/jrsoftware/issrc) | EXE 安装包与卸载程序 |
 | [curl](https://github.com/curl/curl) | 在线弹幕请求 |
+| [hdr-toys](https://github.com/natural-harmonia-gropius/hdr-toys) | GPU 镜像翻转着色器 |
 
 TensorRT、CUDA 和 DirectML 按各厂商许可证使用，相关声明随包保留。AnimeJaNai 模型及项目采用 CC BY-NC-SA 4.0，各组件分别遵循其原许可证。
-
-
