@@ -2,7 +2,7 @@
 
 简体中文 | [English](README.en.md)
 
-动漫专用mpv融合怪，集百家功能于一身，详细请看下方来源，支持 AI 超分、补帧、弹幕和 Bangumi 观看进度同步。
+动漫专用mpv融合怪，集百家功能于一身，详细请看下方来源，支持 AI 超分、补帧、弹幕和 Bangumi／Trakt／MyAnimeList 观看进度同步。
 
 [下载](https://github.com/sunuuc/mpv-AnimeFusion/releases/latest) · [更新日志](CHANGELOG.md) · [问题反馈](https://github.com/sunuuc/mpv-AnimeFusion/issues)
 
@@ -17,7 +17,7 @@
 - **弹幕**：支持在线弹幕及本地 XML、JSON、ASS 弹幕文件。在线弹幕兼容弹弹play API v2 接口，不内置或提供任何弹幕线路，用户需自行添加兼容的第三方弹幕 API。
 <img width="2560" height="1494" alt="image" src="https://github.com/user-attachments/assets/6bdd6d74-6248-450c-b015-12f309820c14" />
 
-- **Bangumi 同步**：自动同步收藏与观看进度。
+- **观看同步**：支持 Bangumi、Trakt 与 MyAnimeList 观看进度同步。
 <img width="1213" height="1121" alt="image" src="https://github.com/user-attachments/assets/be033a4f-dfde-47be-8f05-7758bec43b91" />
 
 ## 社区
@@ -38,6 +38,9 @@
 | [libass](https://github.com/libass/libass) | ASS 字幕与弹幕渲染 |
 | [thumbfast](https://github.com/po5/thumbfast) | 进度条缩略图 |
 | [BangumiNet](https://github.com/ajtn123/BangumiNet) | Bangumi API 客户端 |
+| [Trakt API](https://github.com/trakt/trakt-api) | Trakt 接口与同步数据结构 |
+| [BangumiExtLinker](https://github.com/Rhilip/BangumiExtLinker) | 跨站作品 ID 和名称数据 |
+| [AnitomySharp](https://github.com/chu-shen/AnitomySharp) / [Anitomy](https://github.com/erengy/anitomy) | 动漫文件名解析 |
 | [mpv_bangumi_sync](https://github.com/x-Armin/mpv_bangumi_sync) | 标题、季度、集数识别与进度同步逻辑的来源 |
 | [czy0729/Bangumi](https://github.com/czy0729/Bangumi) | 收藏和剧集状态分离，以及“看过／看到”的交互参考 |
 | [OAuth apps for Windows](https://github.com/googlesamples/oauth-apps-for-windows) | 浏览器授权与回环回调流程参考 |
@@ -45,7 +48,7 @@
 | [RIFE](https://github.com/hzwer/ECCV2022-RIFE)、[Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN)、[ONNX Runtime](https://github.com/microsoft/onnxruntime) | 补帧、超分模型及推理组件 |
 | [FFmpeg](https://ffmpeg.org/)、[libplacebo](https://github.com/haasn/libplacebo)、[MSYS2](https://www.msys2.org/)、[PCRE2](https://github.com/PCRE2Project/pcre2) | 解码、视频输出、原生依赖与弹幕转换依赖 |
 | [Avalonia](https://github.com/AvaloniaUI/Avalonia)、[FluentAvalonia](https://github.com/amwx/FluentAvalonia)、[ReactiveUI](https://github.com/reactiveui/ReactiveUI) | 管理器界面及状态绑定 |
-| [SkiaSharp / HarfBuzzSharp](https://github.com/mono/SkiaSharp)、[Inter](https://github.com/rsms/inter) | 管理器绘制、文字排版和字体 |
+| [SkiaSharp / HarfBuzzSharp](https://github.com/mono/SkiaSharp)、[Inter](https://github.com/rsms/inter) | 管理器绘制、文字排版、字体及同步图片解码 |
 | [Nginx](https://nginx.org/)、[Certbot](https://github.com/certbot/certbot) | 授权服务的 HTTPS 入口及证书续期 |
 | [Inno Setup](https://github.com/jrsoftware/issrc) | EXE 安装包与卸载程序 |
 | [curl](https://github.com/curl/curl) | 在线弹幕请求 |

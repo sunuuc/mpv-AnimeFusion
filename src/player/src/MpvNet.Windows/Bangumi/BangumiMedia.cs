@@ -11,6 +11,41 @@ public sealed record BangumiMedia(string Title, int Season, double? EpisodeNumbe
 {
     public int? Year { get; init; }
     public bool HasSeason { get; init; }
+    public bool Ambiguous { get; init; }
+
+    public static BangumiMedia FromPlayback(string title, string path)
+    {
+        string filename = Uri.TryCreate(path, UriKind.Absolute, out var uri) && !uri.IsFile
+            ? Uri.UnescapeDataString(uri.AbsolutePath.Split('/').Last()) : Path.GetFileName(path);
+        bool fileTitle = string.IsNullOrWhiteSpace(title) || title == path || title == filename || title.Contains("://");
+        string input = fileTitle ? filename : title;
+        var media = Parse(input);
+        var elements = AnitomySharp.AnitomySharp.Parse(fileTitle ? filename : input, new(extension: fileTitle)).ToArray();
+        string Value(AnitomySharp.Element.ElementCategory kind) => elements.FirstOrDefault(e => e.Category == kind)?.Value ?? "";
+        var numbers = elements.Where(e => e.Category == AnitomySharp.Element.ElementCategory.ElementEpisodeNumber)
+            .Select(e => e.Value).Distinct().ToArray();
+        bool ambiguous = numbers.Length > 1;
+        double? episode = numbers.Length == 1 && double.TryParse(numbers[0], System.Globalization.NumberStyles.Number,
+            System.Globalization.CultureInfo.InvariantCulture, out double ep) ? ep : null;
+        int? season = int.TryParse(Value(AnitomySharp.Element.ElementCategory.ElementAnimeSeason), out int sn) ? sn : null;
+        string name = fileTitle ? Value(AnitomySharp.Element.ElementCategory.ElementAnimeTitle) : media.Title;
+        if (string.IsNullOrWhiteSpace(name)) name = media.Title;
+        var named = Parse(name);
+        if (media.EpisodeNumber == null) media = media with { EpisodeNumber = episode };
+        if (!media.HasSeason && season != null) media = media with { Season = season.Value, HasSeason = true };
+        if (named.HasSeason && !media.HasSeason) media = media with { Season = named.Season, HasSeason = true };
+        if (!fileTitle && filename.Length > 0)
+        {
+            var file = FromPlayback(filename, filename);
+            ambiguous |= file.Ambiguous || (media.EpisodeNumber != null && file.EpisodeNumber != null && media.EpisodeNumber != file.EpisodeNumber)
+                || (media.HasSeason && file.HasSeason && media.Season != file.Season);
+            if (media.EpisodeNumber == null) media = media with { EpisodeNumber = file.EpisodeNumber };
+            if (!media.HasSeason && file.HasSeason) media = media with { Season = file.Season, HasSeason = true };
+        }
+        int? year = int.TryParse(Value(AnitomySharp.Element.ElementCategory.ElementAnimeYear), out int yr) ? yr : null;
+        string normalized = Regex.Replace(named.Title.ToLowerInvariant(), @"[\s\p{P}\p{S}]+", "");
+        return media with { Title = named.Title, Year = media.Year ?? year, Ambiguous = ambiguous, Key = normalized + "|s" + media.Season };
+    }
 
     public static BangumiMedia Parse(string title)
     {
@@ -76,6 +111,7 @@ public sealed record BangumiMedia(string Title, int Season, double? EpisodeNumbe
 
     public Subject? MatchSubject(IReadOnlyList<Subject> subjects)
     {
+        if (Ambiguous) return null;
         bool movie = EpisodeNumber == null;
         if (movie && HasSeason) return null;
         var wanted = TitleVariants(Title).Select(t => movie ? MovieTitle(t) : TitleIdentity(Parse(t).Title)).ToArray();
@@ -119,7 +155,7 @@ public sealed record BangumiMedia(string Title, int Season, double? EpisodeNumbe
         }
     }
 
-    static IEnumerable<string> TitleVariants(string title)
+    public static IEnumerable<string> TitleVariants(string title)
     {
         yield return title;
         foreach (string part in Regex.Split(title.Normalize(NormalizationForm.FormKC), @"[、;；\r\n]+"))
@@ -135,7 +171,7 @@ public sealed record BangumiMedia(string Title, int Season, double? EpisodeNumbe
 
     static string TitleIdentity(string title) => Regex.Replace(title.ToLowerInvariant(), @"[\s\p{P}\p{S}]+", "");
 
-    static double TitleScore(string input, string title)
+    public static double TitleScore(string input, string title)
     {
         if (input == title) return input.Length > 0 ? 1 : 0;
         if (string.Join(',', Regex.Matches(input, @"\d+").Select(m => m.Value))

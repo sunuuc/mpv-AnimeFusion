@@ -1,4 +1,4 @@
-# Bangumi authorization
+# Bangumi, Trakt and MyAnimeList authorization
 
 ASP.NET Core OAuth service for mpv-AnimeFusion. App Secret stays on the server. Users authorize in their browser; the player receives tokens through a single-use handoff protected by SHA-256 proof.
 
@@ -27,3 +27,19 @@ systemctl enable --now animeve-auth-renew.timer
 `/healthz` reports process health. `/readyz` checks whether application credentials are configured. The callback redirects to the player's fixed local listener at `http://127.0.0.1:33165/`; it carries an expiring handoff code rather than tokens. Request access logs are disabled. Authorization credentials and tokens are never written to application logs.
 
 The service uses the MIT-licensed ASP.NET Core OAuth handler. Nginx and Certbot retain their licenses in their official container images.
+
+## Trakt
+
+The separate `trakt-auth` service uses the same ASP.NET Core host and OpenID Connect handler with PKCE. Register `https://trakt.sunuuc.de5.net/oauth/callback` in the Trakt app; leave allowed origins empty. Set the public Client ID in compose.yml. No Client Secret is required.
+
+Prepare `deploy/trakt-data` owned by UID 1654 and obtain the Trakt domain certificate with the existing webroot. The renewal timer renews both domains. The Trakt broker hands a single-use code to `http://127.0.0.1:33166/`; refresh exchanges use the current Trakt token endpoint and rotate both tokens. Each provider has its own persistent data-protection keys.
+
+For adding Trakt to an existing Bangumi deployment, build and start only `trakt-auth`, then validate and reload the Nginx configuration. Existing Bangumi containers and account credentials remain in place. See `docs/trakt-sources.md` for sources and contracts.
+
+## MyAnimeList
+
+Set `Provider=MyAnimeList` and `PublicOrigin=https://mal.sunuuc.de5.net`; the public Client ID is configured in `compose.yml`. Register an `Other` application with no Client Secret. MAL uses plain PKCE, while the desktop handoff uses a separate SHA-256 proof. The container keeps its data in `mal-data`, independently of Bangumi and Trakt, and uses the existing certificate renewal service.
+
+## Updating mounted Nginx configuration
+
+`deploy/nginx.conf` is a file bind mount. Write updates into the existing file. Replacing that file with a new inode (including archive extraction or atomic rename) requires `docker compose up -d --no-deps --force-recreate nginx` before `nginx -t` and reload; otherwise the container can continue reading the previous configuration. Inspect the mounted file inside the container and confirm each public domain reaches its own provider. `/readyz` includes the provider name; `status=ready` alone does not establish correct routing.

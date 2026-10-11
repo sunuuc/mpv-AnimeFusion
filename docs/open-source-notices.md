@@ -24,6 +24,14 @@
 
 BangumiNet.Api（MIT）用于 API 请求；mpv_bangumi_sync（MIT）提供标题、集数匹配和进度同步逻辑；Google OAuth Desktop 示例代码（Apache-2.0）用于浏览器授权。固定版本、移植文件和修改范围见 [Bangumi 源码来源](bangumi-sources.md)。许可证原文及依赖记录随包保留在 `docs/THIRD_PARTY_LICENSES`。
 
+## Trakt 同步与文件名解析
+
+Trakt 请求和响应契约来源于 [trakt/trakt-api](https://github.com/trakt/trakt-api)，MIT；服务器使用 ASP.NET Core OpenID Connect 的 PKCE 流程。Bangumi 与 Trakt 共用未修改的 [AnitomySharp](https://github.com/chu-shen/AnitomySharp) 文件名解析器，MPL-2.0，其来源为 erengy/anitomy 和 AnitomyJ。固定提交、移植范围与官方文档见 [Trakt 源码来源](trakt-sources.md)。头像和封面的 WebP 解码复用 SkiaSharp，MIT。新增许可原文随源码及包保留。
+
+## MyAnimeList 同步
+
+沿用 ASP.NET Core OAuth（MIT）扩展和 Google 桌面授权示例（Apache-2.0），使用 MAL 官方公开客户端 PKCE。AnitomySharp 用于文件名解析；[Rhilip/BangumiExtLinker](https://github.com/Rhilip/BangumiExtLinker) 的 CC BY 4.0 数据用于跨站作品候选，数据及上游署名保留在 `third_party/bangumi-ext-linker`，许可为 `THIRD_PARTY_LICENSES/BangumiExtLinker-CC-BY-4.0.txt`。详情见 [MAL 来源与研究](myanimelist-research.md)。Taiga 仅为研究参考，本次未复制其 GPL 源码。
+
 ## 模型、界面框架与运行库
 
 - AnimeJaNai 超分模型与项目采用 **CC BY-NC-SA 4.0**。需要署名、限非商业使用、修改后按相同方式共享；完整条件以 `LICENSE` 为准。

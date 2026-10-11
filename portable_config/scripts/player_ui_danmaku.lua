@@ -134,7 +134,7 @@ end
 -- native size and never resampled -- resampling was what made the text soft.
 -- ui_scale*dpi scales glyph and icon sizes, and shrinks further when the window
 -- is too narrow for the control row.
-function M.layout(pw,ph,dpi,ui_scale,time_width)
+function M.layout(pw,ph,dpi,ui_scale,time_width,sync_services)
     pw,ph=math.max(1,pw),math.max(1,ph)
     local want=M.clamp(tonumber(ui_scale) or 1.00,.45,1.5)*M.clamp(tonumber(dpi) or 1,.75,1.5)
     local w,h=pw,ph
@@ -151,7 +151,9 @@ function M.layout(pw,ph,dpi,ui_scale,time_width)
                 y0=y-M.metrics.control_hit_height*want,y1=y+M.metrics.control_hit_height*want}
         end
         button('previous',edge);button('play',edge+step);button('next',edge+2*step);button('volume',edge+3*step)
-        local right={'fullscreen','settings','danmaku','sub','audio','speed','bangumi'}
+        local right={'fullscreen','settings','danmaku','sub','audio','speed'}
+        local services=sync_services or {bangumi=true}
+        for _,id in ipairs({'mal','trakt','bangumi'}) do if services[id] then right[#right+1]=id end end
         local x=w-edge
         for _,id in ipairs(right) do button(id,x);x=x-step end
         local volume_button=edge+3*step
@@ -162,7 +164,7 @@ function M.layout(pw,ph,dpi,ui_scale,time_width)
             y0=y-15*want,y1=y+15*want,y=y}
         local network_x0=volume.x1+network_gap
         local network_x1=network_x0+network_width
-        local leftmost_right=w-edge-6*step
+        local leftmost_right=w-edge-(#right-1)*step
         local network={x0=network_x0,x1=network_x1,y0=y-15*want,y1=y+15*want,y=y}
         local ok=network.x0>=0 and network.x1<=leftmost_right-M.metrics.control_width*want/2-12*want
         for i,b in ipairs(controls) do

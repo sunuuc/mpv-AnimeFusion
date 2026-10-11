@@ -19,6 +19,7 @@ public partial class BangumiMatchWindow : Window
     IReadOnlyList<Episode> _episodes = [];
     bool _busy;
     bool _closed;
+    string _message = "";
 
     public BangumiMatchWindow() : this(BangumiPlayback.Current) { }
     public BangumiMatchWindow(BangumiPlayback sync)
@@ -55,6 +56,7 @@ public partial class BangumiMatchWindow : Window
             SubjectsList.Items.Clear();
             EpisodesBox.Items.Clear();
             _episodes = [];
+            _message = "";
         }
         Refresh();
     }));
@@ -64,7 +66,7 @@ public partial class BangumiMatchWindow : Window
         bool connected = _sync.Client.Account != null;
         SearchButton.IsEnabled = connected && !_busy;
         BindButton.IsEnabled = connected && !_busy && EpisodesBox.SelectedItem != null;
-        StatusText.Text = _sync.Selection is { } selected
+        StatusText.Text = _message.Length > 0 ? _message : _sync.Selection is { } selected
             ? selected.SubjectTitle + " · " + selected.EpisodeTitle + "\n" + _sync.Status : _sync.Status;
     }
 
@@ -74,7 +76,7 @@ public partial class BangumiMatchWindow : Window
         _busy = true;
         Refresh();
         try { await action(_lifetime.Token); }
-        catch (Exception e) { if (!_closed) StatusText.Text = BangumiPlayback.ErrorText(e); }
+        catch (Exception e) { if (!_closed) _message = BangumiPlayback.ErrorText(e); }
         finally
         {
             _busy = false;
@@ -99,7 +101,7 @@ public partial class BangumiMatchWindow : Window
         token.ThrowIfCancellationRequested();
         foreach (var subject in subjects)
             SubjectsList.Items.Add(subject);
-        StatusText.Text = subjects.Count == 0 ? "未找到条目。" : "选择本季条目与当前剧集。";
+        _message = subjects.Count == 0 ? "未找到条目。" : "选择本季条目与当前剧集。";
     });
 
     async void Subject_Changed(object sender, SelectionChangedEventArgs e)
@@ -124,7 +126,7 @@ public partial class BangumiMatchWindow : Window
             BindButton.IsEnabled = EpisodesBox.SelectedItem != null;
         }
         catch (OperationCanceledException) { }
-        catch (Exception error) { if (!_closed) StatusText.Text = BangumiPlayback.ErrorText(error); }
+        catch (Exception error) { if (!_closed) { _message = BangumiPlayback.ErrorText(error); Refresh(); } }
     }
 
     void Episode_Changed(object sender, SelectionChangedEventArgs e)

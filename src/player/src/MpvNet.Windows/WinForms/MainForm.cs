@@ -74,7 +74,10 @@ public partial class MainForm : Form
             GuiCommand.Current.ShowMenu += GuiCommand_ShowMenu;
 
             Player.Init(Handle, true);
-            Bangumi.BangumiPlayback.Initialize();
+        Sync.SyncPreferences.Initialize();
+        Bangumi.BangumiPlayback.Initialize();
+        Trakt.TraktPlayback.Initialize();
+        MyAnimeList.MalPlayback.Initialize();
 
             Player.ObserveProperty("window-maximized", PropChangeWindowMaximized); // bool methods not working correctly
             Player.ObserveProperty("window-minimized", PropChangeWindowMinimized); // bool methods not working correctly

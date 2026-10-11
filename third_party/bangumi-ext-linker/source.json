@@ -1,0 +1,9 @@
+{
+  "project": "Rhilip/BangumiExtLinker",
+  "license": "CC-BY-4.0",
+  "url": "https://rhilip.github.io/BangumiExtLinker/data/anime_map.json",
+  "retrieved": "2026-10-11",
+  "original_sha256": "1142642bb5bc336e3a3dc60f1202f2b395308c2ea4f5c4f66f1659b9910d920c",
+  "embedded_sha256": "40913598d5d561763daa333ad408807e748abbf8cc31066bb0754dc1babc2384",
+  "changes": "JSON whitespace only"
+}

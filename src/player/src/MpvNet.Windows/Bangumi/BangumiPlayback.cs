@@ -36,6 +36,8 @@ public sealed class BangumiPlayback
     string _avatar = "", _cover = "";
     bool _syncing;
     double _percent;
+    bool _enabled;
+    bool Enabled => Sync.SyncPreferences.Current.Enabled("bangumi");
     public int Generation { get { lock (_lock) return _generation; } }
     readonly Dictionary<int, IReadOnlyList<Episode>> _episodes = new();
     readonly Dictionary<int, Subject> _subjects = new();
@@ -53,6 +55,7 @@ public sealed class BangumiPlayback
         var store = new BangumiStore(Player.ConfigFolder,
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "mpv-AnimeFusion", "Bangumi"));
         Current = new(store, new(store, new HttpClient { Timeout = TimeSpan.FromSeconds(20) }));
+        Current._enabled = Current.Enabled;
         Current.Changed += () => Player.SetPropertyString("user-data/player_ui/bangumi", Current.SnapshotJson());
         Current.Client.AccountChanged += () => { Task pending = Current.PublishAccountAsync(); };
         Task pendingAccount = Current.PublishAccountAsync();
@@ -69,6 +72,14 @@ public sealed class BangumiPlayback
         // Native property events: no render timer, polling loop or network request per frame.
         Player.ObservePropertyString("media-title", Current.UpdateMediaTitle);
         Player.ObservePropertyDouble("percent-pos", Current.UpdateProgress);
+        Sync.SyncPreferences.Current.Changed += () =>
+        {
+            bool enabled = Current.Enabled;
+            if (enabled == Current._enabled) return;
+            Current._enabled = enabled;
+            Current.SetMedia(Current._fileLoaded ? Player.GetPropertyString("media-title") : "");
+            Current.UpdateProgress(Player.GetPropertyDouble("percent-pos"));
+        };
         Player.Shutdown += () => { Current.Changed = null; Current._accountLifetime.Cancel(); Current.Cancel(); };
     }
 
@@ -157,12 +168,12 @@ public sealed class BangumiPlayback
             _syncing = false;
             _percent = 0;
             Selection = null;
-            Media = BangumiMedia.Parse(title);
+            Media = title.Length == 0 ? BangumiMedia.Parse("") : BangumiMedia.FromPlayback(title, Player.GetPropertyString("path"));
             _mediaTitle = title;
             Status = "";
         }
         Changed?.Invoke();
-        if (Client.Account != null && Media.Title.Length > 0)
+        if (Enabled && Client.Account != null && Media.Title.Length > 0)
         {
             Task pending = ResolveAsync();
         }
@@ -181,7 +192,7 @@ public sealed class BangumiPlayback
     {
         lock (_lock)
         {
-            if (_resolving || Client.Account == null) return;
+            if (!Enabled || _resolving || Client.Account == null) return;
             _resolvingGeneration = -1;
             Status = "";
         }
@@ -210,7 +221,7 @@ public sealed class BangumiPlayback
         BangumiMedia media;
         CancellationToken cancellationToken;
         lock (_lock) { generation = _generation; media = Media; cancellationToken = _file.Token; }
-        if (media.Title.Length == 0 || Client.Account == null) return;
+        if (!Enabled || media.Title.Length == 0 || Client.Account == null) return;
         lock (_lock)
         {
             if (generation != _generation || _resolvingGeneration == generation) return;
@@ -245,7 +256,7 @@ public sealed class BangumiPlayback
             int? selectedId;
             lock (_lock) selectedId = generation == _generation ? Selection?.EpisodeId : null;
             var episode = episodes.FirstOrDefault(e => e.Id == selectedId)
-                ?? BangumiMedia.MatchEpisode(episodes, media.EpisodeNumber, SubjectSeason(subject), BangumiMedia.IsMovie(subject));
+                ?? (media.Ambiguous ? null : BangumiMedia.MatchEpisode(episodes, media.EpisodeNumber, SubjectSeason(subject), BangumiMedia.IsMovie(subject)));
             int collectionType = await RetryReadAsync(token => Client.CollectionTypeAsync(binding.SubjectId, token), cancellationToken).ConfigureAwait(false);
             var states = collectionType == 0 ? [] : await RetryReadAsync(token => Client.EpisodeStatesAsync(binding.SubjectId, token), cancellationToken).ConfigureAwait(false);
             lock (_lock)
@@ -257,6 +268,7 @@ public sealed class BangumiPlayback
                 _episodeStates.Clear();
                 foreach (var item in states) if (item.Episode?.Id is int id) _episodeStates[id] = item.Type ?? 0;
                 Selection = episode == null ? null : new(binding.SubjectId, episode.Id!.Value, DisplayTitle(subject), DisplayEpisode(episode, BangumiMedia.IsMovie(subject)));
+                if (episode != null && !media.Ambiguous) Store.Bind(media.Key, binding);
                 Status = episode == null ? (BangumiMedia.IsMovie(subject) ? "请选择正片。" : "请选择当前剧集。") : "";
                 _resolving = false;
             }
@@ -318,7 +330,7 @@ public sealed class BangumiPlayback
         lock (_lock)
         {
             _percent = percent;
-            if (!double.IsFinite(percent) || Selection == null || Client.Account == null || _syncing) return;
+            if (!Enabled || !double.IsFinite(percent) || Selection == null || Client.Account == null || _syncing) return;
             collect = Store.Settings.AutoCollect && percent >= Store.Settings.CollectPercent && !_collectAttempted;
             watch = Store.Settings.AutoSync && percent >= Store.Settings.WatchedPercent && !_attempted && CollectionType != 0;
             if (!collect && !watch) return;

@@ -40,3 +40,8 @@
 /portable_config/*history*.json
 /portable_config/*.backup
 /portable_config/*.bak
+/portable_config/trakt.json
+/portable_config/sync.json
+/src/auth/deploy/trakt-data/
+/portable_config/mal.json
+/src/auth/deploy/mal-data/

@@ -25,6 +25,8 @@
 
 	<ItemGroup>
 		<Content Include="mpv-icon.ico" />
+        <EmbeddedResource Include="$(AnimeFusionRepositoryRoot)/third_party/bangumi-ext-linker/anime-map.json" LogicalName="MpvNet.Windows.MyAnimeList.anime-map.json" />
+		<Compile Include="$(AnimeFusionRepositoryRoot)/third_party/anitomysharp/*.cs" Link="ThirdParty/AnitomySharp/%(Filename)%(Extension)" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -42,6 +44,7 @@
 
 	<ItemGroup>
 		<PackageReference Include="BangumiNet.Api" />
+		<PackageReference Include="SkiaSharp" />
 		<PackageReference Include="CommunityToolkit.Mvvm" />
 		<PackageReference Include="Microsoft.Xaml.Behaviors.Wpf" />
 	</ItemGroup>

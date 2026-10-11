@@ -1,6 +1,7 @@
 # 产品与安装
 
 - 产品名为 `mpv-AnimeFusion`，正式安装目录为 `D:\Apps\mpv-AnimeFusion`；此路径替代此前的 `D:\Apps\mpv-AnimeJaNai`。
+- 替换完成后正常显示播放器窗口，不使用 `Start-Process -WindowStyle Hidden` 启动正式播放器，避免后续打开文件只听到声音却看不到窗口。
 - 原版 AnimeJaNai 与本产品使用不同安装目录和安装身份，避免原版安装覆盖本产品。
 - 提供 EXE 安装版；升级沿用安装目录，只更新程序文件，不覆盖已有配置、账号、弹幕线路与来源记录或已下载模型。配置默认值只在缺失时写入，卸载保留个人数据。
 - 本次恢复基准为 2026-10-07 18:49 首次报告弹幕卡顿之前的版本；撤回之后为排查卡顿加入的改动。
@@ -12,6 +13,13 @@
 # 打开与粘贴
 
 - 主界面 Ctrl+V 和“从剪贴板打开 URL 或文件”菜单共用 mpv.net 原有打开入口，支持复制的文件、文件路径及链接；处理路径两端的引号和空白。
+
+# 观看同步
+
+- 同步设置顶部可分别选择 Bangumi、Trakt 与 MyAnimeList；底栏只显示已选择服务的头像入口，可同时启用。
+- Trakt 沿用浏览器授权、圆形头像与底栏上方展开的交互，使用当前官方 PKCE 授权；回调为 `https://trakt.sunuuc.de5.net/oauth/callback`。
+- MyAnimeList 授权使用独立域名 `mal.sunuuc.de5.net`，回调为 `https://mal.sunuuc.de5.net/oauth/callback`。
+- 优先通过已有作品 ID 匹配，再使用标题、别名与年份；确认季集后才同步，禁止对单部作品专门适配。
 
 # 弹幕来源
 

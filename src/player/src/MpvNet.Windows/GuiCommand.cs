@@ -25,6 +25,8 @@ public class GuiCommand
     DanmakuSearchWindow? _danmakuSearchWindow;
     DanmakuBlocklistWindow? _danmakuBlocklistWindow;
     BangumiMatchWindow? _bangumiMatchWindow;
+    TraktMatchWindow? _traktMatchWindow;
+    MalMatchWindow? _malMatchWindow;
 
     public event Action<float>? ScaleWindow;
     public event Action<string>? MoveWindow;
@@ -57,6 +59,11 @@ public class GuiCommand
         ["show-danmaku-blocklist"] = ShowDanmakuBlocklist,
         ["show-bangumi-match"] = ShowBangumiMatch,
         ["bangumi-action"] = BangumiAction,
+        ["show-trakt-match"] = ShowTraktMatch,
+        ["trakt-action"] = TraktAction,
+        ["show-mal-match"] = ShowMalMatch,
+        ["mal-action"] = MalAction,
+        ["sync-action"] = SyncAction,
         ["show-demuxers"] = args => ShowDemuxers(),
         ["show-info"] = args => ShowMediaInfo(new[] { "osd" }),
         ["show-input-editor"] = args => ShowDialog(typeof(InputWindow)),
@@ -166,6 +173,73 @@ public class GuiCommand
                 case "setting" when args.Count == 3: sync.SetSetting(args[1], args[2]); break;
                 case "collection" when args.Count == 3:
                     await sync.ChangeCollectionAsync(int.Parse(args[1]), int.Parse(args[2])); break;
+                case "episode" when args.Count == 5:
+                    await sync.ChangeEpisodeAsync(int.Parse(args[1]), int.Parse(args[2]), args[3] == "through", int.Parse(args[4])); break;
+                case "select-episode" when args.Count == 3: sync.SelectEpisode(int.Parse(args[1]), int.Parse(args[2])); break;
+            }
+        }
+        catch (Exception error) { sync.ReportError(error); }
+    }
+
+    void SyncAction(IList<string> args)
+    {
+        if (args.Count != 2) return;
+        try { MpvNet.Windows.Sync.SyncPreferences.Current.SetEnabled(args[0], args[1] == "yes"); }
+        catch (Exception error) { Terminal.WriteError(error.Message, "同步设置"); }
+    }
+
+    void ShowTraktMatch(IList<string> args)
+    {
+        if (_traktMatchWindow is { IsVisible: true }) { _traktMatchWindow.Activate(); return; }
+        var window = new TraktMatchWindow();
+        new WindowInteropHelper(window).Owner = MainForm.Instance!.Handle;
+        _traktMatchWindow = window;
+        window.Closed += (_, _) => { _traktMatchWindow = null; RestorePlayerOwner(); };
+        ElementHost.EnableModelessKeyboardInterop(window); window.Show();
+    }
+
+    async void TraktAction(IList<string> args)
+    {
+        var sync = MpvNet.Windows.Trakt.TraktPlayback.Current;
+        try
+        {
+            if (args.Count == 0) return;
+            switch (args[0])
+            {
+                case "login": await sync.AuthorizeAsync(url => ProcessHelp.ShellExecute(url)); break;
+                case "retry-match": sync.RetryResolve(); break;
+                case "logout": await sync.DisconnectAsync(); break;
+                case "setting" when args.Count == 3: sync.SetSetting(args[1], args[2]); break;
+                case "episode" when args.Count == 5:
+                    await sync.ChangeEpisodeAsync(int.Parse(args[1]), int.Parse(args[2]), args[3] == "through", int.Parse(args[4])); break;
+                case "select-episode" when args.Count == 3: sync.SelectEpisode(int.Parse(args[1]), int.Parse(args[2])); break;
+            }
+        }
+        catch (Exception error) { sync.ReportError(error); }
+    }
+
+    void ShowMalMatch(IList<string> args)
+    {
+        if (_malMatchWindow is { IsVisible: true }) { _malMatchWindow.Activate(); return; }
+        var window = new MalMatchWindow();
+        new WindowInteropHelper(window).Owner = MainForm.Instance!.Handle;
+        _malMatchWindow = window;
+        window.Closed += (_, _) => { _malMatchWindow = null; RestorePlayerOwner(); };
+        ElementHost.EnableModelessKeyboardInterop(window); window.Show();
+    }
+
+    async void MalAction(IList<string> args)
+    {
+        var sync = MpvNet.Windows.MyAnimeList.MalPlayback.Current;
+        try
+        {
+            if (args.Count == 0) return;
+            switch (args[0])
+            {
+                case "login": await sync.AuthorizeAsync(url => ProcessHelp.ShellExecute(url)); break;
+                case "retry-match": sync.RetryResolve(); break;
+                case "logout": await sync.DisconnectAsync(); break;
+                case "setting" when args.Count == 3: sync.SetSetting(args[1], args[2]); break;
                 case "episode" when args.Count == 5:
                     await sync.ChangeEpisodeAsync(int.Parse(args[1]), int.Parse(args[2]), args[3] == "through", int.Parse(args[4])); break;
                 case "select-episode" when args.Count == 3: sync.SelectEpisode(int.Parse(args[1]), int.Parse(args[2])); break;

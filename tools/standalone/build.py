@@ -14,7 +14,22 @@ from build_installer import build as build_installer
 FONTS={'.ttf','.otf','.ttc','.woff','.woff2','.fon','.fnt'}
 SEVEN=shutil.which('7z') or next((str(p) for p in (Path(r'C:\Program Files\7-Zip\7z.exe'),Path(r'D:\Apps\7-Zip\7z.exe')) if p.is_file()),'7z')
 SOURCE_ADDITIONS={
-    'src/auth/mpv-AnimeFusion.Auth.csproj',
+    'src/auth/MyAnimeListHandler.cs',
+    'docs/myanimelist-research.md',
+    'THIRD_PARTY_LICENSES/BangumiExtLinker-CC-BY-4.0.txt',
+    'third_party/bangumi-ext-linker/anime-map.json',
+    'third_party/bangumi-ext-linker/README.md',
+    'third_party/bangumi-ext-linker/source.json',
+    'src/player/src/MpvNet.Windows/MyAnimeList/MalClient.cs',
+    'src/player/src/MpvNet.Windows/MyAnimeList/MalMatching.cs',
+    'src/player/src/MpvNet.Windows/MyAnimeList/MalModels.cs',
+    'src/player/src/MpvNet.Windows/MyAnimeList/MalOAuth.cs',
+    'src/player/src/MpvNet.Windows/MyAnimeList/MalPlayback.cs',
+    'src/player/src/MpvNet.Windows/MyAnimeList/MalStore.cs',
+    'src/player/src/MpvNet.Windows/WPF/MalMatchWindow.xaml',
+    'src/player/src/MpvNet.Windows/WPF/MalMatchWindow.xaml.cs',
+
+    'src/auth/AnimeVE.Auth.csproj',
     'src/auth/Program.cs',
     'src/auth/Dockerfile',
     'src/auth/.dockerignore',
@@ -34,6 +49,16 @@ SOURCE_ADDITIONS={
     'tests/bangumi/BangumiChecks.csproj',
     'tests/bangumi/Program.cs',
     'docs/bangumi-sources.md',
+    'docs/trakt-sources.md',
+    'src/player/src/MpvNet.Windows/Sync/SyncPreferences.cs',
+    'src/player/src/MpvNet.Windows/Trakt/TraktClient.cs',
+    'src/player/src/MpvNet.Windows/Trakt/TraktMedia.cs',
+    'src/player/src/MpvNet.Windows/Trakt/TraktModels.cs',
+    'src/player/src/MpvNet.Windows/Trakt/TraktOAuth.cs',
+    'src/player/src/MpvNet.Windows/Trakt/TraktPlayback.cs',
+    'src/player/src/MpvNet.Windows/Trakt/TraktStore.cs',
+    'src/player/src/MpvNet.Windows/WPF/TraktMatchWindow.xaml',
+    'src/player/src/MpvNet.Windows/WPF/TraktMatchWindow.xaml.cs',
     'tools/standalone/components.py',
     'tools/standalone/component-catalog.json',
     'tools/standalone/updater-upstream.json',
@@ -127,8 +152,8 @@ def source_release_files(folders):
         for path in (R/folder).rglob('*'):
             if path.is_symlink() or not path.is_file() or path.suffix.lower() in FONTS or any(x in ('bin','obj','__pycache__','.git') for x in path.relative_to(R/folder).parts):continue
             relative=path.relative_to(R).as_posix()
-            if relative in ('portable_config/bangumi.json','portable_config/bangumi-app.json'):continue
-            if relative in tracked or relative in SOURCE_ADDITIONS or relative.startswith(('third_party/danmaku-factory/','third_party/libass/','THIRD_PARTY_LICENSES/')):files.append(path)
+            if relative in ('portable_config/bangumi.json','portable_config/bangumi-app.json','portable_config/trakt.json','portable_config/mal.json','portable_config/sync.json'):continue
+            if relative in tracked or relative in SOURCE_ADDITIONS or relative.startswith(('third_party/danmaku-factory/','third_party/libass/','third_party/anitomysharp/','THIRD_PARTY_LICENSES/')):files.append(path)
     return sorted(files,key=lambda path:path.relative_to(R).as_posix())
 def replace_once(p,old,new):
     s=p.read_text(encoding='utf-8-sig')
@@ -220,7 +245,7 @@ def stage():
     dump(ST/'manifest.json',{'name':META['name'],'version':META['version'],'distribution':'portable','repository':REPO,'component_version':'3.6.0','platform':'win-x64'})
     cp(R/'docs/standalone.md',ST/'使用说明.md')
     for name in ('README.md','README.en.md','CHANGELOG.md'):cp(R/name,ST/name)
-    for name in ('standalone.md','build.md','danmaku-renderer.md','open-source-notices.md','bangumi-sources.md'):cp(R/'docs'/name,ST/'docs'/name)
+    for name in ('standalone.md','build.md','danmaku-renderer.md','open-source-notices.md','bangumi-sources.md','trakt-sources.md','myanimelist-research.md'):cp(R/'docs'/name,ST/'docs'/name)
     organize_payload()
     dump(E/'components.json',validate_components(ST))
     inspect_payload()
@@ -260,7 +285,7 @@ def organize_payload():
 def clean_session_files(app):
     for folder in ('cache','watch_later'):
         shutil.rmtree(app/'portable_config'/folder,ignore_errors=True)
-    for name in ('settings.xml','saved-props.json','startup-diagnostic.json','startup-diagnostic.json.tmp','playback-diagnostic.json','bangumi.json','bangumi-app.json'):
+    for name in ('settings.xml','saved-props.json','startup-diagnostic.json','startup-diagnostic.json.tmp','playback-diagnostic.json','bangumi.json','bangumi-app.json','trakt.json','mal.json','sync.json'):
         (app/'portable_config'/name).unlink(missing_ok=True)
 
 def inspect_payload():
