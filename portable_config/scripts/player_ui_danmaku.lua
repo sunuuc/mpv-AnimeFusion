@@ -97,13 +97,15 @@ M.metrics={
     menu_margin=16,menu_header=56,menu_padding=10,
     row_min=52,row_text=18,row_line=22,row_detail=14,row_detail_line=19,
     row_padding=16,icon_column=56,separator=16,slider=84,
+    switch_width=40,switch_height=22,switch_inset=3,
     control_compact_step=48,control_step=56,control_compact_edge=28,control_edge=42,
     control_y=40,control_width=40,control_hit_height=20,speed_width=58,volume_width=130,volume_offset=8,
     volume_min_width=36,seek_x=26,seek_track_y=88,seek_top=102,seek_bottom=74,
     time_font=14,title_font=26,detail_font=16,
     network_width=104,network_gap=8,
     menu_speed_bottom=94,menu_bottom=106,
-    icon_size=68,small_icon_size=40,icon_hover_radius=14,
+    icon_size=90,small_icon_size=40,icon_hover_radius=14,
+    avatar_size=36,avatar_hover_radius=20,avatar_font=20,speed_font=18,subtitle_icon_font=17,
 }
 function M.title(title,path)
     title=M.clean(title):gsub('[\r\n]+',' ')
@@ -1236,7 +1238,6 @@ local autoload_state='idle'
 local search_view,search_keyword,search_season,selected_show='shows','',nil,nil
 local search_source,search_cache,search_cache_order,search_batch=0,{}, {},nil
 local search_health={pending=0,failed=0,responded=0,total=0}
-local episode_load_generation=0
 local loaded=''
 local loaded_platform=''
 local preparation_timer,load_notice_pending=nil,false
@@ -1273,7 +1274,7 @@ publish=function()
         search_view=search_view,search_keyword=search_keyword,search_season=search_season,
         search_source=search_source,search_pending=search_batch and search_health.pending or 0,
         search_failed=search_health.failed,search_responded=search_health.responded,search_total=search_health.total,
-        selected_show=selected_show,episode_load_generation=episode_load_generation,
+        selected_show=selected_show,
         config_path=renderer and renderer.config_path})
 end
 renderer=(function()
@@ -1583,7 +1584,7 @@ return function(mp, utils, on_change)
 end
 end)()(mp,utils,function()
     if renderer then
-        if renderer.error then status=renderer.error;autoload_state='error'
+        if renderer.error then status=renderer.error;autoload_state='error';cancel_preparation()
         elseif renderer.busy then status='弹幕转换中…'
         elseif renderer.ready then
             status='';autoload_state='loaded';cancel_preparation()
@@ -1599,6 +1600,17 @@ end)()(mp,utils,function()
 end)
 local function kill() renderer.cancel() end
 local function clear() renderer.clear() end
+local function prepare_notice()
+    cancel_preparation()
+    local expected_generation=generation
+    preparation_timer=mp.add_timeout(2,function()
+        preparation_timer=nil
+        if generation==expected_generation and autoload_state=='loading' and not renderer.ready then
+            renderer.notice('弹幕准备中~~~')
+        end
+    end,true)
+    playback_notice_timer()
+end
 local function safe_path(path)
     return type(path)=='string' and path~='' and not path:find('%z') and not path:match('^%a[%w+.-]*://')
         and (path:lower():match('%.xml$') or path:lower():match('%.json$') or path:lower():match('%.ass$'))
@@ -1824,7 +1836,6 @@ end
 local function fetch_episode(episode_id,label,server_index,quiet,on_missing,shared_serial,on_loaded,on_empty,platform_key)
     local id=online.episode_id(episode_id)
     local sv=servers[server_index or source]
-    episode_load_generation=episode_load_generation+1
     if not id or not sv then
         status='弹幕条目无效';autoload_state=on_missing and 'error' or 'idle';publish()
         if on_missing then on_missing(status) elseif not quiet then mp.osd_message(status,4) end
@@ -1834,26 +1845,29 @@ local function fetch_episode(episode_id,label,server_index,quiet,on_missing,shar
     source=server_index or source
     results={}
     kill();clear();loaded=''
-    if not on_missing then autoload_state='idle' end
+    autoload_state='loading';o.enabled=true;renderer.toggle(true)
+    if not quiet then prepare_notice() end
     status='获取弹幕中…';publish()
     request(sv.url..'/api/v2/comment/'..id..'?withRelated=true',nil,function(body,err)
         local list,why=parse_remote(body or '')
         if not list then
+            cancel_preparation()
             route_log(server_index or source,'弹幕读取',err or why or '响应无效',true)
             if on_missing then
                 if err or why then on_missing(server_error('获取弹幕',err or why)) else on_missing() end
                 return
             end
-            status=server_error('获取弹幕',err or why);publish()
+            status=server_error('获取弹幕',err or why);autoload_state='error';publish()
             return
         end
         source=server_index or source
         if #list==0 then
+            cancel_preparation()
             kill();clear();loaded=''
             route_log(server_index or source,'弹幕读取','该集返回 0 条弹幕')
             if on_empty then on_empty();return end
             if on_missing then on_missing()
-            else status='该集没有弹幕';publish() end
+            else status='该集没有弹幕';autoload_state='empty';publish() end
             return
         end
         if on_loaded then on_loaded() end
@@ -2520,14 +2534,7 @@ mp.register_event('file-loaded',function()
         try_automatic_match(generation,0)
     end
     if (has_local_danmaku or o.autoload_danmaku) and not renderer.ready then
-        local expected_generation=generation
-        preparation_timer=mp.add_timeout(2,function()
-            preparation_timer=nil
-            if generation==expected_generation and autoload_state=='loading' and not renderer.ready then
-                renderer.notice('弹幕准备中~~~')
-            end
-        end,true)
-        playback_notice_timer()
+        prepare_notice()
     end
 end)
 mp.observe_property('core-idle','bool',playback_notice_timer)

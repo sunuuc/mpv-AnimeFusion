@@ -1,4 +1,4 @@
-﻿
+
 using System.ComponentModel;
 using System.Drawing;
 using System.Globalization;
@@ -464,9 +464,9 @@ public partial class MessageBoxEx : Window, INotifyPropertyChanged
             if (width < formattedText.Width)
                 largestName = button.Name;
 
-            width = Math.Max(width, formattedText.Width);
+            width = Math.Max(width, formattedText.Width + button.Padding.Left + button.Padding.Right);
         }
-        ButtonWidth = Math.Ceiling(width/*width + polyArrow.Width+polyArrow.Margin.Right+Margin.Left*/);
+        ButtonWidth = Math.Ceiling(width);
     }
 
     void SetButtonTemplates()

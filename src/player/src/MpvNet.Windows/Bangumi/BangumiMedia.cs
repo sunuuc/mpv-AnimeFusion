@@ -140,7 +140,7 @@ public sealed record BangumiMedia(string Title, int Season, double? EpisodeNumbe
         return null;
     }
 
-    static IEnumerable<string> SubjectTitles(Subject subject)
+    public static IEnumerable<string> SubjectTitles(Subject subject)
     {
         if (!string.IsNullOrWhiteSpace(subject.NameCn)) yield return subject.NameCn;
         if (!string.IsNullOrWhiteSpace(subject.Name)) yield return subject.Name;

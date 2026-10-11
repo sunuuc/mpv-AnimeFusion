@@ -41,9 +41,6 @@ public partial class DanmakuSearchWindow : Window
     bool _initialSeasonApplied;
     bool _initialSearchDispatched;
     bool _ready;
-    string? _pendingEpisodeId;
-    int _episodeLoadGeneration;
-    int _pendingEpisodeGeneration = -1;
 
     public Theme? Theme => Theme.Current;
 
@@ -136,36 +133,11 @@ public partial class DanmakuSearchWindow : Window
         _failedSearches = Number(root, "search_failed");
         _respondedSearches = Number(root, "search_responded");
         _totalSearches = Number(root, "search_total");
-        _episodeLoadGeneration = Number(root, "episode_load_generation");
         _displayedKeyword = Text(root, "search_keyword");
         string status = Text(root, "status");
         Status.Text = status == "无法取得片名"
             ? "没识别到片名，可直接输入作品名搜索。"
             : status;
-        if (_pendingEpisodeId is not null && _episodeLoadGeneration > _pendingEpisodeGeneration)
-        {
-            bool loaded = root.TryGetProperty("loaded", out var loadedValue)
-                && loadedValue.ValueKind == System.Text.Json.JsonValueKind.True;
-            int count = Number(root, "count");
-            if (loaded && count > 0)
-            {
-                Close();
-                return;
-            }
-
-            if (status.Contains("获取弹幕中", StringComparison.Ordinal))
-            {
-                Status.Visibility = Visibility.Visible;
-            }
-            else if (status.Contains("失败", StringComparison.Ordinal)
-                || status.Contains("无效", StringComparison.Ordinal)
-                || status.Contains("没有弹幕", StringComparison.Ordinal))
-            {
-                _pendingEpisodeId = null;
-                _pendingEpisodeGeneration = -1;
-                Status.Visibility = Visibility.Visible;
-            }
-        }
         bool showEpisodes = Text(root, "search_view") == "episodes";
         if (showEpisodes && root.TryGetProperty("selected_show", out var selectedShow)
             && selectedShow.ValueKind == JsonValueKind.Object)
@@ -479,8 +451,6 @@ public partial class DanmakuSearchWindow : Window
         }
         _initialSearchDispatched = true;
         _selectedTitle = "";
-        _pendingEpisodeId = null;
-        _pendingEpisodeGeneration = -1;
         Status.Visibility = Visibility.Collapsed;
         _pendingSearchSource = _selectedSearchSource;
         _pendingKeyword = keyword;
@@ -502,8 +472,6 @@ public partial class DanmakuSearchWindow : Window
     void Show_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (ShowList.SelectedItem is not ShowChoice choice) return;
-        _pendingEpisodeId = null;
-        _pendingEpisodeGeneration = -1;
         Status.Visibility = Visibility.Collapsed;
         ShowList.SelectedItem = null;
         _selectedTitle = $"{choice.Name} · {choice.Group} · {choice.Platform}";
@@ -514,24 +482,14 @@ public partial class DanmakuSearchWindow : Window
     void Episode_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (EpisodeList.SelectedItem is not EpisodeChoice episode) return;
-        if (_pendingEpisodeId is not null)
-        {
-            EpisodeList.SelectedItem = null;
-            return;
-        }
-        _pendingEpisodeId = episode.Id;
-        _pendingEpisodeGeneration = _episodeLoadGeneration;
-        EpisodeList.SelectedItem = null;
-        Status.Text = "正在加载所选剧集弹幕…";
-        Status.Visibility = Visibility.Visible;
+        EpisodeList.IsEnabled = false;
         Player.CommandV("script-message", "player_ui-danmaku-pick", episode.Id,
             $"{_selectedTitle} · {episode.Label}", _selectedServer.ToString());
+        Close();
     }
 
     void Back_Click(object sender, RoutedEventArgs e)
     {
-        _pendingEpisodeId = null;
-        _pendingEpisodeGeneration = -1;
         Status.Visibility = Visibility.Collapsed;
         _selectedTitle = "";
         Player.CommandV("script-message", "player_ui-danmaku-search-back");

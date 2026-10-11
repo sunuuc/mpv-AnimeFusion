@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using MpvNet.Windows.Sync;
+using MpvNet.Windows.Bangumi;
 
 namespace MpvNet.Windows.MyAnimeList;
 
@@ -120,7 +121,11 @@ public sealed class MalPlayback
             string value = Player.GetPropertyString("metadata/by-key/" + provider + "_id");
             if (value.Length > 0) metadata[provider] = value;
         }
-        lock (_lock) { Media = MalMedia.Parse(title, title.Length > 0 ? Player.GetPropertyString("path") : "", metadata); _mediaTitle = title; _percent = 0; }
+        var media = MalMedia.Parse(title, title.Length > 0 ? Player.GetPropertyString("path") : "", metadata);
+        if (media.BangumiId == null && BangumiPlayback.Current is { } bangumi
+            && bangumi.Store.FindBinding(media.Key) is { } binding)
+            media = media with { BangumiId = binding.SubjectId };
+        lock (_lock) { Media = media; _mediaTitle = title; _percent = 0; }
         Changed?.Invoke();
         if (Enabled && Client.Account != null && Media.Title.Length > 0) { Task pending = ResolveAsync(); }
     }

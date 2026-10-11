@@ -16,16 +16,17 @@ public static class MalMatching
         return JsonSerializer.Deserialize<MalLink[]>(stream) ?? [];
     });
     static string TitleIdentity(string title) => Regex.Replace(title.Normalize(NormalizationForm.FormKC).ToLowerInvariant(), @"[\s\p{P}\p{S}]+", "");
-    static double TitleScore(string input, string title) => BangumiMedia.TitleScore(TitleIdentity(input), TitleIdentity(title));
+    public static double TitleScore(string input, string title) => BangumiMedia.TitleScore(TitleIdentity(input), TitleIdentity(title));
     static double Score(MalMedia media, string title) => BangumiMedia.TitleVariants(media.Title)
         .SelectMany(input => BangumiMedia.TitleVariants(BangumiMedia.Parse(title).Title).Select(name => TitleScore(input, name))).DefaultIfEmpty().Max();
     static bool DateMatches(MalMedia media, MalSubject subject) => media.Parsed.Year == null
         || subject.StartDate?.StartsWith(media.Parsed.Year + "-", StringComparison.Ordinal) == true;
-    static bool SeasonMatches(MalMedia media, MalSubject subject, IEnumerable<MalLink> links)
+    static bool SeasonMatches(MalMedia media, MalSubject subject, IEnumerable<MalLink> links, int? catalogueSeason = null)
     {
         if (media.Episode == null) return !media.Parsed.HasSeason;
         var seasons = subject.Names.Select(BangumiMedia.Parse).Where(n => n.HasSeason).Select(n => n.Season)
-            .Concat(links.Select(l => l.Season).OfType<int>()).Distinct().ToArray();
+            .Concat(links.Select(l => l.Season).OfType<int>())
+            .Concat(catalogueSeason is int season ? [season] : Array.Empty<int>()).Distinct().ToArray();
         if (seasons.Length > 0) return seasons.Length == 1 && seasons[0] == media.Season;
         // First-season evidence requires a regular TV entry and no prequel relation.
         // Unnamed later seasons and split cours remain for manual confirmation.
@@ -76,8 +77,35 @@ public static class MalMatching
             verified.Sort((a,b) => b.Score.CompareTo(a.Score));
             return verified.Count == 1 || verified[0].Score - verified[1].Score >= .08 ? verified[0].Subject : null;
         }
+        var catalogue = await client.CatalogueAsync(media.BangumiId, media.Title, token).ConfigureAwait(false);
+        var entry = media.Parsed.MatchSubject(catalogue.Where(s => media.Parsed.Year == null
+            || s.Date?.StartsWith(media.Parsed.Year + "-", StringComparison.Ordinal) == true).ToArray());
+        if (entry != null && !string.IsNullOrWhiteSpace(entry.Name))
+        {
+            var names = BangumiMedia.SubjectTitles(entry).SelectMany(BangumiMedia.TitleVariants).ToArray();
+            var candidates = await client.SearchNameAsync(entry.Name, token).ConfigureAwait(false);
+            var linked = new List<(MalSubject Subject, double Score)>();
+            foreach (var candidate in candidates)
+            {
+                if (!EpisodeFits(media, candidate) || !DateMatches(media, candidate)) continue;
+                // Verify the live catalogue entry against the target title, premiere month and medium.
+                if (entry.Date is not { Length: >= 7 } || candidate.StartDate is not { Length: >= 7 }
+                    || entry.Date[..7] != candidate.StartDate[..7]) continue;
+                if (entry.Platform?.ToLowerInvariant() is "tv" && candidate.MediaType != "tv") continue;
+                double score = names.SelectMany(n => candidate.Names.Select(t => TitleScore(n, t))).DefaultIfEmpty().Max();
+                if (score < .8 || !SeasonMatches(media, candidate, [], media.Episode != null ? media.Season : null)) continue;
+                linked.Add((candidate, score));
+            }
+            linked.Sort((a,b) => b.Score.CompareTo(a.Score));
+            if (linked.Count > 0)
+                return linked.Count == 1 || linked[0].Score - linked[1].Score >= .08 ? linked[0].Subject : null;
+        }
         var searched = await client.SearchAsync(media.Title, token).ConfigureAwait(false);
-        var matches = searched.Where(s => EpisodeFits(media, s) && DateMatches(media, s))
+        var detailed = new List<MalSubject>();
+        foreach (var candidate in searched.Where(s => EpisodeFits(media, s) && DateMatches(media, s)
+            && s.Names.Any(n => Score(media, n) >= .8)).Take(8))
+            detailed.Add(await client.SubjectAsync(candidate.Id, false, token).ConfigureAwait(false));
+        var matches = detailed.Where(s => EpisodeFits(media, s) && DateMatches(media, s))
             .Where(s => SeasonMatches(media, s, []))
             .Select(s => (Subject: s, Score: s.Names.Select(n => Score(media, n)).DefaultIfEmpty().Max()))
             .Where(v => v.Score >= .8).OrderByDescending(v => v.Score).ToArray();

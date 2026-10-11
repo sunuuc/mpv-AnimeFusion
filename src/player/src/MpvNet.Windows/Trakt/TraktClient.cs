@@ -178,6 +178,12 @@ public sealed class TraktClient
         (kind == "movie" ? "movies/" : "shows/") + id + "?extended=full", null, false, token);
     public Task<TraktSeason[]> SeasonsAsync(int id, CancellationToken token) => RequestAsync<TraktSeason[]>(HttpMethod.Get, "shows/" + id + "/seasons?extended=full", null, false, token);
     public Task<TraktEpisode[]> EpisodesAsync(int id, int season, CancellationToken token) => RequestAsync<TraktEpisode[]>(HttpMethod.Get, "shows/" + id + "/seasons/" + season + "?extended=full", null, false, token);
+    public async Task<TraktEpisode[]> AllEpisodesAsync(int id, CancellationToken token)
+    {
+        var seasons = await RequestAsync<TraktSeasonEpisodes[]>(HttpMethod.Get,
+            "shows/" + id + "/seasons?extended=episodes", null, false, token).ConfigureAwait(false);
+        return seasons.OrderBy(s => s.Number).SelectMany(s => s.Episodes.OrderBy(e => e.Number)).ToArray();
+    }
 
     public async Task<HashSet<int>> WatchedAsync(TraktSubject subject, IReadOnlyList<TraktEpisode> episodes, int season, CancellationToken token)
     {

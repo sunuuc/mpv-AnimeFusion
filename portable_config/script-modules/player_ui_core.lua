@@ -92,13 +92,15 @@ M.metrics={
     menu_margin=16,menu_header=56,menu_padding=10,
     row_min=52,row_text=18,row_line=22,row_detail=14,row_detail_line=19,
     row_padding=16,icon_column=56,separator=16,slider=84,
+    switch_width=40,switch_height=22,switch_inset=3,
     control_compact_step=48,control_step=56,control_compact_edge=28,control_edge=42,
     control_y=40,control_width=40,control_hit_height=20,speed_width=58,volume_width=130,volume_offset=8,
     volume_min_width=36,seek_x=26,seek_track_y=88,seek_top=102,seek_bottom=74,
     time_font=14,title_font=26,detail_font=16,
     network_width=104,network_gap=8,
     menu_speed_bottom=94,menu_bottom=106,
-    icon_size=68,small_icon_size=40,icon_hover_radius=14,
+    icon_size=90,small_icon_size=40,icon_hover_radius=14,
+    avatar_size=36,avatar_hover_radius=20,avatar_font=20,speed_font=18,subtitle_icon_font=17,
 }
 function M.title(title,path)
     title=M.clean(title):gsub('[\r\n]+',' ')

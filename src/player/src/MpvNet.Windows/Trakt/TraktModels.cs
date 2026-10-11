@@ -16,4 +16,5 @@ public sealed record TraktEpisode(int Season, int Number, string? Title, TraktId
     public string Display => "第 " + Number + " 集" + (string.IsNullOrEmpty(Title) ? "" : " · " + Title);
 }
 public sealed record TraktSeason(int Number, int? EpisodeCount);
+public sealed record TraktSeasonEpisodes(int Number, TraktEpisode[] Episodes);
 public sealed record TraktSearchResult(string Type, TraktSubject? Movie, TraktSubject? Show);

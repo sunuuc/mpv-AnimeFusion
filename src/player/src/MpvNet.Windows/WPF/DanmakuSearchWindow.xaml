@@ -8,64 +8,15 @@
         UseLayoutRounding="True" SnapsToDevicePixels="True"
         Loaded="Window_Loaded" Closed="Window_Closed">
     <Window.Resources>
-        <Style x:Key="ChipButton" TargetType="Button">
-            <Setter Property="Foreground" Value="{Binding RelativeSource={RelativeSource AncestorType=Window}, Path=DataContext.Theme.Foreground}" />
-            <Setter Property="Background" Value="{Binding RelativeSource={RelativeSource AncestorType=Window}, Path=DataContext.Theme.MenuBackground}" />
-            <Setter Property="BorderBrush" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="1" />
+        <Style x:Key="ChipButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
             <Setter Property="Padding" Value="12,6" />
             <Setter Property="Margin" Value="0,0,7,0" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Surface" CornerRadius="6" Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
-                                Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
-                                              RecognizesAccessKey="True" />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Surface" Property="Background"
-                                        Value="{Binding RelativeSource={RelativeSource AncestorType=Window}, Path=DataContext.Theme.MenuHighlight}" />
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Surface" Property="Opacity" Value=".82" />
-                            </Trigger>
-                            <DataTrigger Binding="{Binding IsSelected}" Value="True">
-                                <Setter TargetName="Surface" Property="Background"
-                                        Value="{Binding RelativeSource={RelativeSource AncestorType=Window}, Path=DataContext.Theme.Heading}" />
-                                <Setter Property="Foreground" Value="White" />
-                            </DataTrigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-        <Style x:Key="ActionButton" TargetType="Button">
-            <Setter Property="Foreground" Value="White" />
-            <Setter Property="Background" Value="{Binding Theme.Heading}" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Padding" Value="18,8" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Surface" CornerRadius="6" Background="{TemplateBinding Background}"
-                                Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Opacity" Value=".88" /></Trigger>
-                            <Trigger Property="IsPressed" Value="True"><Setter TargetName="Surface" Property="Opacity" Value=".72" /></Trigger>
-                            <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Surface" Property="Opacity" Value=".42" /></Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                    <Setter Property="Background" Value="{Binding DataContext.Theme.Heading, RelativeSource={RelativeSource AncestorType=Window}}" />
+                    <Setter Property="Foreground" Value="White" />
+                </DataTrigger>
+            </Style.Triggers>
         </Style>
         <Style x:Key="SearchTextBox" TargetType="TextBox">
             <Setter Property="Foreground" Value="{Binding Theme.Foreground}" />
@@ -77,38 +28,7 @@
             <Setter Property="Padding" Value="13,9" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
-        <Style x:Key="ResultListBoxItem" TargetType="ListBoxItem">
-            <Setter Property="Foreground" Value="{Binding RelativeSource={RelativeSource AncestorType=Window}, Path=DataContext.Theme.Foreground}" />
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderBrush" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Padding" Value="8" />
-            <Setter Property="Margin" Value="0,0,0,5" />
-            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ListBoxItem">
-                        <Border x:Name="Card" Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="5" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Card" Property="Background"
-                                        Value="{Binding RelativeSource={RelativeSource AncestorType=Window}, Path=DataContext.Theme.MenuBackground}" />
-                            </Trigger>
-                            <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="Card" Property="Background"
-                                        Value="{Binding RelativeSource={RelativeSource AncestorType=Window}, Path=DataContext.Theme.MenuHighlight}" />
-                                <Setter TargetName="Card" Property="BorderBrush"
-                                        Value="{Binding RelativeSource={RelativeSource AncestorType=Window}, Path=DataContext.Theme.Heading}" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
+        <Style x:Key="ResultListBoxItem" TargetType="ListBoxItem" BasedOn="{StaticResource MatchResultItem}" />
         <Style x:Key="ResultGroupItem" TargetType="GroupItem">
             <Setter Property="Template">
                 <Setter.Value>
@@ -153,7 +73,7 @@
                                VerticalAlignment="Center" Foreground="{Binding Theme.Foreground2}"
                                IsHitTestVisible="False" />
                 </Grid>
-                <Button x:Name="SearchButton" Grid.Column="1" Content="搜索" Style="{StaticResource ActionButton}"
+                <Button x:Name="SearchButton" Grid.Column="1" Content="搜索"
                         IsDefault="True" Margin="10,0,0,0" Click="Search_Click" />
             </Grid>
 
@@ -271,9 +191,9 @@
                 <TextBlock x:Name="Status" VerticalAlignment="Center" TextWrapping="Wrap" Margin="2,0,12,0"
                            Foreground="{Binding Theme.Foreground2}" Visibility="Collapsed" />
                 <Button x:Name="BackButton" Grid.Column="1" Content="返回" Visibility="Collapsed"
-                        Style="{StaticResource ChipButton}" Padding="20,8" Margin="0"
+                        Padding="20,8" Margin="0"
                         Click="Back_Click" />
-                <Button x:Name="CloseButton" Grid.Column="1" Content="取消" Style="{StaticResource ChipButton}"
+                <Button x:Name="CloseButton" Grid.Column="1" Content="取消"
                         Padding="20,8" Margin="0" Click="Close_Click" />
             </Grid>
         </Grid>

@@ -7,6 +7,12 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using SkiaSharp;
+using BangumiNet.Api;
+using BangumiNet.Api.V0;
+using BangumiNet.Api.V0.Models;
+using BangumiNet.Api.V0.V0.Search.Subjects;
+using Microsoft.Kiota.Http.HttpClientLibrary;
+using MpvNet.Windows.Bangumi;
 
 namespace MpvNet.Windows.MyAnimeList;
 
@@ -129,11 +135,45 @@ public sealed class MalClient
         var names = await Task.Run(() => MalMatching.SearchNames(title).ToArray(), token).ConfigureAwait(false);
         foreach (string name in names)
         {
-            var response = await RequestAsync<MalSearchResponse>(HttpMethod.Get,
-                "anime?q=" + Uri.EscapeDataString(name) + "&limit=30&fields=" + Fields, null, false, token).ConfigureAwait(false);
-            results.AddRange(response.Data.Select(n => n.Node));
+            results.AddRange(await SearchNameAsync(name, token).ConfigureAwait(false));
+        }
+        if (results.Count == 0)
+        {
+            var catalogue = await CatalogueAsync(null, title, token).ConfigureAwait(false);
+            foreach (var subject in catalogue.Where(s => BangumiMedia.SubjectTitles(s).SelectMany(BangumiMedia.TitleVariants)
+                .Any(n => MalMatching.TitleScore(title, n) >= .8)).Take(3))
+                if (!string.IsNullOrWhiteSpace(subject.Name))
+                    results.AddRange(await SearchNameAsync(subject.Name, token).ConfigureAwait(false));
         }
         return results.DistinctBy(s => s.Id).ToArray();
+    }
+    public async Task<IReadOnlyList<MalSubject>> SearchNameAsync(string name, CancellationToken token)
+    {
+        var response = await RequestAsync<MalSearchResponse>(HttpMethod.Get,
+            "anime?q=" + Uri.EscapeDataString(name) + "&limit=30&nsfw=true&fields=" + Fields, null, false, token).ConfigureAwait(false);
+        return response.Data.Select(n => n.Node).ToArray();
+    }
+    public async Task<IReadOnlyList<Subject>> CatalogueAsync(int? id, string title, CancellationToken token)
+    {
+        // Public catalogue names use the same official Bangumi client as the Bangumi integration.
+        // This read does not depend on a Bangumi login or its synchronization setting.
+        var api = new ApiClient(new HttpClientRequestAdapter(new BangumiAuthenticationProvider(
+            new BangumiAuthenticationProvider.AuthenticationContext()), httpClient: _http));
+        if (id is int known)
+        {
+            var subject = await api.V0.Subjects[known].GetAsync(cancellationToken: token).ConfigureAwait(false);
+            return subject == null ? [] : [subject];
+        }
+        var response = await api.V0.Search.Subjects.PostAsync(new SubjectsPostRequestBody
+        { Keyword = title, Filter = new() { Type = [2] } }, c => c.QueryParameters.Limit = 10, token).ConfigureAwait(false);
+        var result = new List<Subject>();
+        foreach (var candidate in response?.Data ?? [])
+        {
+            if (candidate.Id is not > 0) continue;
+            var subject = await api.V0.Subjects[candidate.Id.Value].GetAsync(cancellationToken: token).ConfigureAwait(false);
+            if (subject != null) result.Add(subject);
+        }
+        return result;
     }
     public Task<MalSubject> SubjectAsync(int id, bool authenticated, CancellationToken token) => RequestAsync<MalSubject>(HttpMethod.Get,
         "anime/" + id + "?fields=" + Fields + (authenticated ? ",my_list_status" : ""), null, authenticated, token);

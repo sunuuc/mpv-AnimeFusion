@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using MpvNet.Windows.Trakt;
 using MpvNet.Windows.UI;
+using MpvNet.Windows.WPF.ViewModels;
 
 namespace MpvNet.Windows.WPF;
 
@@ -23,7 +24,6 @@ public partial class TraktMatchWindow : Window
     {
         _media = _sync.Media; _generation = _sync.Generation;
         InitializeComponent(); DataContext = this; QueryBox.Text = _media.Title;
-        KindBox.SelectedIndex = _media.Kind == "movie" ? 1 : 0;
         _sync.Changed += Sync_Changed;
         Closed += (_, _) =>
         {
@@ -31,7 +31,12 @@ public partial class TraktMatchWindow : Window
             _request?.Cancel(); _request?.Dispose(); _lifetime.Cancel(); _lifetime.Dispose();
         };
         Refresh();
-        if (_sync.Subject != null) { SubjectsList.Items.Add(_sync.Subject); SubjectsList.SelectedItem = _sync.Subject; }
+        if (_sync.Subject != null)
+        {
+            var item = CreateSubject(_sync.Subject);
+            SubjectsList.Items.Add(item); SubjectsList.SelectedItem = item;
+            Task cover = item.LoadCoverAsync(t => _sync.Client.CoverFileAsync(item.Subject.Poster, t), _lifetime.Token);
+        }
     }
     void Sync_Changed() => Dispatcher.BeginInvoke(new Action(() =>
     {
@@ -39,7 +44,7 @@ public partial class TraktMatchWindow : Window
         if (_generation != _sync.Generation)
         {
             _request?.Cancel(); _busy = false; _media = _sync.Media; _generation = _sync.Generation;
-            QueryBox.Text = _media.Title; SubjectsList.Items.Clear(); SeasonsBox.Items.Clear(); EpisodesBox.Items.Clear(); _episodes = []; _message = "";
+            QueryBox.Text = _media.Title; SubjectsList.Items.Clear(); EpisodesBox.Items.Clear(); _episodes = []; _message = "";
         }
         Refresh();
     }));
@@ -48,12 +53,13 @@ public partial class TraktMatchWindow : Window
         bool connected = _sync.Client.Account != null;
         SearchButton.IsEnabled = connected && !_busy;
         BindButton.IsEnabled = connected && !_busy && EpisodesBox.SelectedItem != null;
-        StatusText.Text = _message.Length > 0 ? _message : _sync.Status;
+        EpisodesBox.IsEnabled = connected && !_busy && EpisodesBox.Items.Count > 0;
+        StatusText.Text = connected ? _message : "请先登录。";
     }
-    CancellationToken BeginRequest()
+    CancellationToken BeginRequest(string message)
     {
         _request?.Cancel(); _request?.Dispose(); _request = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
-        _busy = true; _message = "正在搜索作品…"; Refresh(); return _request.Token;
+        _busy = true; _message = message; Refresh(); return _request.Token;
     }
     void EndRequest(CancellationToken token)
     { if (!_closed && !token.IsCancellationRequested) { _busy = false; Refresh(); } }
@@ -61,66 +67,82 @@ public partial class TraktMatchWindow : Window
     async void Search_Click(object sender, RoutedEventArgs e)
     {
         string keyword = QueryBox.Text.Trim(); if (keyword.Length == 0) return;
-        string kind = ((ComboBoxItem)KindBox.SelectedItem).Tag.ToString()!;
-        var token = BeginRequest();
+        var token = BeginRequest("正在搜索作品…");
         try
         {
-            SubjectsList.Items.Clear(); SeasonsBox.Items.Clear(); EpisodesBox.Items.Clear();
-            var subjects = await _sync.Client.SearchAsync(keyword, kind, token); token.ThrowIfCancellationRequested();
-            foreach (var subject in subjects) SubjectsList.Items.Add(subject);
-            _message = subjects.Count == 0 ? "未找到条目。" : "请选择作品、季度和当前剧集。";
+            SubjectsList.Items.Clear(); EpisodesBox.Items.Clear();
+            var subjects = (await _sync.Client.SearchAsync(keyword, "show", token))
+                .Concat(await _sync.Client.SearchAsync(keyword, "movie", token)).ToArray();
+            token.ThrowIfCancellationRequested();
+            var items = subjects.Select(CreateSubject).ToArray();
+            foreach (var item in items) SubjectsList.Items.Add(item);
+            Task covers = LoadCoversAsync(items);
+            _message = subjects.Length == 0 ? "未找到条目。" : "";
         }
         catch (OperationCanceledException) { }
         catch (Exception error) { if (!token.IsCancellationRequested) _message = TraktPlayback.ErrorText(error); }
         finally { EndRequest(token); }
+    }
+    static MatchSubjectViewModel<TraktSubject> CreateSubject(TraktSubject subject)
+        => new(subject, subject.Title, subject.Details, subject.Rating);
+
+    async Task LoadCoversAsync(IEnumerable<MatchSubjectViewModel<TraktSubject>> items)
+    {
+        var token = _lifetime.Token;
+        using var gate = new SemaphoreSlim(3);
+        await Task.WhenAll(items.Select(async item =>
+        {
+            try
+            {
+                await gate.WaitAsync(token);
+                try { await item.LoadCoverAsync(t => _sync.Client.CoverFileAsync(item.Subject.Poster, t), token); }
+                finally { gate.Release(); }
+            }
+            catch (OperationCanceledException) { }
+        }));
     }
     async void Subject_Changed(object sender, SelectionChangedEventArgs e)
     {
-        if (SubjectsList.SelectedItem is not TraktSubject subject) return;
-        var token = BeginRequest();
+        if (SubjectsList.SelectedItem is not MatchSubjectViewModel<TraktSubject> item) return;
+        var subject = item.Subject;
+        var token = BeginRequest("正在加载剧集…");
         try
         {
-            SeasonsBox.Items.Clear(); EpisodesBox.Items.Clear(); _episodes = [];
-            if (subject.Kind == "movie")
+            EpisodesBox.Items.Clear(); _episodes = [];
+            IReadOnlyList<TraktEpisode> episodes = subject.Kind == "movie" ? [new(0, 1, "正片", subject.Ids)]
+                : await _sync.Client.AllEpisodesAsync(subject.Ids.Trakt, token);
+            token.ThrowIfCancellationRequested();
+            _episodes = episodes;
+            foreach (var episode in _episodes)
             {
-                _episodes = [new(0, 1, "正片", subject.Ids)];
-                EpisodesBox.Items.Add(new ComboBoxItem { Content = "正片", Tag = _episodes[0] }); EpisodesBox.SelectedIndex = 0;
+                string label = subject.Kind == "movie" ? "正片"
+                    : (episode.Season == 0 ? "特别篇" : "第 " + episode.Season + " 季") + " · " + episode.Display;
+                EpisodesBox.Items.Add(new ComboBoxItem { Content = label, Tag = episode });
             }
-            else
+            bool sameSubject = _sync.Subject?.Ids.Trakt == subject.Ids.Trakt;
+            int wanted = sameSubject ? _sync.Season : _media.Season;
+            EpisodesBox.SelectedItem = EpisodesBox.Items.Cast<ComboBoxItem>().FirstOrDefault(i =>
             {
-                var seasons = await _sync.Client.SeasonsAsync(subject.Ids.Trakt, token); token.ThrowIfCancellationRequested();
-                foreach (var season in seasons.OrderBy(s => s.Number))
-                    SeasonsBox.Items.Add(new ComboBoxItem { Content = season.Number == 0 ? "特别篇" : "第 " + season.Number + " 季", Tag = season.Number });
-                _message = "请选择季度和当前剧集。";
-                int wanted = _sync.Subject?.Ids.Trakt == subject.Ids.Trakt ? _sync.Season : _media.Season;
-                SeasonsBox.SelectedItem = SeasonsBox.Items.Cast<ComboBoxItem>().FirstOrDefault(i => (int)i.Tag == wanted);
-            }
-            _message = "请选择当前剧集。";
+                var episode = (TraktEpisode)i.Tag;
+                return subject.Kind == "movie" || (sameSubject && _sync.Selection is { } selected
+                    ? episode.Ids.Trakt == selected.Ids.Trakt : episode.Season == wanted && episode.Number == _media.Episode);
+            });
+            _message = _episodes.Count == 0 ? "没有可选剧集。" : "";
         }
         catch (OperationCanceledException) { }
         catch (Exception error) { if (!token.IsCancellationRequested) _message = TraktPlayback.ErrorText(error); }
         finally { EndRequest(token); }
     }
-    async void Season_Changed(object sender, SelectionChangedEventArgs e)
+    void Episode_Changed(object sender, SelectionChangedEventArgs e)
     {
-        if (SubjectsList.SelectedItem is not TraktSubject subject || SeasonsBox.SelectedItem is not ComboBoxItem { Tag: int season }) return;
-        var token = BeginRequest();
-        try
-        {
-            EpisodesBox.Items.Clear(); _episodes = await _sync.Client.EpisodesAsync(subject.Ids.Trakt, season, token); token.ThrowIfCancellationRequested();
-            foreach (var episode in _episodes) EpisodesBox.Items.Add(new ComboBoxItem { Content = episode.Display, Tag = episode });
-            EpisodesBox.SelectedItem = EpisodesBox.Items.Cast<ComboBoxItem>().FirstOrDefault(i => ((TraktEpisode)i.Tag).Number == _media.Episode);
-            _message = _episodes.Count == 0 ? "该季度没有剧集。" : "请选择当前剧集。";
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception error) { if (!token.IsCancellationRequested) _message = TraktPlayback.ErrorText(error); }
-        finally { EndRequest(token); }
+        if (!_busy && EpisodesBox.SelectedItem != null) _message = "";
+        Refresh();
     }
-    void Episode_Changed(object sender, SelectionChangedEventArgs e) => Refresh();
     void Bind_Click(object sender, RoutedEventArgs e)
     {
-        if (SubjectsList.SelectedItem is not TraktSubject subject || EpisodesBox.SelectedItem is not ComboBoxItem { Tag: TraktEpisode episode }) return;
-        try { _sync.Bind(_media, _generation, subject, episode, _episodes); _generation = _sync.Generation; Close(); }
+        if (SubjectsList.SelectedItem is not MatchSubjectViewModel<TraktSubject> item || EpisodesBox.SelectedItem is not ComboBoxItem { Tag: TraktEpisode episode }) return;
+        var subject = item.Subject;
+        try { _sync.Bind(_media, _generation, subject, episode, _episodes.Where(e => e.Season == episode.Season).ToArray()); _generation = _sync.Generation; Close(); }
         catch (Exception error) { _message = TraktPlayback.ErrorText(error); Refresh(); }
     }
     void Close_Click(object sender, RoutedEventArgs e) => Close();

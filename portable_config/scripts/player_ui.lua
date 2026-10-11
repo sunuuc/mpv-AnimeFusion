@@ -98,13 +98,15 @@ M.metrics={
     menu_margin=16,menu_header=56,menu_padding=10,
     row_min=52,row_text=18,row_line=22,row_detail=14,row_detail_line=19,
     row_padding=16,icon_column=56,separator=16,slider=84,
+    switch_width=40,switch_height=22,switch_inset=3,
     control_compact_step=48,control_step=56,control_compact_edge=28,control_edge=42,
     control_y=40,control_width=40,control_hit_height=20,speed_width=58,volume_width=130,volume_offset=8,
     volume_min_width=36,seek_x=26,seek_track_y=88,seek_top=102,seek_bottom=74,
     time_font=14,title_font=26,detail_font=16,
     network_width=104,network_gap=8,
     menu_speed_bottom=94,menu_bottom=106,
-    icon_size=68,small_icon_size=40,icon_hover_radius=14,
+    icon_size=90,small_icon_size=40,icon_hover_radius=14,
+    avatar_size=36,avatar_hover_radius=20,avatar_font=20,speed_font=18,subtitle_icon_font=17,
 }
 function M.title(title,path)
     title=M.clean(title):gsub('[\r\n]+',' ')
@@ -578,6 +580,7 @@ return function(c)
             a[#a+1]=r;return r
         end
         local function link(text,target,icon)row(text,nil,false,{target=target,icon=icon})end
+        local function toggle(text,fn,selected)row(text,fn,selected,{stay=true,toggle=true})end
         local function separator()a[#a+1]={separator=true,h=12}end
         local provider=kind:match('^mal') and 'mal' or kind:match('^trakt') and 'trakt' or 'bangumi'
         local account=c.account and c.account(provider) or {}
@@ -591,32 +594,38 @@ return function(c)
             link('弹幕设置','danmaku-settings','danmaku')
             link('同步设置','sync-settings','bangumi')
             link('统计信息','stats','info')
-            row('显示时间',c.toggle_clock,c.clock(),{stay=true})
+            toggle('显示时间',c.toggle_clock,c.clock())
         elseif kind=='playback-settings' then
-            row('自动连播',c.toggle_auto_next,c.auto_next(),{stay=true})
-            row('镜像反转',c.toggle_mirror,c.mirror(),{stay=true})
-            row('定时暂停',c.toggle_timed_pause,c.timed_pause(),{stay=true,value=c.timed_pause() and '开启' or '关闭'})
-            row('暂停时间',nil,false,{slider={value=c.pause_minutes(),min=1,max=180,step=1,format='%.0f 分钟',
-                set=c.set_pause_minutes}})
+            toggle('自动连播',c.toggle_auto_next,c.auto_next())
+            toggle('镜像反转',c.toggle_mirror,c.mirror())
+            toggle('定时暂停',c.toggle_timed_pause,c.timed_pause())
+            if c.timed_pause() then
+                row('暂停时间',nil,false,{slider={value=c.pause_minutes(),min=1,max=180,step=1,format='%.0f 分钟',
+                    set=c.set_pause_minutes}})
+            end
         elseif kind=='sync-settings' then
             local services=c.sync_services()
             for _,item in ipairs({{'bangumi','Bangumi'},{'trakt','Trakt'},{'mal','MyAnimeList'}}) do local id,label=item[1],item[2]
-                row(label,function()c.command('script-message-to','mpvnet','sync-action',id,services[id] and 'no' or 'yes')end,services[id],{stay=true})
+                toggle(label,function()c.command('script-message-to','mpvnet','sync-action',id,services[id] and 'no' or 'yes')end,services[id])
             end
-            separator()
+            if services.bangumi or services.trakt or services.mal then separator() end
             for _,item in ipairs({{'bangumi','Bangumi'},{'trakt','Trakt'},{'mal','MyAnimeList'}}) do local id,label=item[1],item[2]
                 if services[id] then
                     local settings=(c.account(id) or {}).settings or {}
                     local function setting(key,value)c.command('script-message-to','mpvnet',id..'-action','setting',key,value)end
                     row(label,nil,false,{status=true})
                     if id=='bangumi' then
-                        row('自动收藏为在看',function()setting('auto-collect',settings.autoCollect and 'no' or 'yes')end,settings.autoCollect,{stay=true})
-                        row('收藏进度',nil,false,{slider={value=settings.collectPercent or 10,min=1,max=100,step=1,format='%.0f%%',
-                            set=function(v)setting('collect-percent',tostring(v))end}})
+                        toggle('自动收藏为在看',function()setting('auto-collect',settings.autoCollect and 'no' or 'yes')end,settings.autoCollect)
+                        if settings.autoCollect then
+                            row('收藏进度',nil,false,{slider={value=settings.collectPercent or 10,min=1,max=100,step=1,format='%.0f%%',
+                                set=function(v)setting('collect-percent',tostring(v))end}})
+                        end
                     end
-                    row('自动标记看过',function()setting('auto-sync',settings.autoSync and 'no' or 'yes')end,settings.autoSync,{stay=true})
-                    row('看过进度',nil,false,{slider={value=settings.watchedPercent or 90,min=1,max=100,step=1,format='%.0f%%',
-                        set=function(v)setting('watched-percent',tostring(v))end}})
+                    toggle('自动标记看过',function()setting('auto-sync',settings.autoSync and 'no' or 'yes')end,settings.autoSync)
+                    if settings.autoSync then
+                        row('看过进度',nil,false,{slider={value=settings.watchedPercent or 90,min=1,max=100,step=1,format='%.0f%%',
+                            set=function(v)setting('watched-percent',tostring(v))end}})
+                    end
                     separator()
                 end
             end
@@ -770,12 +779,12 @@ return function(c)
                 for _,mode in ipairs(group.modes) do selected[mode]=true end
                 local blocked=false
                 for _,value in ipairs(settings.blockmode or {}) do if selected[value] then blocked=true end end
-                row(group.label,function()
+                toggle(group.label,function()
                     local values={}
                     for _,value in ipairs(settings.blockmode or {}) do if not selected[value] then values[#values+1]='"'..value..'"' end end
                     if not blocked then for _,mode in ipairs(group.modes) do values[#values+1]='"'..mode..'"' end end
                     set('blockmode','['..table.concat(values,',')..']')
-                end,blocked,{stay=true})
+                end,blocked)
             end
             row('屏蔽词…',function()c.command('script-message','player_ui-danmaku-words')end)
         else
@@ -801,7 +810,7 @@ return function(c)
         local y,rows=0,{}
         for _,r in ipairs(items) do
             local indent=r.icon and metrics.icon_column*u or metrics.row_padding*u+8*u
-            local available=w-indent-30*u-(r.value and core.ass_text_width(r.value,metrics.row_text*u)+16*u or r.hint and 52*u or 0)-(r.target and 28*u or 0)
+            local available=w-indent-30*u-(r.toggle and (metrics.switch_width+16)*u or r.value and core.ass_text_width(r.value,metrics.row_text*u)+16*u or r.hint and 52*u or 0)-(r.target and 28*u or 0)
             local lines=core.wrap(r.text or '',available,metrics.row_text*u,r.wrap or 2)
             local height=r.h and r.h*u or r.separator and metrics.separator*u or r.slider and metrics.slider*u
                 or math.max(kind=='ai' and 48*u or metrics.row_min*u,
@@ -896,7 +905,7 @@ return function(c)
                             return
                         end
                         local hovered=core.inside(box,s.x,s.y)
-                        local picked=r.selected or (r.target and r.target==s.menu)
+                        local picked=(not r.toggle and r.selected) or (r.target and r.target==s.menu)
                         if hovered or picked then
                             d.round(box.x0+2*u,yy+3*u,box.x1-2*u,y1-3*u,6*u,theme.hover,5)
                         end
@@ -927,7 +936,13 @@ return function(c)
                                 end
                             end
                             if r.detail then d.text(left,ty+2*u,metrics.row_detail*u,r.detail,7,muted,false,w-(left-b.x0)-24*u,.8) end
-                            if r.target then d.text(b.x1-25*u,yy+entry.height/2,27*u,'›',6,theme.secondary,false,nil,.8)
+                            if r.toggle then
+                                local right=b.x1-19*u;local left=right-metrics.switch_width*u
+                                local cy=yy+entry.height/2;local radius=metrics.switch_height*u/2
+                                local alpha=r.disabled and 120 or 0
+                                d.round(left,cy-radius,right,cy+radius,radius,r.selected and accent or theme.track,alpha)
+                                d.circle(r.selected and right-radius or left+radius,cy,radius-metrics.switch_inset*u,white,alpha)
+                            elseif r.target then d.text(b.x1-25*u,yy+entry.height/2,27*u,'›',6,theme.secondary,false,nil,.8)
                             elseif r.value then d.text(b.x1-19*u,yy+entry.height/2,metrics.row_text*u,r.value,6,muted,false,nil,.8)
                             elseif r.hint then d.text(b.x1-19*u,yy+entry.height/2,13*u,r.hint,6,muted,false,nil,.8) end
                         end
@@ -960,7 +975,8 @@ return function(c)
                     break
                 end
             end
-            local top=core.clamp(row_top,margin,math.max(margin,l.h-margin-(b.y1-b.y0)))
+            -- Keep the child's bottom edge above the controls, like a root menu.
+            local top=core.clamp(row_top,margin,math.max(margin,b.y0))
             local dx=left-b.x0;local dy=top-b.y0
             b.x0=b.x0+dx;b.x1=b.x1+dx;b.y0=b.y0+dy;b.y1=b.y1+dy;b.content=b.content+dy
             if b.x1<=parent.x0 then
@@ -1313,7 +1329,7 @@ end
 local function draw_avatar(b,u)
     local account=b.id=='mal' and mal_account or b.id=='trakt' and trakt_account or bangumi_account
     if not account.connected or not account.avatar or account.avatar=='' then return false end
-    local size=math.max(1,math.floor(28*u*layout.scale+.5))
+    local size=math.max(1,math.floor(METRICS.avatar_size*u*layout.scale+.5))
     local x,y=math.floor(b.x*layout.scale-size/2+.5),math.floor(b.y*layout.scale-size/2+.5)
     local key=account.avatar..':'..x..':'..y..':'..size
     if avatar_keys[b.id]~=key then
@@ -1407,15 +1423,15 @@ render=function()
             if id=='fullscreen' and bool('fullscreen') then drawid='restore' end
             local account=id=='mal' and mal_account or id=='trakt' and trakt_account or bangumi_account
             if (id=='bangumi' or id=='trakt' or id=='mal') and draw_avatar(b,u) then
-                if state.hover==id then circle(b.x,b.y,16*u,ACCENT,170) end
+                if state.hover==id then circle(b.x,b.y,METRICS.avatar_hover_radius*u,ACCENT,170) end
             elseif (id=='bangumi' or id=='trakt' or id=='mal') and account.connected then
-                circle(b.x,b.y,14*u,THEME.selected,0)
-                text(b.x,b.y,16*u,(account.username or id:sub(1,1)):sub(1,1):upper(),5,WHITE,true)
+                circle(b.x,b.y,METRICS.avatar_size*u/2,THEME.selected,0)
+                text(b.x,b.y,METRICS.avatar_font*u,(account.username or id:sub(1,1)):sub(1,1):upper(),5,WHITE,true)
             elseif id=='speed' then
-                text(b.x,b.y+1*u,14*u,string.format('%.1fx',num('speed',1)),5,WHITE,true)
+                text(b.x,b.y+1*u,METRICS.speed_font*u,string.format('%.1fx',num('speed',1)),5,WHITE,true)
             else
                 icon(drawid,b.x,b.y,state.menu==id or id=='settings' and state.parent=='settings',disabled)
-                if id=='sub' then text(b.x,b.y+1*u,13*u,'CC',5,PANEL,true) end
+                if id=='sub' then text(b.x,b.y+1*u,METRICS.subtitle_icon_font*u,'CC',5,PANEL,true) end
             end
             if not disabled then buttons[#buttons+1]=b end
         end

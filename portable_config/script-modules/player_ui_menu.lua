@@ -96,6 +96,7 @@ return function(c)
             a[#a+1]=r;return r
         end
         local function link(text,target,icon)row(text,nil,false,{target=target,icon=icon})end
+        local function toggle(text,fn,selected)row(text,fn,selected,{stay=true,toggle=true})end
         local function separator()a[#a+1]={separator=true,h=12}end
         local provider=kind:match('^mal') and 'mal' or kind:match('^trakt') and 'trakt' or 'bangumi'
         local account=c.account and c.account(provider) or {}
@@ -109,32 +110,38 @@ return function(c)
             link('弹幕设置','danmaku-settings','danmaku')
             link('同步设置','sync-settings','bangumi')
             link('统计信息','stats','info')
-            row('显示时间',c.toggle_clock,c.clock(),{stay=true})
+            toggle('显示时间',c.toggle_clock,c.clock())
         elseif kind=='playback-settings' then
-            row('自动连播',c.toggle_auto_next,c.auto_next(),{stay=true})
-            row('镜像反转',c.toggle_mirror,c.mirror(),{stay=true})
-            row('定时暂停',c.toggle_timed_pause,c.timed_pause(),{stay=true,value=c.timed_pause() and '开启' or '关闭'})
-            row('暂停时间',nil,false,{slider={value=c.pause_minutes(),min=1,max=180,step=1,format='%.0f 分钟',
-                set=c.set_pause_minutes}})
+            toggle('自动连播',c.toggle_auto_next,c.auto_next())
+            toggle('镜像反转',c.toggle_mirror,c.mirror())
+            toggle('定时暂停',c.toggle_timed_pause,c.timed_pause())
+            if c.timed_pause() then
+                row('暂停时间',nil,false,{slider={value=c.pause_minutes(),min=1,max=180,step=1,format='%.0f 分钟',
+                    set=c.set_pause_minutes}})
+            end
         elseif kind=='sync-settings' then
             local services=c.sync_services()
             for _,item in ipairs({{'bangumi','Bangumi'},{'trakt','Trakt'},{'mal','MyAnimeList'}}) do local id,label=item[1],item[2]
-                row(label,function()c.command('script-message-to','mpvnet','sync-action',id,services[id] and 'no' or 'yes')end,services[id],{stay=true})
+                toggle(label,function()c.command('script-message-to','mpvnet','sync-action',id,services[id] and 'no' or 'yes')end,services[id])
             end
-            separator()
+            if services.bangumi or services.trakt or services.mal then separator() end
             for _,item in ipairs({{'bangumi','Bangumi'},{'trakt','Trakt'},{'mal','MyAnimeList'}}) do local id,label=item[1],item[2]
                 if services[id] then
                     local settings=(c.account(id) or {}).settings or {}
                     local function setting(key,value)c.command('script-message-to','mpvnet',id..'-action','setting',key,value)end
                     row(label,nil,false,{status=true})
                     if id=='bangumi' then
-                        row('自动收藏为在看',function()setting('auto-collect',settings.autoCollect and 'no' or 'yes')end,settings.autoCollect,{stay=true})
-                        row('收藏进度',nil,false,{slider={value=settings.collectPercent or 10,min=1,max=100,step=1,format='%.0f%%',
-                            set=function(v)setting('collect-percent',tostring(v))end}})
+                        toggle('自动收藏为在看',function()setting('auto-collect',settings.autoCollect and 'no' or 'yes')end,settings.autoCollect)
+                        if settings.autoCollect then
+                            row('收藏进度',nil,false,{slider={value=settings.collectPercent or 10,min=1,max=100,step=1,format='%.0f%%',
+                                set=function(v)setting('collect-percent',tostring(v))end}})
+                        end
                     end
-                    row('自动标记看过',function()setting('auto-sync',settings.autoSync and 'no' or 'yes')end,settings.autoSync,{stay=true})
-                    row('看过进度',nil,false,{slider={value=settings.watchedPercent or 90,min=1,max=100,step=1,format='%.0f%%',
-                        set=function(v)setting('watched-percent',tostring(v))end}})
+                    toggle('自动标记看过',function()setting('auto-sync',settings.autoSync and 'no' or 'yes')end,settings.autoSync)
+                    if settings.autoSync then
+                        row('看过进度',nil,false,{slider={value=settings.watchedPercent or 90,min=1,max=100,step=1,format='%.0f%%',
+                            set=function(v)setting('watched-percent',tostring(v))end}})
+                    end
                     separator()
                 end
             end
@@ -288,12 +295,12 @@ return function(c)
                 for _,mode in ipairs(group.modes) do selected[mode]=true end
                 local blocked=false
                 for _,value in ipairs(settings.blockmode or {}) do if selected[value] then blocked=true end end
-                row(group.label,function()
+                toggle(group.label,function()
                     local values={}
                     for _,value in ipairs(settings.blockmode or {}) do if not selected[value] then values[#values+1]='"'..value..'"' end end
                     if not blocked then for _,mode in ipairs(group.modes) do values[#values+1]='"'..mode..'"' end end
                     set('blockmode','['..table.concat(values,',')..']')
-                end,blocked,{stay=true})
+                end,blocked)
             end
             row('屏蔽词…',function()c.command('script-message','player_ui-danmaku-words')end)
         else
@@ -319,7 +326,7 @@ return function(c)
         local y,rows=0,{}
         for _,r in ipairs(items) do
             local indent=r.icon and metrics.icon_column*u or metrics.row_padding*u+8*u
-            local available=w-indent-30*u-(r.value and core.ass_text_width(r.value,metrics.row_text*u)+16*u or r.hint and 52*u or 0)-(r.target and 28*u or 0)
+            local available=w-indent-30*u-(r.toggle and (metrics.switch_width+16)*u or r.value and core.ass_text_width(r.value,metrics.row_text*u)+16*u or r.hint and 52*u or 0)-(r.target and 28*u or 0)
             local lines=core.wrap(r.text or '',available,metrics.row_text*u,r.wrap or 2)
             local height=r.h and r.h*u or r.separator and metrics.separator*u or r.slider and metrics.slider*u
                 or math.max(kind=='ai' and 48*u or metrics.row_min*u,
@@ -414,7 +421,7 @@ return function(c)
                             return
                         end
                         local hovered=core.inside(box,s.x,s.y)
-                        local picked=r.selected or (r.target and r.target==s.menu)
+                        local picked=(not r.toggle and r.selected) or (r.target and r.target==s.menu)
                         if hovered or picked then
                             d.round(box.x0+2*u,yy+3*u,box.x1-2*u,y1-3*u,6*u,theme.hover,5)
                         end
@@ -445,7 +452,13 @@ return function(c)
                                 end
                             end
                             if r.detail then d.text(left,ty+2*u,metrics.row_detail*u,r.detail,7,muted,false,w-(left-b.x0)-24*u,.8) end
-                            if r.target then d.text(b.x1-25*u,yy+entry.height/2,27*u,'›',6,theme.secondary,false,nil,.8)
+                            if r.toggle then
+                                local right=b.x1-19*u;local left=right-metrics.switch_width*u
+                                local cy=yy+entry.height/2;local radius=metrics.switch_height*u/2
+                                local alpha=r.disabled and 120 or 0
+                                d.round(left,cy-radius,right,cy+radius,radius,r.selected and accent or theme.track,alpha)
+                                d.circle(r.selected and right-radius or left+radius,cy,radius-metrics.switch_inset*u,white,alpha)
+                            elseif r.target then d.text(b.x1-25*u,yy+entry.height/2,27*u,'›',6,theme.secondary,false,nil,.8)
                             elseif r.value then d.text(b.x1-19*u,yy+entry.height/2,metrics.row_text*u,r.value,6,muted,false,nil,.8)
                             elseif r.hint then d.text(b.x1-19*u,yy+entry.height/2,13*u,r.hint,6,muted,false,nil,.8) end
                         end
@@ -478,7 +491,8 @@ return function(c)
                     break
                 end
             end
-            local top=core.clamp(row_top,margin,math.max(margin,l.h-margin-(b.y1-b.y0)))
+            -- Keep the child's bottom edge above the controls, like a root menu.
+            local top=core.clamp(row_top,margin,math.max(margin,b.y0))
             local dx=left-b.x0;local dy=top-b.y0
             b.x0=b.x0+dx;b.x1=b.x1+dx;b.y0=b.y0+dy;b.y1=b.y1+dy;b.content=b.content+dy
             if b.x1<=parent.x0 then
