@@ -13,90 +13,6 @@ from security_verify import require_result as require_security_result
 from build_installer import build as build_installer
 FONTS={'.ttf','.otf','.ttc','.woff','.woff2','.fon','.fnt'}
 SEVEN=shutil.which('7z') or next((str(p) for p in (Path(r'C:\Program Files\7-Zip\7z.exe'),Path(r'D:\Apps\7-Zip\7z.exe')) if p.is_file()),'7z')
-SOURCE_ADDITIONS={
-    'src/auth/MyAnimeListHandler.cs',
-    'docs/myanimelist-research.md',
-    'THIRD_PARTY_LICENSES/BangumiExtLinker-CC-BY-4.0.txt',
-    'third_party/bangumi-ext-linker/anime-map.json',
-    'third_party/bangumi-ext-linker/README.md',
-    'third_party/bangumi-ext-linker/source.json',
-    'src/player/src/MpvNet.Windows/MyAnimeList/MalClient.cs',
-    'src/player/src/MpvNet.Windows/MyAnimeList/MalMatching.cs',
-    'src/player/src/MpvNet.Windows/MyAnimeList/MalModels.cs',
-    'src/player/src/MpvNet.Windows/MyAnimeList/MalOAuth.cs',
-    'src/player/src/MpvNet.Windows/MyAnimeList/MalPlayback.cs',
-    'src/player/src/MpvNet.Windows/MyAnimeList/MalStore.cs',
-    'src/player/src/MpvNet.Windows/WPF/MalMatchWindow.xaml',
-    'src/player/src/MpvNet.Windows/WPF/MalMatchWindow.xaml.cs',
-
-    'src/auth/AnimeVE.Auth.csproj',
-    'src/auth/Program.cs',
-    'src/auth/Dockerfile',
-    'src/auth/.dockerignore',
-    'src/auth/README.md',
-    'src/auth/deploy/compose.yml',
-    'src/auth/deploy/nginx.conf',
-    'src/auth/deploy/bootstrap.conf',
-    'src/auth/deploy/animeve-auth-renew.service',
-    'src/auth/deploy/animeve-auth-renew.timer',
-    'src/player/src/MpvNet.Windows/Bangumi/BangumiStore.cs',
-    'src/player/src/MpvNet.Windows/Bangumi/BangumiOAuth.cs',
-    'src/player/src/MpvNet.Windows/Bangumi/BangumiClient.cs',
-    'src/player/src/MpvNet.Windows/Bangumi/BangumiMedia.cs',
-    'src/player/src/MpvNet.Windows/Bangumi/BangumiPlayback.cs',
-    'src/player/src/MpvNet.Windows/WPF/BangumiMatchWindow.xaml',
-    'src/player/src/MpvNet.Windows/WPF/BangumiMatchWindow.xaml.cs',
-    'tests/bangumi/BangumiChecks.csproj',
-    'tests/bangumi/Program.cs',
-    'docs/bangumi-sources.md',
-    'docs/trakt-sources.md',
-    'src/player/src/MpvNet.Windows/Sync/SyncPreferences.cs',
-    'src/player/src/MpvNet.Windows/Trakt/TraktClient.cs',
-    'src/player/src/MpvNet.Windows/Trakt/TraktMedia.cs',
-    'src/player/src/MpvNet.Windows/Trakt/TraktModels.cs',
-    'src/player/src/MpvNet.Windows/Trakt/TraktOAuth.cs',
-    'src/player/src/MpvNet.Windows/Trakt/TraktPlayback.cs',
-    'src/player/src/MpvNet.Windows/Trakt/TraktStore.cs',
-    'src/player/src/MpvNet.Windows/WPF/TraktMatchWindow.xaml',
-    'src/player/src/MpvNet.Windows/WPF/TraktMatchWindow.xaml.cs',
-    'tools/standalone/components.py',
-    'tools/standalone/component-catalog.json',
-    'tools/standalone/updater-upstream.json',
-    'tests/test_optional_components.py',
-    'docs/open-source-notices.md',
-    'THIRD_PARTY_LICENSES/NVIDIA/CUDA_LICENSE_9215a6ea5a_LICENSE',
-    'THIRD_PARTY_LICENSES/NVIDIA/TensorRT_LICENSE_bee83db7cc_Acknowledgements.txt',
-    'THIRD_PARTY_LICENSES/NVIDIA/TensorRT_LICENSE.html',
-    'THIRD_PARTY_LICENSES/NVIDIA/sources.json',
-    'tools/standalone/build_libass.py',
-    'tools/standalone/libass-build-packages.json',
-    'tools/standalone/security_verify.py',
-    'tools/standalone/security-policy.json',
-    'tools/standalone/test_security_verify.py',
-    'THIRD_PARTY_LICENSES/PCRE2-BSD.txt',
-    'tests/manager-profiles/ManagerProfiles.csproj',
-    'tests/manager-profiles/Program.cs',
-    'tests/danmaku-wpf/DanmakuWpfChecks.csproj',
-    'tests/danmaku-wpf/Program.cs',
-    'tests/test_danmaku_search_xaml.py',
-    'portable_config/script-modules/player_ui_danmaku_online.lua',
-    'portable_config/script-modules/player_ui_danmaku_render.lua',
-    'tools/standalone/build_danmaku_factory.py',
-    'tools/apply_secondary_sub_sync.py',
-    'docs/danmaku-renderer.md',
-    'portable_config/script-opts/player_ui_danmaku.conf',
-    'tests/test_danmaku_online.py',
-    'tools/standalone/verify_player_sources.py',
-    'src/player/src/MpvNet.Windows/WPF/DanmakuSourcesWindow.xaml',
-    'src/player/src/MpvNet.Windows/WPF/DanmakuSourcesWindow.xaml.cs',
-    'src/player/src/MpvNet.Windows/WPF/DanmakuSourceEditWindow.xaml',
-    'src/player/src/MpvNet.Windows/WPF/DanmakuSourceEditWindow.xaml.cs',
-    'src/player/src/MpvNet.Windows/WPF/DanmakuSearchWindow.xaml',
-    'src/player/src/MpvNet.Windows/WPF/DanmakuSearchWindow.xaml.cs',
-    'src/player/src/MpvNet.Windows/WPF/DanmakuBlocklistWindow.xaml',
-    'src/player/src/MpvNet.Windows/WPF/DanmakuBlocklistWindow.xaml.cs',
-}
-
 def sha(p):
     with p.open('rb') as f:return hashlib.file_digest(f,'sha256').hexdigest()
 def dump(p,obj):
@@ -153,7 +69,7 @@ def source_release_files(folders):
             if path.is_symlink() or not path.is_file() or path.suffix.lower() in FONTS or any(x in ('bin','obj','__pycache__','.git') for x in path.relative_to(R/folder).parts):continue
             relative=path.relative_to(R).as_posix()
             if relative in ('portable_config/bangumi.json','portable_config/bangumi-app.json','portable_config/trakt.json','portable_config/mal.json','portable_config/sync.json'):continue
-            if relative in tracked or relative in SOURCE_ADDITIONS or relative.startswith(('third_party/danmaku-factory/','third_party/libass/','third_party/anitomysharp/','THIRD_PARTY_LICENSES/')):files.append(path)
+            if relative in tracked:files.append(path)
     return sorted(files,key=lambda path:path.relative_to(R).as_posix())
 def replace_once(p,old,new):
     s=p.read_text(encoding='utf-8-sig')

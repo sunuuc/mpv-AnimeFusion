@@ -54,6 +54,6 @@ python tools/standalone/security_verify.py scan dist/installer complete-evidence
 
 ## 原生运行库
 
-1.3.0 固定使用恢复到 2026-10-07 18:49 前的原生运行库，与本机恢复版本的 `mpv.exe`、`libmpv-2.dll` 和 `libplacebo-360.dll` 哈希一致。使用 AnimeJaNai 三队列配置，保留当时的第二字幕轨实现。
+原生运行库由 `tools/standalone/dependencies.json` 固定版本与哈希，使用 AnimeJaNai 三队列配置和连续推进的第二字幕轨。
 
 固定输入、源提交、补丁和逐文件哈希在 `app/build-info/native` 中记录。需要主动更新原生内核时，先单独运行原生构建工作流；`MPV_NATIVE_OUTPUT` 可显式指定候选运行库，但普通前端发布默认使用已固定的输入。

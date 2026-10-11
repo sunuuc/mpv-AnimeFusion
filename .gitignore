@@ -45,3 +45,16 @@
 /src/auth/deploy/trakt-data/
 /portable_config/mal.json
 /src/auth/deploy/mal-data/
+
+# Local instructions, investigation notes and unrelated personal projects
+**/AGENTS.md
+**/CLAUDE.md
+**/CODEX.md
+/docs/AUDIT-*.md
+/docs/BUILD-mpvapp.md
+/docs/FIX-*.md
+/docs/HANDOVER*.md
+/docs/RESEARCH-*.md
+/docs/flclash-home/
+/docs/flclash-home-config.zip
+/tools/_*

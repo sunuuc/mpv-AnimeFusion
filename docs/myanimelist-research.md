@@ -1,6 +1,4 @@
-# MyAnimeList 同步研究
-
-研究日期：2026-10-11。范围为官方授权与同步契约、开源识别代码及公开目录数据；MAL 原生客户端及 Docker 授权服务已接入。未操作桌面或写入用户账号记录。
+# MyAnimeList 同步源码来源
 
 ## 结论
 
@@ -46,19 +44,7 @@ MAL 的每个动画条目有自己的 ID 和集数；第二季、分割播出部
 
 项目明确说明：一个 Bangumi 条目被其他站点拆成多个条目时，可能只记录其中一个。因此对应表只能提供候选 ID，仍须校验目标条目的类型、日期、关系和集数范围。
 
-本轮读取公开 `anime_map.json`，核到：
-
-| 作品 | Bangumi ID | MAL ID |
-| --- | --- | --- |
-| 摇曳百合 | 14588 | 10495 |
-| 摇曳百合♪♪ | 28900 | 12403 |
-| 摇曳百合 3☆High! | 127573 | 30279 |
-
-另读取 [MAL 12403 的公开目录页](https://myanimelist.net/anime/12403)，标题为 `Yuru Yuri♪♪`，集数为 12。这说明该作品已有可用的跨站候选；不是对本播放器自动匹配或账号同步的实测证明。
-
-`manami-project/anime-offline-database` 当前仓库已归档（2026-07-04），不宜作为新番唯一且持续更新的数据来源。
-
-## 本次实现
+## 匹配与同步
 
 1. 优先使用视频元数据中明确的 MAL ID 或用户已经确认的条目对应关系。
 2. 视频元数据提供 Bangumi ID 时，读取公开跨站 ID 数据取得 MAL 候选；无 ID 时对其中的原名与中文名评分，核对数据的季度、目标名称、首播年月、作品类型和集数范围；不要求用户额外登录 Bangumi。
@@ -67,38 +53,10 @@ MAL 的每个动画条目有自己的 ID 和集数；第二季、分割播出部
 5. 确认后按作品与季度保存 MAL ID、集数对应关系，后续集数直接核对该条目。
 6. 达到观看阈值时读取最新个人列表状态，再更新必要字段；普通重看不能倒退进度，也不覆盖评分、标签等无关字段。若总集数未知，不根据最后一个本地文件推断作品已完结。
 
-截图提供的公开 Client ID 已成功查询 MAL 官方 `/v2/anime/12403`：独立条目、原名与别名、TV 类型、首播日期及 12 集均返回。编译通过并部署域名服务。未执行用户浏览器登录、令牌交换、个人列表读写或视频播放，不宣称这些流程实测成功，也没有匹配成功率统计。
+## 授权与数据来源
 
-## 申请表建议
+授权服务通过 ASP.NET Core OAuth 的 `AddOAuth<TOptions,THandler>`、`BuildChallengeUrl` 和 `ExchangeCodeAsync` 扩展公开客户端验证与 plain PKCE；框架负责 state、回调与关联 Cookie。实现位于 `src/auth/MyAnimeListHandler.cs`，配置见 `src/auth/README.md`。
 
-- 名称：`mpv-AnimeFusion`。
-- 类型：`Other`／其他。
-- 描述：`A desktop video player for anime that synchronizes watching status and episode progress with MyAnimeList after user authorization.`
-- 主页：`https://github.com/sunuuc/mpv-AnimeFusion`。
-- 回调：`https://mal.sunuuc.de5.net/oauth/callback`。使用用户指定的独立域名，沿用现有服务器；该 MAL 回调服务已通过现有 Docker 与 Nginx 部署。域名 A 记录指向 `173.249.220.97`。
-- 商业／非商业：非商业；使用目的：业余爱好者；姓名填写申请者本人的姓名或开发者名称。
-- 应用标志、隐私政策和使用条款属于可选地址，填写真实已有页面；没有时留空。
+跨站数据来自 [Rhilip/BangumiExtLinker](https://github.com/Rhilip/BangumiExtLinker)，许可 CC BY 4.0。数据与上游署名保留在 `third_party/bangumi-ext-linker`；许可原文为 `THIRD_PARTY_LICENSES/BangumiExtLinker-CC-BY-4.0.txt`。Taiga 仅为参考，未复制其 GPL 源码。
 
-实现沿用现有服务框架的授权扩展、一次性交接、原生 HTTP、用户数据事件和头像面板，不新增渲染技术栈。
-
-
-## 来源与服务记录
-
-- 服务 `mal-auth`，独立数据保护目录 `mal-data`，本地交接端口 33167；浏览器授权体验沿用 Bangumi/Trakt。
-- 2026-10-11 修复部署时 Nginx 文件绑定仍读取旧配置的问题：MAL 域名曾落到默认 Trakt 虚拟主机，失败返回 33166。重建 Nginx 挂载后，域名明确到达 MyAnimeList，授权入口指向官方 MAL 域名及正确回调。后续更新需在容器内核对挂载内容；健康响应增加 provider，防止把其他服务的 ready 响应误认成成功。
-- ASP.NET Core OAuth 原始处理器通过 `AddOAuth<TOptions,THandler>`、`BuildChallengeUrl` 和 `ExchangeCodeAsync` 扩展；框架负责 state、回调与关联 Cookie，MAL 扩展只调整公开客户端验证、plain PKCE 和不含 Secret 的表单交换。
-- 来源：[ASP.NET Core OAuthHandler](https://github.com/dotnet/aspnetcore/blob/main/src/Security/Authentication/OAuth/src/OAuthHandler.cs)、[OAuthOptions](https://github.com/dotnet/aspnetcore/blob/main/src/Security/Authentication/OAuth/src/OAuthOptions.cs)，MIT。没有引入替代授权框架。
-- `third_party/bangumi-ext-linker/anime-map.json` 来源于 https://rhilip.github.io/BangumiExtLinker/data/anime_map.json ，获取于 2026-10-11，仅压缩 JSON 排版，未修改对应关系。Rhilip/BangumiExtLinker，CC BY 4.0；保留项目声明和上游来源于同目录 `README.md`，许可原文为 `THIRD_PARTY_LICENSES/BangumiExtLinker-CC-BY-4.0.txt`。
-- 匹配对应关系与阈值位于个人 `portable_config/mal.json`；账号令牌使用 DPAPI，不随发行包分发。普通自动同步不倒退已看集数，手动“看到”可调整累计进度；未知总集数不自动判完结。
-
-## 标题匹配修复（2026-10-11）
-
-MAL 候选评分原先直接比较中文原名，文件名省略音乐符号等装饰时，四字标题会被距离评分排除。标题评分和跨站名称校验现统一使用 Unicode FormKC、忽略空白与标点符号、忽略大小写；年份、季度、条目类型与集数范围继续单独核对，不添加作品专用规则。
-
-使用实际播放器程序集调用匹配入口和 MAL 官方只读接口，修复前最近播放的 `摇曳百合 (2012) S2E1 - 回归的主角.mp4` 返回无候选，修复后返回第二季条目 12403。第一季仍返回 10495，第二季第 13 集仍不匹配。验证使用隔离配置，不更改正式匹配记录，不播放视频或提交观看进度。
-
-## 头像与封面修复（2026-10-11）
-
-mpv 原版 `player/command.c` 的 `cmd_overlay_add` 拒绝 `id >= 64`，`DOCS/man/input.rst` 规定位图 ID 为 0–63。MAL 头像原先使用 64，添加失败后又调用删除所有头像与封面的函数，导致头像无法显示并带动其他图片反复消失。现改用空闲 ID 60，单个头像失败只清理自身；同步事件不再先删除全部图片，不变的状态不触发重复刷新，退出或关闭对应入口时再移除图片。继续使用原有 mpv `overlay-add`、`overlay-remove` 和状态事件，不增加轮询。
-
-正式账号已保存 MAL 头像 URL，缓存为有效的 64×64 BGRA 图片，图片并非未下载。MAL 官方接口使用 `num_watched_episodes` 更新累计观看集数，因此剧集菜单的“看到”设置截至所选集的累计进度，不提供无法表示的独立单集状态。
+标题评分统一使用 Unicode FormKC，忽略空白、标点、符号与大小写；年份、季度、条目类型与集数范围独立核对。头像使用现有 SkiaSharp 解码与 mpv 位图覆盖接口，ID 限定在 0–63，每个服务分别维护图片生命周期；不变的账号状态不重复刷新。
