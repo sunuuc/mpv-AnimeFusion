@@ -62,7 +62,7 @@ class Frontend:
             '--save-position-on-quit=no','--resume-playback=no','--geometry=1280x720',
             '--terminal=yes','--msg-level=all=warn','--log-file='+str(OUT/(name+'-mpv.log')),
             '--script-opts=thumbfast-network=yes,thumbfast-spawn_first=yes']
-        self.proc=subprocess.Popen([str(APP/'AnimeVE.exe'),*flags,*args],cwd=APP,stdout=self.log,stderr=self.log)
+        self.proc=subprocess.Popen([str(APP/'mpv-AnimeFusion.exe'),*flags,*args],cwd=APP,stdout=self.log,stderr=self.log)
         end=time.monotonic()+15
         while time.monotonic()<end:
             if self.proc.poll() is not None:

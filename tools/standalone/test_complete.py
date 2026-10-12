@@ -97,7 +97,7 @@ class JsonPipe:
 
 def frontend():
     pipe=r'\\.\pipe\ajn-full-'+uuid.uuid4().hex
-    args=[str(APP/'AnimeVE.exe'),'--config-dir='+str(APP/'portable_config'),'--vo=null','--ao=null',
+    args=[str(APP/'mpv-AnimeFusion.exe'),'--config-dir='+str(APP/'portable_config'),'--vo=null','--ao=null',
         '--hwdec=no','--vf=','--idle=yes','--input-ipc-server='+pipe,'--log-file='+str(OUT/'frontend.mpv.log'),str(sample)]
     with (OUT/'frontend.console.log').open('wb') as console:
         proc=subprocess.Popen(args,env=ENV,cwd=OUT,stdout=console,stderr=subprocess.STDOUT)
@@ -133,7 +133,7 @@ def frontend():
                     advanced=True;break
                 time.sleep(.1)
             assert advanced,'Video stopped advancing'
-            detail=verify_process(proc.pid,APP/'AnimeVE.exe',APP,OUT/'bundles',OUT/'self-contained-player-modules.json')
+            detail=verify_process(proc.pid,APP/'mpv-AnimeFusion.exe',APP,OUT/'bundles',OUT/'self-contained-player-modules.json')
             return {**detail,'started_outside_install_directory':True,'video_frames_advancing':True}
         finally:
             if f:f.close()
@@ -159,16 +159,16 @@ def windows_for(pid):
 
 def manager():
     with (OUT/'manager.console.log').open('wb') as console:
-        proc=subprocess.Popen([str(APP/'AnimeVEManager.exe')],env=ENV,cwd=OUT,stdout=console,stderr=subprocess.STDOUT)
+        proc=subprocess.Popen([str(APP/'mpv-AnimeFusionManager.exe')],env=ENV,cwd=OUT,stdout=console,stderr=subprocess.STDOUT)
         try:
             end=time.monotonic()+20;windows=[]
             while time.monotonic()<end:
                 assert proc.poll() is None,('Manager exited',proc.returncode)
                 windows=windows_for(proc.pid)
-                if any(title in ('AnimeVE Manager', 'AnimeVE 管理器') for title in windows):break
+                if any(title in ('mpv-AnimeFusion Manager', 'mpv-AnimeFusion 管理器') for title in windows):break
                 time.sleep(.2)
             else:raise RuntimeError('Manager did not create its visible main window: '+repr(windows))
-            detail=verify_process(proc.pid,APP/'AnimeVEManager.exe',APP,OUT/'bundles',OUT/'self-contained-manager-modules.json')
+            detail=verify_process(proc.pid,APP/'mpv-AnimeFusionManager.exe',APP,OUT/'bundles',OUT/'self-contained-manager-modules.json')
             return {**detail,'launched':True,'visible_windows':windows,'external_dotnet_disabled':True}
         finally:stop(proc)
 

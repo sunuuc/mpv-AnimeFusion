@@ -27,7 +27,7 @@ class Test
        MpvNet.Global.App.DarkMode=mode;Theme.Init();Theme.UpdateWpfColors();
        var tr=new WpfTranslator();
        Check(tr.Gettext("Settings")== (zh?"设置":"Settings"),"embedded player resource "+lang);
-       Check(tr.Gettext("About AnimeVE")==(zh?"关于 AnimeVE":"About AnimeVE"),"product about title "+lang);
+       Check(tr.Gettext("About mpv-AnimeFusion")==(zh?"关于 mpv-AnimeFusion":"About mpv-AnimeFusion"),"product about title "+lang);
        var window=new ConfWindow{Width=1040,Height=760};
        window.Show();window.UpdateLayout();window.Dispatcher.Invoke(()=>{},DispatcherPriority.Render);
        Check(window.Title==(zh?"设置":"Config Editor"),"actual settings window title "+lang);
@@ -45,7 +45,7 @@ class Test
        selector.SelectedIndex=zh?1:0;
        Check(InterfaceLanguage.Read()==(zh?"en":"zh-CN"),"player saves shared preference "+lang);
        window.Close();
-       Check(!File.Exists(Path.Combine(config,"mpv.conf"))&&!File.Exists(Path.Combine(config,"AnimeVE.conf")),"closing language settings leaves playback configs untouched "+lang);
+       Check(!File.Exists(Path.Combine(config,"mpv.conf"))&&!File.Exists(Path.Combine(config,"mpv-AnimeFusion.conf")),"closing language settings leaves playback configs untouched "+lang);
     }
     Console.WriteLine("PASS Player language suite");
  }

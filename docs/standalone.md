@@ -4,8 +4,8 @@
 
 | 文件 | 用途 |
 | --- | --- |
-| `mpv-AnimeFusion-1.3.0-win-x64.7z` | 播放器便携包 |
-| `mpv-AnimeFusion-1.3.0-sources.zip` | 对应版本源码 |
+| `mpv-AnimeFusion-1.3.3-win-x64.7z` | 播放器便携包 |
+| `mpv-AnimeFusion-1.3.3-sources.zip` | 对应版本源码 |
 | `SHA256SUMS.txt` | 下载校验值 |
 | `mpv-AnimeFusion.exe` | 播放器 |
 | `mpv-AnimeFusionManager.exe` | 配置与组件管理器 |

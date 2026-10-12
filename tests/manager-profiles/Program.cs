@@ -51,10 +51,12 @@ picker.SelectRecommended();Check(picker.Packs.All(p=>p.Selected),"recommended se
 picker.ClearSelection();Check(!picker.Packs[0].Selected && picker.Packs[1].Selected,"reset selection preserves installed components");
 Directory.CreateDirectory(Path.Combine(fixture,"onnx"));
 File.WriteAllText(Path.Combine(fixture,"onnx","new-model.onnx"),"fixture");
+vm.HandleShowCustomProfile("2");vm.AddChain();
 vm.RefreshComponentAwareness();
 Check(vm.AnimeJaNaiConf.UpscaleSlots.SelectMany(s=>s.Chains).SelectMany(c=>c.Models).All(m=>m.AllModels.Contains("new-model")),"downloaded models refresh existing profile pickers");
 Check(names.SequenceEqual(vm.AnimeJaNaiConf.UpscaleSlots.Select(s=>s.ProfileName)),"constructing the view preserves custom profile names");
 vm.HandleShowCustomProfile("2");vm.SelectDefaultProfile();
+vm.CurrentSlot.Chains[0].EnableRife=true;
 window.Show();
 Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 var chain=vm.CurrentSlot.Chains[0];

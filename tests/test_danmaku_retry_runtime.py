@@ -86,10 +86,10 @@ def verify(install, script_root):
             localdata = path / 'localdata'
             localdata.mkdir()
             base_url = f'http://127.0.0.1:{server.server_port}'
-            source_file = localdata / 'AnimeVE-danmaku.conf'
+            source_file = localdata / 'mpv-AnimeFusion-danmaku.conf'
             source_file.write_text(f'api_servers={base_url}|Loopback\n', encoding='utf-8')
             env = dict(os.environ, LOCALAPPDATA=str(localdata))
-            saved_path = localdata / 'AnimeVE-danmaku-sources.json'
+            saved_path = localdata / 'mpv-AnimeFusion-danmaku-sources.json'
 
             def run(name, expected, manual=False):
                 start = len(requests)

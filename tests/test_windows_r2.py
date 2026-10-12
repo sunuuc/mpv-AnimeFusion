@@ -86,7 +86,7 @@ class Frontend:
     def __init__(self,args,tag):
         self.pipe=r'\\.\pipe\ajn-r2-'+uuid.uuid4().hex
         self.log=open(OUT/(tag+'.console.log'),'wb')
-        self.proc=subprocess.Popen([str(BUNDLE/'AnimeVE.exe'),'--no-config','--load-scripts=no',
+        self.proc=subprocess.Popen([str(BUNDLE/'mpv-AnimeFusion.exe'),'--no-config','--load-scripts=no',
             '--vo=null','--ao=null','--hwdec=no','--pause=yes','--idle=yes',
             '--input-ipc-server='+self.pipe,'--log-file='+str(OUT/(tag+'.mpv.log')),*args],
             cwd=str(BUNDLE),stdout=self.log,stderr=subprocess.STDOUT)

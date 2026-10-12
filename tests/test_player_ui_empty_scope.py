@@ -89,7 +89,7 @@ def run_process(tag,args):
     started=time.monotonic()
     log_path=OUT/f'{tag}.log'
     with log_path.open('wb') as log:
-        cp=subprocess.run([str(APP/'AnimeVE.exe'),*FLAGS,*args],cwd=CALLER,env=ENV,
+        cp=subprocess.run([str(APP/'mpv-AnimeFusion.exe'),*FLAGS,*args],cwd=CALLER,env=ENV,
                           stdout=log,stderr=subprocess.STDOUT,timeout=15)
     log_text=log_path.read_text(encoding='utf-8',errors='replace')
     assert 'Lua error' not in log_text,(tag,'production Lua error',log_text[-2000:])

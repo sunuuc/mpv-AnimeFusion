@@ -69,15 +69,15 @@ class BrandingTests(unittest.TestCase):
             self.assertEqual(data['translations'][NAME + ' Manager'], NAME + ' 管理器')
             self.assertEqual(data['keys']['s5926043be98ac75f'], 'About ' + NAME)
         title = (ROOT / 'src/player/src/MpvNet.Windows/WinForms/MainForm.cs').read_text(encoding='utf-8')
-        self.assertIn('text = "AnimeVE"', title)
-        self.assertIn('"} - AnimeVE"', title)
+        self.assertIn('text = "mpv-AnimeFusion"', title)
+        self.assertIn('"} - mpv-AnimeFusion"', title)
         about = (ROOT / 'src/player/src/MpvNet.Windows/WPF/Views/AboutWindow.xaml').read_text(encoding='utf-8')
-        self.assertIn('>AnimeVE', about)
+        self.assertIn('>mpv-AnimeFusion', about)
         resources = (ROOT / 'src/player/src/MpvNet.Windows/WPF/WpfApplication.cs').read_text(encoding='utf-8')
-        self.assertIn('AnimeVE;component/WPF/Resources.xaml', resources)
+        self.assertIn('mpv-AnimeFusion;component/WPF/Resources.xaml', resources)
         self.assertNotIn('mpvnet;component', resources)
         acceptance = (ROOT / 'tools/standalone/test_complete.py').read_text(encoding='utf-8')
-        self.assertIn("('AnimeVE Manager', 'AnimeVE 管理器')", acceptance)
+        self.assertIn("('mpv-AnimeFusion Manager', 'mpv-AnimeFusion 管理器')", acceptance)
         self.assertNotIn("'AnimeJaNai' in title", acceptance)
 
     def test_original_upstream_model_and_license_identity_is_preserved(self):
@@ -90,7 +90,8 @@ class BrandingTests(unittest.TestCase):
         self.assertIn('(README.en.md)', chinese)
         for text in (english, chinese):
             self.assertTrue(text.startswith('# ' + PROJECT_NAME))
-            self.assertIn('| Tab |', text)
+            self.assertIn('https://github.com/sunuuc/mpv-AnimeFusion/releases', text)
+            self.assertNotIn('| Tab |', text)
         manager = (ROOT / 'src/manager/AnimeJaNaiConfEditor/Views/MainWindow.axaml').read_text(encoding='utf-8')
         data = json.loads((ROOT / 'src/manager/AnimeJaNaiConfEditor/LanguageStrings.json').read_text(encoding='utf-8'))
         for key in re.findall(r'local:Text Key=([^}]+)', manager):
@@ -112,7 +113,9 @@ class BrandingTests(unittest.TestCase):
             bindings = [row.split('#', 1)[0].split() for row in rows if row.strip() and not row.startswith('#')]
             self.assertEqual([row for row in bindings if row[0] == 'TAB'],
                              [['TAB', 'script-binding', 'stats/display-stats-toggle']])
-        self.assertIn('2x_AnimeJaNai', (ROOT / 'animejanai/animejanai.conf').read_text(encoding='utf-8'))
+        defaults = (ROOT / 'animejanai/animejanai.conf').read_text(encoding='utf-8')
+        self.assertIn('default_slot=0', defaults)
+        self.assertNotIn('chain_', defaults)
         self.assertTrue((ROOT / 'THIRD_PARTY_LICENSES/AnimeJaNaiManager-GPL-3.0.txt').is_file())
 
 

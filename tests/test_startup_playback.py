@@ -62,7 +62,7 @@ def stop(p):
         try:p.wait(5)
         except subprocess.TimeoutExpired:p.kill();p.wait(5)
 class Player:
-    def __init__(self,args,name,exe='AnimeVE.exe',ipc=True):
+    def __init__(self,args,name,exe='mpv-AnimeFusion.exe',ipc=True):
         self.fp=None;self.proc=None;self.seq=0;self.buffer=b'';self.log=(OUT/(name+'.log')).open('wb')
         self.name=name;self.pipe=r'\\.\pipe\startup-'+uuid.uuid4().hex
         flags=FLAGS+(['--input-ipc-server='+self.pipe] if ipc else [])
@@ -139,7 +139,7 @@ def script_launch(exe,flag,name,repeated=False):
             assert len([t for t in p.get('track-list',[]) if t['type']=='sub'])==2,'repeated external subtitles were lost'
         assert p.get('prefetch-playlist') is False,'network guard was not loaded from portable config'
         assert count(path)==1,'handoff reopened the media'
-        if exe=='AnimeVE.exe':
+        if exe=='mpv-AnimeFusion.exe':
             report=json.loads((APP/'portable_config/startup-diagnostic.json').read_text(encoding='utf-8-sig'))
             assert report['media_arguments']==0 and report['script_options']>=1 and report['missing_scripts']==0
             assert report['configuration']=='portable' and report['file_loaded']
@@ -182,9 +182,9 @@ def direct_cli():
 
 try:
     case('native-script',lambda:script_launch('mpv.exe','--script=','native-script'))
-    case('frontend-script',lambda:script_launch('AnimeVE.exe','--script=','frontend-script'))
-    case('frontend-scripts',lambda:script_launch('AnimeVE.exe','--scripts=','frontend-scripts'))
-    case('repeated-scripts-subtitles',lambda:script_launch('AnimeVE.exe','--script=','repeated-scripts',True))
+    case('frontend-script',lambda:script_launch('mpv-AnimeFusion.exe','--script=','frontend-script'))
+    case('frontend-scripts',lambda:script_launch('mpv-AnimeFusion.exe','--scripts=','frontend-scripts'))
+    case('repeated-scripts-subtitles',lambda:script_launch('mpv-AnimeFusion.exe','--script=','repeated-scripts',True))
     case('immediate-ipc',immediate_ipc)
     case('script-with-existing-window',dedicated_script)
     case('direct-cli',direct_cli)
