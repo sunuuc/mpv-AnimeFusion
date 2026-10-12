@@ -90,8 +90,8 @@ Check(InterfaceLanguage.Read()==(zh?"en":"zh-CN"),"selector saves correct stable
 Check(InterfaceLanguage.IsChinese==zh,"selection does not partially relocalize current window "+selected);
 w.Close();Dispatcher.UIThread.RunJobs();
 var targetVm=new MainWindowViewModel();targetVm.RefreshComponentAwareness();
-Check(targetVm.DirectMlAvailable && targetVm.AnimeJaNaiConf.TensorRtSelected,
-      "core offers DirectML while preserving the configured backend");
+Check(targetVm.DirectMlAvailable && targetVm.AnimeJaNaiConf.DirectMlSelected,
+      "core offers DirectML without downloading TensorRT");
 targetVm.AnimeJaNaiConf.UserSelectDirectMl();
 Check(targetVm.AnimeJaNaiConf.DirectMlSelected, "DirectML remains selectable");
 Console.WriteLine("PASS Manager language process "+selected);
