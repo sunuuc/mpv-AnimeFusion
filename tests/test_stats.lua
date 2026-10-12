@@ -16,7 +16,8 @@ local fake = {
     get_property_bool=function() return paused end,
     get_property_native=function(name, default) return default end,
     get_property=function() return nil end,
-    osd_message=function(s) output=s end,
+    set_osd_ass=function(_,_,s) output=s end,
+    command_native=function(command) if command[1]=='escape-ass' then return command[2] end end,
     add_periodic_timer=function(_, f)
         local t={alive=true,fn=f}; function t:kill() self.alive=false end
         timers[#timers+1]=t; return t
