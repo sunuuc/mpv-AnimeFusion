@@ -72,7 +72,7 @@ local function suite()
  local now,timers,bindings,messages,observers=0,{},{},{},{}
  local clock_config=os.tmpname();local f=assert(io.open(clock_config,'wb'));f:write('show_clock=yes\nnetwork_speed=yes\n');f:close()
  local pos={x=0,y=0};local commands={};local player_overlay_data,volume_overlay_data;local renderer_arguments
- local props={pause=false,['idle-active']=false,['window-minimized']=false,['playlist-count']=1,['playlist-pos']=0,
+ local props={pause=false,['core-idle']=false,['idle-active']=false,['window-minimized']=false,['playlist-count']=1,['playlist-pos']=0,
    ['time-pos']=10,duration=120,['file-size']=1024,seekable=true,volume=50,['volume-max']=100,speed=1,sid=2,aid=1,['secondary-sid']='no',
   ['track-list']={{id=1,type='audio',title='A',lang='jpn',codec='aac',['audio-channels']='2.0',selected=true},
    {id=2,type='sub',title='https://media.example/Stream.ass?token=private',lang='zh-Hans',codec='hdmv_pgs_subtitle',external=true,selected=true},
@@ -80,9 +80,11 @@ local function suite()
    ['playlist']={{filename='movie.mkv'}},['media-title']='Title',['video-params']={w=1920,h=1080},['container-fps']=24,
    ['display-fps']=144}
  local event_handlers,pending_async,json_responses={},{},{}
- local next_async=0
+ local next_async,converter_serial=0,0
  local function timer(delay,fn,repeated)
-  local t={at=now+delay,fn=fn,delay=delay,repeated=repeated,alive=true};function t:kill()self.alive=false end
+  local t={at=now+delay,fn=fn,delay=delay,repeated=repeated,alive=true};function t:kill()self.alive=false;self.remaining=nil end
+  function t:stop()if self.alive then self.remaining=math.max(0,self.at-now);self.alive=false end end
+  function t:resume()if not self.alive then self.at=now+(self.remaining or self.delay);self.remaining=nil;self.alive=true end end
   timers[#timers+1]=t;return t
  end
  local function advance(dt)
@@ -113,17 +115,30 @@ local function suite()
   get_osd_size=function()return 1280,720 end,get_mouse_pos=function()return pos.x,pos.y end,
   command_native=function(a)if a[1]=='overlay-add' then commands[#commands+1]=a;return true end;if a[1]=='expand-path'then if a[2]=='~~/script-opts/player_ui.conf' then return clock_config end;return a[2]:gsub('^~~/%.%./',root..'/'):gsub('^~~/',root..'/portable_config/')end end,
   command_native_async=function(spec,callback)
+   if spec.args and spec.args[1]:match('DanmakuFactory%.exe$') then
+    converter_serial=converter_serial+1;renderer_arguments=spec.args
+    local output,input
+    for i,value in ipairs(spec.args)do if value=='-o' then output=spec.args[i+1] elseif value=='-i' then input=spec.args[i+1] end end
+    local f=assert(io.open(input,'rb'));local text=f:read('*a');f:close()
+    local ass={'[Script Info]'}
+    for _ in text:gmatch('<d ')do ass[#ass+1]='Dialogue: 0,0:00:00.00,0:00:10.00,R2L,,0,0,0,,fixture' end
+    f=assert(io.open(output,'wb'));f:write(table.concat(ass,'\n'));f:close()
+    local id=-converter_serial
+    pending_async[id]={spec=spec,callback=callback}
+    timer(0,function()if not pending_async[id].aborted then callback(true,{status=0,stdout='',stderr=''}) end end,false)
+    return id
+   end
    next_async=next_async+1;pending_async[next_async]={spec=spec,callback=callback};return next_async
   end,abort_async_command=function(id)if pending_async[id]then pending_async[id].aborted=true end end,
   commandv=function(...)
    local a={...};commands[#commands+1]=a
-   if a[1]=='cycle'then props[a[2]]=not props[a[2]]end
-   if a[2]=='danmaku-action' and a[3]=='load' then
-    renderer_arguments=a
-    local f=assert(io.open(a[4],'rb'));local text=f:read('*a');f:close()
-    local count=0;for _ in text:gmatch('<d ')do count=count+1 end
-    observers['user-data/player_ui/danmaku-render'](nil,{serial=tonumber(a[6]),ready=true,busy=false,count=count,error=''})
+   if a[1]=='sub-add' then
+    props['track-list'][#props['track-list']+1]={id=1000+converter_serial,type='sub',['external-filename']=a[2]}
+    if observers['track-list'] then observers['track-list']('track-list',props['track-list']) end
+   elseif a[1]=='sub-remove' then
+    for i=#props['track-list'],1,-1 do if props['track-list'][i].id==a[2] then table.remove(props['track-list'],i) end end
    end
+   if a[1]=='cycle'then props[a[2]]=not props[a[2]]end
    return true
   end,
   osd_message=function()end,add_timeout=function(d,f)return timer(d,f,false)end,add_periodic_timer=function(d,f)return timer(d,f,true)end,
@@ -145,7 +160,13 @@ local function suite()
  local function ui()return props['user-data/player_ui/ui']end
  local function button(id)for _,b in ipairs(ui().controls)do if b.id==id then return b end end end
  local function click(id)
-  local b=assert(button(id),'missing button '..id);pos.x=(b.x0+b.x1)*.5*ui().scale;pos.y=(b.y0+b.y1)*.5*ui().scale
+  local b=button(id)
+  if not b then
+   local boxes={}
+   for _,box in ipairs(ui().menu_boxes or {})do boxes[#boxes+1]=box.kind..':'..tostring(box.offset)..'/'..tostring(box.total)..'/'..tostring(box.view) end
+   error('missing button '..id..' in '..ui().menu..' ('..table.concat(boxes,',')..')')
+  end
+  pos.x=(b.x0+b.x1)*.5*ui().scale;pos.y=(b.y0+b.y1)*.5*ui().scale
   bindings['player_ui-move']();advance(.04);bindings['player_ui-click']({event='down'});bindings['player_ui-click']({event='up'});advance(.05)
  end
  local function scroll_menu_down(kind,ticks)
@@ -439,13 +460,14 @@ local function suite()
    'removed advanced controls do not appear in the compact settings')
   check(not has_row('danmaku-source') and not has_row('当前线路：线路 A'),
    'danmaku settings avoids the duplicate source-picker page')
+  scroll_menu_down('danmaku-settings',10)
   click(row('屏蔽固定弹幕'))
   check(commands[#commands][4]=='["TOP","BOTTOM"]','fixed blocking groups top and bottom comments')
   click(row('屏蔽滚动弹幕'))
   check(commands[#commands][4]=='["R2L","L2R"]','scrolling blocking groups both directions')
   click(row('屏蔽彩色弹幕'))
   check(commands[#commands][4]=='["COLOR"]','color blocking uses the upstream color filter')
-  scroll_menu_down('danmaku-settings',2);click(row('屏蔽词…'))
+  click(row('屏蔽词…'))
   check(commands[#commands][2]=='player_ui-danmaku-words','word blocking opens from the compact settings')
   local saved_danmaku=props['user-data/player_ui/danmaku']
   props['user-data/player_ui/danmaku']={loaded=false,enabled=false,servers={},results={}}
@@ -481,6 +503,7 @@ local function suite()
   local function complete_async(job,body)
    job.completed=true
    job.callback(true,{status=0,stdout=body,stderr=''},nil)
+   advance(.001)
   end
   local match_json='[=[{"isMatched":true,"matches":[{"animeId":101,"episodeId":17,"animeTitle":"间谍过家家 第二季(2023)","episodeTitle":"第31集_06"}]}]=]'
   local detail_json='[=[{"bangumi":{"episodes":[{"episodeId":17,"episodeNumber":6,"episodeTitle":"第31集_06"}]}}]=]'
@@ -630,9 +653,11 @@ local function suite()
  event_handlers['file-loaded'][#event_handlers['file-loaded']]()
  local hung_search=find_async_after(before,'https://danmaku.example/api/v2/search/anime?keyword=Anime%20title')
  check(props['user-data/player_ui/danmaku'].autoload_state=='loading','loading state appears immediately')
- advance(94)
- check(hung_search.aborted and next_async==before+1 and props['user-data/player_ui/danmaku'].autoload_state=='error',
-  'timeout ends the single search without a scheduled automatic retry')
+ advance(400)
+ check(hung_search.aborted and next_async==before+4 and props['user-data/player_ui/danmaku'].autoload_state=='error',
+  'stalled HTTP requests stop after the bounded transport retry budget')
+ advance(100)
+ check(next_async==before+4,'exhausted transport retries do not schedule another automatic search')
  json_responses['sources-three-json']={servers={
   {name='ME',url='https://danmaku.example'},{name='Catcat',url='https://danmaku2.example'},
   {name='Third',url='https://danmaku3.example'}}}
@@ -735,22 +760,20 @@ local function suite()
   danmaku_state=props['user-data/player_ui/danmaku']
   check(danmaku_state.search_view=='episodes' and #danmaku_state.episodes==1
    and danmaku_state.episodes[1].number_value==1,'episode view uses the selected platform')
-  local load_generation=danmaku_state.episode_load_generation or 0
   messages['player_ui-danmaku-pick']('23','Anime title · 第1集','2')
   local selected_search=pending_async[next_async]
   check(table.concat(selected_search.spec.args,' '):find(('https://danmaku2.example/api/v2/comment/23?withRelated=true'),1,true)~=nil,
    'selecting an episode fetches comments from its chosen source')
   danmaku_state=props['user-data/player_ui/danmaku']
-  check(not danmaku_state.loaded and danmaku_state.status=='获取弹幕中…'
-   and danmaku_state.episode_load_generation==load_generation+1,
-   'manual episode selection publishes a new pending-load generation before the request completes')
+  check(not danmaku_state.loaded and danmaku_state.status=='获取弹幕中…' and danmaku_state.autoload_state=='loading',
+   'manual episode selection publishes pending loading before the request completes')
   selected_search.callback(true,{status=0,stdout=comments_json,stderr=''},nil)
   messages['player_ui-danmaku-pick']('24','Anime title · 第2集','2')
   local empty_comment=pending_async[next_async]
   empty_comment.callback(true,{status=0,stdout=empty_comments_json,stderr=''},nil)
   danmaku_state=props['user-data/player_ui/danmaku']
   check(not danmaku_state.loaded and danmaku_state.count==0 and danmaku_state.status=='该集没有弹幕'
-   and danmaku_state.episode_load_generation==load_generation+2,
+   and danmaku_state.autoload_state=='empty',
    'an empty episode clears previous comments and reports that this episode has no danmaku')
   click('danmaku')
   check(has_row('搜索弹幕') and not has_row('Anime title') and not has_row('搜到'),
@@ -765,12 +788,10 @@ local function suite()
   local stale_start=next_async
   event_handlers['start-file'][#event_handlers['start-file']]()
   event_handlers['file-loaded'][#event_handlers['file-loaded']]()
-  local stale=find_async_after(stale_start,'https://danmaku.example/api/v2/search/anime?keyword='..online_api.urlencode('Anime title'))
-  local stale_command=table.concat(stale.spec.args,' ')
-  local has_match=true
-  check(has_match,'media without a local hash still attempts filename recognition')
+  local stale=find_async_after(stale_start,'https://danmaku2.example/api/v2/comment/23?withRelated=true')
+  check(next_async==stale_start+1,'remembered source loads the current episode without searching the title again')
   event_handlers['start-file'][#event_handlers['start-file']]()
- complete_async(stale,match_json)
+ complete_async(stale,comments_json)
  danmaku_state=props['user-data/player_ui/danmaku']
  check(not danmaku_state.loaded and danmaku_state.autoload_state=='loading'
   and not danmaku_state.status:find('失败',1,true),
@@ -780,11 +801,12 @@ local function suite()
   and commands[#commands][3]=='load-danmaku',
   'local XML picker uses the native player command')
  props['time-pos']=2
- messages['player_ui-danmaku-load'](out..'/comments.xml')
+  messages['player_ui-danmaku-load'](out..'/comments.xml')
+  advance(.001)
   danmaku_state=props['user-data/player_ui/danmaku']
   check(danmaku_state.loaded and danmaku_state.count==3,'choosing a local XML fixture loads it into the renderer')
-  check(danmaku_state.backend=='imtaotao/danmu' and danmaku_state.render_fps==nil,
-   'original renderer does not publish a fabricated Lua submission FPS')
+  check(danmaku_state.backend=='DanmakuFactory' and danmaku_state.render_fps==nil,
+   'native ASS renderer does not publish a fabricated Lua submission FPS')
   local before_resize=next_async
   local previous_load=renderer_arguments
   for _,size in ipairs({{1920,1200,60},{2560,1600,80},{1280,720,0},{1920,1200,60}}) do
@@ -795,7 +817,8 @@ local function suite()
   end
   props['speed']=2;props['time-pos']=5
   observers['speed']('speed',2);advance(.2)
-  check(renderer_arguments==previous_load,'playback rate changes never rebuild the comment pool')
+  check(renderer_arguments~=previous_load and next_async==before_resize,
+   'playback rate changes regenerate ASS timing without downloading comments again')
   props['speed']=1;observers['speed']('speed',1);advance(.2)
   local ticks=0
   for _,candidate in ipairs(timers) do
@@ -808,7 +831,7 @@ local function suite()
   check(active==0,'hidden local video has no repeating UI timer')
   local before_secondary=props['secondary-sid']
   messages['player_ui-danmaku-clear']()
-  check(props['secondary-sid']==before_secondary,'independent rendering does not replace secondary subtitles')
+  check(before_secondary~='no' and props['secondary-sid']=='no','clearing native danmaku restores the previous secondary subtitle selection')
  props.path='C:/Video/间谍过家家 代号：白 (2023).mkv';props['media-title']='间谍过家家 代号：白 (2023)'
  local before_movie=next_async
  event_handlers['start-file'][#event_handlers['start-file']]()

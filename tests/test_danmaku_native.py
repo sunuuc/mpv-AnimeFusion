@@ -13,26 +13,27 @@ class NativeDanmaku(unittest.TestCase):
         for forbidden in ('add_periodic_timer', 'create_osd_overlay'):
             self.assertNotIn(forbidden, render)
 
-    def test_original_video_present_loop_is_preserved(self):
+    def test_secondary_clock_does_not_modify_video_frames(self):
         patch = (ROOT/'tools/apply_secondary_sub_sync.py').read_text(encoding='utf-8')
-        for forbidden in ('secondary_next_deadline', 'secondary_redraw_due',
-                          'frame_queued->pts', 'wait_vo(', 'flip_page(',
-                          "edit('video/out/vo_gpu_next.c'", "edit('video/out/gpu/video.c'"):
+        self.assertNotRegex(patch, r'frame->(?:current->)?pts\s*(?:=(?!=)|\+=|-=)')
+        for forbidden in ('flip_page(', 'add_periodic_timer'):
             self.assertNotIn(forbidden, patch)
-        self.assertIn('frame->ideal_frame_vsync', patch)
-        self.assertIn('video-sync=display-resample',
-                      (ROOT/'portable_config/mpv.conf').read_text(encoding='utf-8'))
+        for required in ('secondary_clock_pts', 'secondary_anchor_ns',
+                         'elapsed * in->secondary_clock_speed', 'in->paused ? 0',
+                         'in->secondary_clock_valid = false', 'secondary_next_deadline'):
+            self.assertIn(required, patch)
 
     def test_primary_subtitles_keep_ahead_cache(self):
         patch = (ROOT/'tools/apply_secondary_sub_sync.py').read_text(encoding='utf-8')
         self.assertIn('sub->order == 1 && render_opts->secondary_sub_display_sync', patch)
         self.assertIn('in->paused', patch)
 
-    def test_vulkan_present_configuration(self):
+    def test_original_gpu_configuration(self):
         config = (ROOT/'portable_config/mpv.conf').read_text(encoding='utf-8')
         lines = [line.strip() for line in config.splitlines() if not line.startswith('#')]
-        self.assertGreater(lines.index('vulkan-queue-count=1'), lines.index('profile=animejanai'))
-        self.assertIn('vulkan-async-compute=no', lines)
+        self.assertIn('include="~~/mpv-animejanai.conf"', lines)
+        self.assertIn('profile=animejanai', lines)
+        self.assertFalse(any(line.startswith(('vulkan-queue-count=', 'vulkan-async-compute=')) for line in lines))
 
 
 if __name__ == '__main__':

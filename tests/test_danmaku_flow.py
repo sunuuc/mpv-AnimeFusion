@@ -418,7 +418,11 @@ mp.add_timeout(15,function()finish('timeout',1)end)
                 outcome = json.loads(result_path.read_text(encoding='utf-8')) if result_path.exists() else {}
                 self.assertEqual(proc.returncode, 0, (outcome, proc.stderr.decode('utf-8', 'replace')[-1200:]))
                 self.assertEqual(outcome, {'phase': 4, 'reason': 'ok'})
-                self.assertEqual(len(ScopedSearchHandler.seen), 3, 'Changing filters must not issue more requests')
+                self.assertEqual(sum(path.startswith('/failed/') for path in ScopedSearchHandler.seen), 4,
+                                 'Failed transport uses the bounded retry budget')
+                self.assertEqual(sum(path.startswith('/empty/') for path in ScopedSearchHandler.seen), 1)
+                self.assertEqual(sum(path.startswith('/slow/') for path in ScopedSearchHandler.seen), 1,
+                                 'Changing filters reuses successful and pending requests')
         finally:
             server.shutdown(); server.server_close(); thread.join(timeout=2)
 
@@ -674,7 +678,7 @@ end)
             server.server_close()
             thread.join(timeout=2)
 
-    def test_manual_episode_pick_switches_to_platform_with_comments(self):
+    def test_manual_episode_pick_keeps_a_normal_empty_response(self):
         PlatformFallbackHandler.seen = []
         server = ThreadingHTTPServer(('127.0.0.1', 0), PlatformFallbackHandler)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -708,14 +712,14 @@ mp.add_periodic_timer(.05,function()
         and #data.episodes==1 then
         phase=2
         mp.commandv('script-message','player_ui-danmaku-pick','205','第5集','1')
-    elseif phase==2 and data.loaded and data.count==1 then
+    elseif phase==2 and data.autoload_state=='empty' and not data.loaded and data.count==0 then
         finish({loaded=data.loaded,count=data.count,state=data.autoload_state,
             source=data.source,label=data.file},0)
     end
 end)
 mp.add_timeout(30,function()
     local data=mp.get_property_native('user-data/player_ui/danmaku') or {}
-    finish({error='manual platform fallback did not load comments',phase=phase,
+    finish({error='manual empty response did not settle',phase=phase,
         state=data.autoload_state,status=data.status,view=data.search_view},1)
 end)
 ''' % lua_string(str(result_path)), encoding='utf-8')
@@ -729,13 +733,13 @@ end)
                 if proc.returncode != 0:
                     outcome['requests'] = list(PlatformFallbackHandler.seen)
                 self.assertEqual(proc.returncode, 0, (outcome, proc.stderr.decode('utf-8', 'replace')[-1200:]))
-                self.assertEqual(outcome['count'], 1)
-                self.assertTrue(outcome['loaded'])
+                self.assertEqual(outcome['count'], 0)
+                self.assertFalse(outcome['loaded'])
+                self.assertEqual(outcome['state'], 'empty')
                 self.assertEqual(outcome['source'], 1)
-                self.assertIn('腾讯视频', outcome['label'])
                 self.assertIn('/api/v2/comment/205?withRelated=true', PlatformFallbackHandler.seen)
-                self.assertIn('/api/v2/bangumi/102', PlatformFallbackHandler.seen)
-                self.assertIn('/api/v2/comment/305?withRelated=true', PlatformFallbackHandler.seen)
+                self.assertNotIn('/api/v2/bangumi/102', PlatformFallbackHandler.seen)
+                self.assertNotIn('/api/v2/comment/305?withRelated=true', PlatformFallbackHandler.seen)
         finally:
             server.shutdown()
             server.server_close()
@@ -989,7 +993,7 @@ mp.add_timeout(30,function()finish({error='automatic matching did not load comme
             server.server_close()
             thread.join(timeout=2)
 
-    def test_automatic_search_does_not_retry_failed_routes(self):
+    def test_automatic_search_stops_after_bounded_transport_retries(self):
         TransientAutoloadHandler.seen = []
         TransientAutoloadHandler.match_count = 0
         server = ThreadingHTTPServer(("127.0.0.1", 0), TransientAutoloadHandler)
@@ -1045,7 +1049,7 @@ end)
                 self.assertEqual(proc.returncode, 0, (outcome, proc.stderr.decode("utf-8", "replace")[-1200:]))
                 self.assertEqual(outcome, {"state": "error", "saw_loading": True, "saw_error": True})
                 self.assertEqual(TransientAutoloadHandler.match_count, 0)
-                self.assertEqual(len(TransientAutoloadHandler.seen), 1)
+                self.assertEqual(len(TransientAutoloadHandler.seen), 4)
         finally:
             server.shutdown()
             server.server_close()

@@ -28,6 +28,12 @@ local function wait_for(predicate,message,then_)
  after(.025,poll)
 end
 local function button(id)for _,b in ipairs(ui().controls or {})do if b.id==id then return b end end end
+local input_ready_at=0
+for _,property in ipairs({'fullscreen','osd-dimensions','display-hidpi-scale'})do
+ mp.observe_property(property,'native',function()
+  input_ready_at=mp.get_time()+mp.get_property_number('input-doubleclick-time',300)/1000+.1
+ end)
+end
 local function click(id,then_)
  local u=ui();local b=assert(button(id),'missing UI control: '..id)
  local x=math.floor((b.x0+b.x1)*u.scale/2);local y=math.floor((b.y0+b.y1)*u.scale/2)
@@ -36,7 +42,7 @@ local function click(id,then_)
  local function ready()
   local current=ui()
   assert(current.overlay_ok,'overlay was not accepted: '..tostring(current.overlay_error))
-  if current.hover==id then
+  if current.hover==id and mp.get_time()>=input_ready_at then
    mp.commandv('keypress','MBTN_LEFT');after(.15,then_)
   elseif mp.get_time()<deadline then after(.025,ready)
   else error('mouse did not reach '..id..': '..utils.format_json(current))end
@@ -116,7 +122,7 @@ steps[#steps+1]=function(next_)
  end)
 end
 steps[#steps+1]=function(next_)
- menu('settings',function()
+ click('settings',function()
   check(ui().menu=='settings' and not button('close') and not button('menu-close'),
    'settings popover leaves window chrome to mpv.net')
   check(has_row('弹幕设置'),
@@ -299,9 +305,7 @@ steps[#steps+1]=function(next_)
 end
 steps[#steps+1]=function(next_)
  click('settings',function()click(row('sub-settings'),function()
-  local visible=mp.get_property_bool('sub-visibility',true)
-  click(row('显示字幕'),function()
-   check(mp.get_property_bool('sub-visibility',true)~=visible,'subtitle visibility toggle applies')
+  check(has_row('字号缩放') and has_row('字幕位置'),'subtitle preferences expose scale and position controls')
   set_slider('字号缩放',1,function()
     check(mp.get_property_number('sub-scale',0)==2,'subtitle size slider reaches its maximum')
     set_slider('字幕位置',1,function()
@@ -323,7 +327,6 @@ steps[#steps+1]=function(next_)
      end)
     end)
    end)
-  end)
  end)end)
 end
 steps[#steps+1]=function(next_)
