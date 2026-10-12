@@ -20,7 +20,7 @@ class ComponentContracts(unittest.TestCase):
     def test_bangumi_sources_and_licenses_are_packaged(self):
         files={p.relative_to(ROOT).as_posix() for p in source_release_files(('src','tests','docs','THIRD_PARTY_LICENSES'))}
         for name in ('src/player/src/MpvNet.Windows/Bangumi/BangumiClient.cs',
-                     'src/player/src/MpvNet.Windows/WPF/BangumiSyncWindow.xaml',
+                     'src/player/src/MpvNet.Windows/WPF/BangumiMatchWindow.xaml',
                      'tests/bangumi/Program.cs','docs/bangumi-sources.md',
                      'THIRD_PARTY_LICENSES/BangumiNet-MIT.txt',
                      'THIRD_PARTY_LICENSES/czy0729-Bangumi-MIT.txt',
