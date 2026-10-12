@@ -92,7 +92,7 @@ require(
 require(
     "portable_config/scripts/player_ui.lua",
     "version='1.3.0'",
-    "core.local_media(",
+    "playback_ready=not bool('idle-active',true) and not bool('core-idle',false)",
     "local right={'fullscreen','settings','danmaku','sub','audio','speed'}",
     "if services[id] then right[#right+1]=id end",
     "local net=bool('demuxer-via-network') and o.network_speed and playing",
