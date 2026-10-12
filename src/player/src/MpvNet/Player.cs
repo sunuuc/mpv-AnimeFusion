@@ -129,8 +129,22 @@ public class MainPlayer : MpvClient
         if (!string.IsNullOrEmpty(UsedInputConfContent))
             SetPropertyString("input-conf", @"memory://" + UsedInputConfContent);
 
+        // Startup scripts can load media during mpv_initialize. Apply the native
+        // configuration before command-line options so they see the final values.
+        if ((!processCommandLine || CommandLine.GetValue("config") != "no") && File.Exists(ConfPath))
+        {
+            mpv_error configError = mpv_load_config_file(MainHandle, GetUtf8Bytes(ConfPath));
+
+            if (configError < 0)
+                throw new Exception("mpv_load_config_file error" + BR2 + GetError(configError) + BR);
+        }
+
         if (processCommandLine)
             CommandLine.ProcessCommandLineArgsPreInit();
+
+        // The configuration has already been parsed; do not overwrite the
+        // command-line options by loading it again during initialization.
+        SetPropertyString("config", "no");
 
         if (CommandLine.Contains("config-dir") && !CommandLine.Contains("input-conf"))
         {

@@ -63,8 +63,8 @@ mp.add_timeout(8,function()
     mp.commandv('quit')
 end)
 """,encoding='utf-8')
-FLAGS=['--vo=gpu','--gpu-api=d3d11','--gpu-context=d3d11','--d3d11-warp=yes','--hwdec=no','--vf=',
-       '--ao=null','--idle=yes','--keep-open=no','--force-window=yes','--geometry=960x540',
+FLAGS=['--vo=null','--hwdec=no','--vf=',
+       '--ao=null','--idle=yes','--keep-open=no','--pause=no',
        '--terminal=yes','--save-position-on-quit=no','--resume-playback=no']
 
 def count(path,method=None):

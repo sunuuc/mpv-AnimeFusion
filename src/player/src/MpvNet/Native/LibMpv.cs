@@ -1,4 +1,4 @@
-﻿
+
 #pragma warning disable IDE1006 // type name starts with underscore
 #pragma warning disable CA1401  // P/Invokes should not be visible
 #pragma warning disable CA2101  // Specify marshaling for P/Invoke string arguments
@@ -18,6 +18,9 @@ public static class LibMpv
 
     [DllImport("libmpv-2.dll", CallingConvention = CallingConvention.Cdecl)]
     public static extern mpv_error mpv_initialize(nint mpvHandle);
+
+    [DllImport("libmpv-2.dll", CallingConvention = CallingConvention.Cdecl)]
+    public static extern mpv_error mpv_load_config_file(nint mpvHandle, byte[] filename);
 
     [DllImport("libmpv-2.dll", CallingConvention = CallingConvention.Cdecl)]
     public static extern void mpv_destroy(nint mpvHandle);

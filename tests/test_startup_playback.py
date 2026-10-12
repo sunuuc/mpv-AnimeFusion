@@ -33,15 +33,17 @@ class Handler(BaseHTTPRequestHandler):
 server=ThreadingHTTPServer(('127.0.0.1',0),Handler);server.daemon_threads=True
 threading.Thread(target=server.serve_forever,daemon=True).start()
 BASE=f'http://127.0.0.1:{server.server_port}'
-FLAGS=['--vo=gpu','--gpu-api=d3d11','--gpu-context=d3d11','--d3d11-warp=yes','--hwdec=no','--vf=',
-       '--ao=null','--idle=yes','--keep-open=yes','--force-window=yes','--geometry=1280x720',
+FLAGS=['--vo=null','--hwdec=no','--vf=',
+       '--ao=null','--idle=yes','--keep-open=yes','--pause=no',
        '--terminal=yes','--save-position-on-quit=no','--resume-playback=no']
 BOOT=CALLER/'启动脚本.lua'
 BOOT.write_text("""local mp=require 'mp'
 local options=require 'mp.options'
 local o={url='',tag=''}
 options.read_options(o,'handoff')
-mp.set_property_native('user-data/startup-test/options',{tag=o.tag,has_url=o.url~=''})
+mp.set_property_native('user-data/startup-test/options',{
+    tag=o.tag,has_url=o.url~='',vo=mp.get_property('vo'),
+    hwdec=mp.get_property('hwdec'),filters=mp.get_property_native('vf')})
 mp.register_event('file-loaded',function()
     -- Publish the fixture result only after the complete JSON has been closed.
     local f=assert(io.open('handoff-result.json.tmp','w'))
@@ -134,6 +136,9 @@ def script_launch(exe,flag,name,repeated=False):
     with Player(args,name,exe) as p:
         elapsed=p.playing(uri)
         assert p.get('user-data/startup-test/options',{}).get('tag')=='ready','script options arrived after script startup'
+        startup=p.get('user-data/startup-test/options',{})
+        assert startup.get('vo')=='null' and startup.get('hwdec')=='no' and startup.get('filters')==[], \
+            'portable configuration overrode caller options before startup scripts'
         if repeated:
             assert p.get('user-data/startup-test/observer') is True,'one of repeated script options was lost'
             assert len([t for t in p.get('track-list',[]) if t['type']=='sub'])==2,'repeated external subtitles were lost'

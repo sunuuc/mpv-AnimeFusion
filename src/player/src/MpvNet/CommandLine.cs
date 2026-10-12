@@ -120,6 +120,12 @@ public class CommandLine
 
         if (TryBuildStartupList("scripts", Path.PathSeparator, out string scripts))
             SetStartupOption("scripts", scripts);
+
+        // Like startup scripts, external tracks must be available before a
+        // script loads media. libmpv accepts the assembled list, not CLI suffixes.
+        foreach (string name in new[] { "sub-files", "audio-files", "external-files" })
+            if (TryBuildStartupList(name, Path.PathSeparator, out string files))
+                SetStartupOption(name, files);
     }
 
     public static void ProcessCommandLineArgsPostInit()
@@ -169,7 +175,8 @@ public class CommandLine
         name.EndsWith("-toggle", StringComparison.Ordinal);
 
     static bool IsStartupList(string name) =>
-        ScopedCommandLine.BaseName(name) is "scripts" or "script-opts";
+        ScopedCommandLine.BaseName(name) is "scripts" or "script-opts" or
+            "sub-files" or "audio-files" or "external-files";
 
     static string EscapeListItem(string value, char separator) =>
         value.Replace(separator.ToString(), "\\" + separator, StringComparison.Ordinal);
