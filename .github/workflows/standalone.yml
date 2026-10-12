@@ -76,12 +76,10 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: downloads
-          key: standalone-dependencies-${{ hashFiles('tools/standalone/dependencies.json', 'tools/standalone/libass-build-packages.json', 'third_party/danmaku-factory/UPSTREAM.json') }}
+          key: standalone-dependencies-${{ hashFiles('tools/standalone/dependencies.json', 'tools/standalone/libass-build-packages.json', 'tools/standalone/build_danmaku_factory.py') }}
       - name: Assemble player core and optional model assets
         env: {GH_TOKEN: '${{ github.token }}'}
         run: python tools/standalone/build.py stage
-      - name: Check antivirus reports and scan release executables
-        run: python tools/standalone/security_verify.py scan stage complete-evidence/security
       - name: Save verified build dependencies
         uses: actions/cache/save@v4
         with:
@@ -111,6 +109,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python tests/test_player_ui_empty_scope.py stage complete-evidence/player_ui-handoff
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check antivirus reports and scan release executables
+        run: python tools/standalone/security_verify.py scan stage complete-evidence/security
       - name: Package and test files extracted into an empty directory
         run: python tools/standalone/build.py package
       - name: Publish and verify public downloads
