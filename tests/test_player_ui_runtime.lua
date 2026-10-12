@@ -28,7 +28,7 @@ local function wait_for(predicate,message,then_)
  after(.025,poll)
 end
 local function button(id)for _,b in ipairs(ui().controls or {})do if b.id==id then return b end end end
-local input_ready_at=0
+local input_ready_at,last_click_time=0,-1
 for _,property in ipairs({'fullscreen','osd-dimensions','display-hidpi-scale'})do
  mp.observe_property(property,'native',function()
   input_ready_at=mp.get_time()+mp.get_property_number('input-doubleclick-time',300)/1000+.1
@@ -42,7 +42,9 @@ local function click(id,then_)
  local function ready()
   local current=ui()
   assert(current.overlay_ok,'overlay was not accepted: '..tostring(current.overlay_error))
-  if current.hover==id and mp.get_time()>=input_ready_at then
+  local now=mp.get_time()
+  local click_interval=mp.get_property_number('input-doubleclick-time',300)/1000+.05
+  if current.hover==id and now>=input_ready_at and now-last_click_time>=click_interval then
    -- A resize temporarily removes mouse bindings. Move after the guard expires
    -- so the native mouse event reinstalls them before sending the click.
    local control=assert(button(id),'control disappeared before click: '..id)
@@ -51,7 +53,10 @@ local function click(id,then_)
    mp.commandv('mouse',x+1,y)
    after(.025,function()
     mp.commandv('mouse',x,y)
-    after(.04,function()mp.commandv('mouse',x,y,0,'single');after(.15,then_)end)
+    after(.04,function()
+     last_click_time=mp.get_time();mp.commandv('keydown','MBTN_LEFT')
+     after(.04,function()mp.commandv('keyup','MBTN_LEFT');after(.15,then_)end)
+    end)
    end)
   elseif mp.get_time()<deadline then after(.025,ready)
   else error('mouse did not reach '..id..': '..utils.format_json(current))end
@@ -407,7 +412,8 @@ steps[#steps+1]=function(next_)
 end
 steps[#steps+1]=function(next_)
  click('settings',function()click(row('stats'),function()
-  after(.9,function()
+  wait_for(function()return ui().menu=='stats' and (ui().performance or {}).fps==0 end,
+   'paused statistics panel did not settle',function()
    check((ui().performance or {}).fps==0,'paused actual FPS');verify_overlay('player_ui-stats')
    mp.set_property_bool('pause',false)
    after(2,function()
