@@ -43,7 +43,16 @@ local function click(id,then_)
   local current=ui()
   assert(current.overlay_ok,'overlay was not accepted: '..tostring(current.overlay_error))
   if current.hover==id and mp.get_time()>=input_ready_at then
-   mp.commandv('keypress','MBTN_LEFT');after(.15,then_)
+   -- A resize temporarily removes mouse bindings. Move after the guard expires
+   -- so the native mouse event reinstalls them before sending the click.
+   local control=assert(button(id),'control disappeared before click: '..id)
+   x=math.floor((control.x0+control.x1)*current.scale/2)
+   y=math.floor((control.y0+control.y1)*current.scale/2)
+   mp.commandv('mouse',x+1,y)
+   after(.025,function()
+    mp.commandv('mouse',x,y)
+    after(.04,function()mp.commandv('mouse',x,y,0,'single');after(.15,then_)end)
+   end)
   elseif mp.get_time()<deadline then after(.025,ready)
   else error('mouse did not reach '..id..': '..utils.format_json(current))end
  end

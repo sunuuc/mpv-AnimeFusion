@@ -8,7 +8,9 @@ PRIVATE=OUT/'private';PRIVATE.mkdir(parents=True,exist_ok=True)
 PRIVATE.joinpath('mpv-AnimeFusion-danmaku.conf').write_text(
     '# Isolated test-only source; .invalid can never resolve.\n'
     'api_servers=https://danmaku.example.invalid|Fixture\n',encoding='utf-8')
-(CONFIG/'input.conf').write_text('',encoding='utf-8')
+production_input=(APP/'portable_config/input.conf').read_text(encoding='utf-8-sig')
+(CONFIG/'input.conf').write_text('\n'.join(line for line in production_input.splitlines()
+    if line.split() and line.split()[0].lower() in ('up','down'))+'\n',encoding='utf-8')
 PROFILE_ROOT=OUT/'animejanai';PROFILE_ROOT.mkdir(parents=True,exist_ok=True)
 converter=PROFILE_ROOT/'danmaku';converter.mkdir(parents=True,exist_ok=True)
 shutil.copy2(APP/'animejanai/danmaku/DanmakuFactory.exe',converter/'DanmakuFactory.exe')
