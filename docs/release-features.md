@@ -1,3 +1,2 @@
-- 添加 Trakt 和 MyAnimeList 观看同步。
-- 新增定时暂停播放，镜像翻转。
-- 优化 Bangumi 作品与季集匹配。
+1. 优化 MyAnimeList(MAL) 作品匹配。
+2. 优化界面ui

@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [1.3.3] - 2026-10-12
+
+1. 优化 MyAnimeList(MAL) 作品匹配。
+2. 优化界面ui
+
 ## [1.3.2] - 2026-10-11
 
 - 添加 Trakt 和 MyAnimeList 观看同步。

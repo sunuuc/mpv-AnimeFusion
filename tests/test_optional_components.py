@@ -51,8 +51,9 @@ class ComponentContracts(unittest.TestCase):
 
     def test_release_requires_version_changes(self):
         with tempfile.TemporaryDirectory() as temp, patch('build.R', Path(temp)):
-            (Path(temp)/'CHANGELOG.md').write_text('# Changes\n## [Unreleased]\n- Pending\n', encoding='utf-8')
-            with self.assertRaisesRegex(RuntimeError, 'Missing version changes'):
+            (Path(temp)/'docs').mkdir()
+            (Path(temp)/'docs/release-features.md').write_text('', encoding='utf-8')
+            with self.assertRaisesRegex(RuntimeError, 'Missing release feature descriptions'):
                 release_notes()
     def test_latest_build_input_is_still_hash_verified(self):
         content=b'pinned native input'

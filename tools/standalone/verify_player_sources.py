@@ -300,9 +300,11 @@ forbid(
     'ContentSource="Header"',
 )
 forbid("portable_config/mpv.conf", "video-sync=display-resample")
-forbid(
+require(
     "src/player/src/MpvNet.Windows/WPF/DanmakuSearchWindow.xaml.cs",
     "EpisodeList.IsEnabled = false;",
+    'Player.CommandV("script-message", "player_ui-danmaku-pick", episode.Id,',
+    "Close();",
 )
 
 print("Player source contracts verified")
