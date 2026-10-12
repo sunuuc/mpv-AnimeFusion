@@ -35,6 +35,7 @@ static class Program
         var store = Store("ui");
         var client = new BangumiClient(store, new HttpClient(new Handler()));
         Theme.Current = new() { Foreground = Brushes.White, Foreground2 = Brushes.Gray, Background = Brushes.Black, MenuBackground = Brushes.DarkSlateGray, MenuHighlight = Brushes.DimGray, Heading = Brushes.Purple };
+        WpfApplication.Init();
         var window = new BangumiMatchWindow(new(store, client));
         Check(window.Title == "匹配 Bangumi", "Manual matching window constructs without desktop interaction");
         Check(window.FindName("AutoSyncBox") == null && window.FindName("ThresholdSlider") == null,
