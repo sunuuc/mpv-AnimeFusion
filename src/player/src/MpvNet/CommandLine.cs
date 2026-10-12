@@ -107,7 +107,7 @@ public class CommandLine
         // initialization in ProcessCommandLineFiles().
         foreach (var pair in Arguments)
         {
-            if (pair.Name == "playlist" || IsStartupList(pair.Name) || IsListOperation(pair.Name))
+            if (pair.Name is "playlist" or "input-ipc-server" || IsStartupList(pair.Name) || IsListOperation(pair.Name))
                 continue;
 
             Player.ProcessProperty(pair.Name, pair.Value);
@@ -117,9 +117,6 @@ public class CommandLine
 
         if (TryBuildStartupList("script-opts", ',', out string scriptOptions))
             SetStartupOption("script-opts", scriptOptions);
-
-        if (TryBuildStartupList("scripts", Path.PathSeparator, out string scripts))
-            SetStartupOption("scripts", scripts);
 
         // Like startup scripts, external tracks must be available before a
         // script loads media. libmpv accepts the assembled list, not CLI suffixes.
@@ -132,7 +129,7 @@ public class CommandLine
     {
         foreach (var pair in Arguments)
         {
-            if (IsStartupList(pair.Name) || IsNativePlaylistStartupOption(pair.Name))
+            if (pair.Name == "input-ipc-server" || IsStartupList(pair.Name) || IsNativePlaylistStartupOption(pair.Name))
                 continue;
 
             if (pair.Name.EndsWith("-add", StringComparison.Ordinal))
@@ -159,7 +156,22 @@ public class CommandLine
             }
         }
 
+        // External scripts can start media immediately. Load them through mpv's
+        // native command after configuration and caller options are finalized.
+        if (TryBuildStartupList("scripts", Path.PathSeparator, out string scripts))
+        {
+            Player.SetPropertyString("scripts", scripts);
+            foreach (string path in Player.GetPropertyStringArray("scripts"))
+                if (path.Length > 0)
+                    Player.CommandV("load-script", path);
+        }
+
         StartupDiagnostics.Ready();
+
+        // A caller may send loadfile as soon as the pipe opens. Publish it only
+        // after the frontend has applied all caller options and loaded scripts.
+        if (Contains("input-ipc-server"))
+            Player.SetPropertyString("input-ipc-server", GetValue("input-ipc-server"));
     }
 
     static bool IsNativePlaylistStartupOption(string name) =>

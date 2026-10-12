@@ -135,6 +135,11 @@ def script_launch(exe,flag,name,repeated=False):
     if repeated:args+=['--script='+EXTRA.name,'--sub-file='+SUB1.name,'--sub-file='+SUB2.name]
     with Player(args,name,exe) as p:
         elapsed=p.playing(uri)
+        if exe=='mpv-AnimeFusion.exe':
+            p.wait(lambda:p.get('user-data/player_ui/ui',{}).get('version')=='1.3.0',
+                   'production scripts were not automatically loaded')
+            assert p.get('file-local-options/cache-pause-initial') is False, \
+                'production network guard was not applied'
         assert p.get('user-data/startup-test/options',{}).get('tag')=='ready','script options arrived after script startup'
         startup=p.get('user-data/startup-test/options',{})
         assert startup.get('vo')=='null' and startup.get('hwdec')=='no' and startup.get('filters')==[], \

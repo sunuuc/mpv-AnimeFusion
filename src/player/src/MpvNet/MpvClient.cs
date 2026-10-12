@@ -420,6 +420,39 @@ public class MpvClient
             HandleError(err, $"error setting property: {name} = {value}");
     }
 
+    public string[] GetPropertyStringArray(string name)
+    {
+        mpv_error err = mpv_get_property(Handle, GetUtf8Bytes(name),
+            mpv_format.MPV_FORMAT_NODE, out mpv_node node);
+
+        if (err < 0)
+        {
+            HandleError(err, "error getting property: " + name);
+            return [];
+        }
+
+        try
+        {
+            if (node.format != mpv_format.MPV_FORMAT_NODE_ARRAY)
+                throw new InvalidOperationException("Property is not an array: " + name);
+
+            var list = Marshal.PtrToStructure<mpv_node_list>(node.list);
+            var result = new string[list.num];
+            for (int i = 0; i < list.num; i++)
+            {
+                var item = Marshal.PtrToStructure<mpv_node>(list.values + i * Marshal.SizeOf<mpv_node>());
+                if (item.format != mpv_format.MPV_FORMAT_STRING)
+                    throw new InvalidOperationException("Property contains a non-string: " + name);
+                result[i] = ConvertFromUtf8(item.str);
+            }
+            return result;
+        }
+        finally
+        {
+            mpv_free_node_contents(ref node);
+        }
+    }
+
     public string GetPropertyOsdString(string name)
     {
         mpv_error err = mpv_get_property(Handle, GetUtf8Bytes(name),
