@@ -116,7 +116,7 @@ steps[#steps+1]=function(next_)
  end)
 end
 steps[#steps+1]=function(next_)
- click('settings',function()
+ menu('settings',function()
   check(ui().menu=='settings' and not button('close') and not button('menu-close'),
    'settings popover leaves window chrome to mpv.net')
   check(has_row('弹幕设置'),

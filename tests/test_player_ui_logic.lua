@@ -219,7 +219,7 @@ local function suite()
   'watched-through includes file generation and batch mode')
  bindings['player_ui-menu-escape']();advance(.1);bindings['player_ui-menu-escape']();advance(.1)
  click('settings');click(row('sync-settings'))
- check(has_row('收藏进度') and has_row('看过进度') and has_row('自动收藏为在看') and has_row('自动标记剧集看过'),
+ check(has_row('收藏进度') and has_row('看过进度') and has_row('自动收藏为在看') and has_row('自动标记看过'),
   'separate collection and watched thresholds live only under synchronization settings')
  bindings['player_ui-menu-escape']();advance(.1);bindings['player_ui-menu-escape']();advance(.1)
  click('bangumi');click('bangumi-logout')
