@@ -32,7 +32,7 @@ def forbid(path: str, *markers: str) -> None:
 require(
     "portable_config/script-modules/player_ui_core.lua",
     "-- Player UI layout 1.3.0:",
-    "function M.layout(pw,ph,dpi,ui_scale,time_width)",
+    "function M.layout(pw,ph,dpi,ui_scale,time_width,sync_services)",
     "function M.theme(accent)",
     "function M.local_media(path,opened,network)",
 )
@@ -93,10 +93,12 @@ require(
     "portable_config/scripts/player_ui.lua",
     "version='1.3.0'",
     "core.local_media(",
-    "local right={'fullscreen','settings','danmaku','sub','audio','speed','bangumi'}",
+    "local right={'fullscreen','settings','danmaku','sub','audio','speed'}",
+    "if services[id] then right[#right+1]=id end",
     "local net=bool('demuxer-via-network') and o.network_speed and playing",
     "text((b.x0+b.x1)/2,b.y+1*u,14*u,core.rate(state.rate)",
-    "text(0,0,22*u,os.date('%H:%M')",
+    "local clock=os.date('%H:%M')",
+    "text(0,0,22*u,clock",
     "local title,detail=core.title_lines(prop('media-title',''),prop('path',''))",
     "text(layout.margin,layout.title_y,core.metrics.title_font*u,title",
     "if layout.volume then",
@@ -189,8 +191,8 @@ require(
     "autoload_state=autoload_state",
     "for _,item in ipairs(entry.by_server[index] or {}) do found[#found+1]=item end",
     "if on_missing then on_missing()",
-    "else status='该集没有弹幕';publish() end",
-    "episode_load_generation=episode_load_generation+1",
+    "else status='该集没有弹幕';autoload_state='empty';publish() end",
+    "local function prepare_notice()",
 )
 require("portable_config/script-modules/player_ui_danmaku_render.lua",
     "DanmakuFactory.exe", "'sub-add'", "'secondary-sid'",
@@ -227,7 +229,7 @@ require(
     "tools/standalone/build.py",
     "def source_release_files(folders):",
     "git','ls-files','-z'",
-    "SOURCE_ADDITIONS={",
+    "if relative in tracked:files.append(path)",
 )
 private_config_names = {"animejanai-danmaku.conf", "animejanai-danmaku.conf.tmp", "animejanai-danmaku.conf.bak"}
 bundled_private_configs = [
