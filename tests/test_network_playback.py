@@ -60,8 +60,7 @@ class Frontend:
             '--input-ipc-server='+self.pipe,'--vo=gpu','--gpu-api=d3d11','--gpu-context=d3d11',
             '--d3d11-warp=yes','--hwdec=no','--vf=','--ao=null','--idle=yes','--keep-open=yes',
             '--save-position-on-quit=no','--resume-playback=no','--geometry=1280x720',
-            '--terminal=yes','--msg-level=all=warn','--log-file='+str(OUT/(name+'-mpv.log')),
-            '--script-opts=thumbfast-network=yes,thumbfast-spawn_first=yes']
+            '--terminal=yes','--msg-level=all=warn','--log-file='+str(OUT/(name+'-mpv.log'))]
         self.proc=subprocess.Popen([str(APP/'mpv-AnimeFusion.exe'),*flags,*args],cwd=APP,stdout=self.log,stderr=self.log)
         end=time.monotonic()+15
         while time.monotonic()<end:
@@ -103,7 +102,7 @@ class Frontend:
             if failed:
                 check(evidence['bright_pixels']>=100,'failed playback displays the error text')
             else:
-                check(evidence['bright_pixels']<100,'idle player has no playback controls or status text')
+                check(evidence['bright_pixels']>=100,'idle player displays the upstream OSC logo')
             (OUT/(name+'-capture.json')).write_text(json.dumps(evidence,indent=2),encoding='utf-8')
         else:
             self.wait(lambda:self.get('user-data/player_ui/ui',{}).get('overlay_ok') is True,'overlay not rendered')
@@ -153,7 +152,7 @@ def direct_and_ui():
         time.sleep(.4);before=len(requests('/auth/direct.y4m'))
         check(before==1,'direct playback starts one media request')
         p.command('loadfile',BASE+'/never/next.y4m','append')
-        p.command('script-message-to','thumbfast','thumb','12','30','30')
+        check(not (APP/'portable_config/scripts/thumbfast.lua').exists(),'hover-preview decoder is not packaged')
         for kind in ('speed','audio','sub','settings','stats'):
             p.command('script-message','player_ui-menu',kind);time.sleep(.12)
         p.command('script-message','player_ui-hide');p.command('script-message','player_ui-show');time.sleep(.15)
@@ -162,7 +161,7 @@ def direct_and_ui():
             p.command('mouse',int((seek['x0']+(seek['x1']-seek['x0'])*fraction)*ui['scale']),int((seek['y0']+seek['y1'])*ui['scale']/2));time.sleep(.2)
         time.sleep(1)
         after=len(requests('/auth/direct.y4m'))
-        check(after==before,'menus, network speed and thumbnail requests cause no extra media requests')
+        check(after==before,'menus, network speed and timeline hovering cause no extra media requests')
         check(not requests('/never/next.y4m'),'queued next video was not prefetched')
         check(all(r['authorization']=='LocalTest sample' for r in requests('/auth/direct.y4m')),'caller authorization retained')
         check(MAX_ACTIVE.get('/auth/direct.y4m')==1,'direct video has no concurrent readers')
