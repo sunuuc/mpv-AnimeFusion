@@ -5,7 +5,7 @@ assert(online.series_source_key('星海旅行记 S1E1')~=online.series_source_ke
 assert(online.series_source_key('星海旅行记 E1')~=online.series_source_key('星海旅行记 S1E1'))
 assert(online.series_source_key('星海旅行记 Part 1 S1E1')~=online.series_source_key('星海旅行记 Part 2 S1E1'))
 assert(online.series_source_key('其他作品 S1E1')~=online.series_source_key('星海旅行记 S1E1'))
-assert(online.series_source_key('星海旅行记 剧场版')==nil)
+assert(online.series_source_key('星海旅行记 剧场版')~=nil)
 local data={animes={
     {animeId=1,animeTitle='星海旅行记(2020)',typeDescription='TV动画',source='dandan'},
     {animeId=2,animeTitle='星海旅行记 第二季(2021)',typeDescription='TV动画',source='dandan'},

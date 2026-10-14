@@ -200,7 +200,7 @@ public partial class DanmakuSearchWindow : Window
     {
         if (e.Key != Key.Enter) return;
         e.Handled = true;
-        Search();
+        Search(refresh: true);
     }
 
     void UpdateSearchPlaceholder()
@@ -422,19 +422,15 @@ public partial class DanmakuSearchWindow : Window
         if (!string.IsNullOrWhiteSpace(_displayedKeyword))
         {
             _pendingSearchSource = _selectedSearchSource;
-            _pendingSearches = 1;
-            _failedSearches = 0;
-            _respondedSearches = 0;
-            Status.Text = "";
         }
         RefreshFilters();
         if (_ready && !string.IsNullOrWhiteSpace(_displayedKeyword))
             Player.CommandV("script-message", "player_ui-danmaku-search-filter", _selectedSearchSource.ToString());
     }
 
-    void Search_Click(object sender, RoutedEventArgs e) => Search();
+    void Search_Click(object sender, RoutedEventArgs e) => Search(refresh: true);
 
-    void Search()
+    void Search(bool refresh = false)
     {
         string keyword = SearchBox.Text.Trim();
         if (keyword.Length < 2)
@@ -457,7 +453,7 @@ public partial class DanmakuSearchWindow : Window
         _pendingSearches = 1;
         _failedSearches = 0;
         _respondedSearches = 0;
-        if (!string.Equals(keyword, _displayedKeyword, StringComparison.Ordinal))
+        if (refresh || !string.Equals(keyword, _displayedKeyword, StringComparison.Ordinal))
         {
             _shows.Clear();
             _episodes.Clear();
@@ -466,7 +462,7 @@ public partial class DanmakuSearchWindow : Window
         Status.Text = "搜索作品中…";
         UpdateEmptyState();
         Player.CommandV("script-message", "player_ui-danmaku-search-query", keyword,
-            _selectedSearchSource.ToString(), _initialSeason?.ToString() ?? "", "true");
+            _selectedSearchSource.ToString(), _initialSeason?.ToString() ?? "", refresh ? "true" : "false");
     }
 
     void Show_Changed(object sender, SelectionChangedEventArgs e)

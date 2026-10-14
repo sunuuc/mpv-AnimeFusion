@@ -164,10 +164,15 @@ public sealed class MalClient
             var subject = await api.V0.Subjects[known].GetAsync(cancellationToken: token).ConfigureAwait(false);
             return subject == null ? [] : [subject];
         }
-        var response = await api.V0.Search.Subjects.PostAsync(new SubjectsPostRequestBody
-        { Keyword = title, Filter = new() { Type = [2] } }, c => c.QueryParameters.Limit = 10, token).ConfigureAwait(false);
+        var candidates = new List<Subject>();
+        foreach (string keyword in BangumiMedia.SearchTitles(title))
+        {
+            var response = await api.V0.Search.Subjects.PostAsync(new SubjectsPostRequestBody
+            { Keyword = keyword, Filter = new() { Type = [2] } }, c => c.QueryParameters.Limit = 10, token).ConfigureAwait(false);
+            candidates.AddRange(response?.Data ?? []);
+        }
         var result = new List<Subject>();
-        foreach (var candidate in response?.Data ?? [])
+        foreach (var candidate in candidates.DistinctBy(s => s.Id))
         {
             if (candidate.Id is not > 0) continue;
             var subject = await api.V0.Subjects[candidate.Id.Value].GetAsync(cancellationToken: token).ConfigureAwait(false);

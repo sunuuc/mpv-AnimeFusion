@@ -63,18 +63,22 @@ return function(c)
         local key=value:lower()
         return CODEC[key] or key:upper()
     end
-    local function title_label(value)
+    local function title_label(value,literal)
         if not value or value=='' then return nil end
         local title=value:gsub('^%s+',''):gsub('%s+$','')
-        if title:match('%?') or title:match('://') or title:match('/') then
+        if title:match('%?') or title:match('://') or title:match('[/\\]') then
             title=(title:match('^[^?]*') or title)
             title=title:gsub('^%a[%w+.-]*://',''):gsub('^.*[/\\]','')
             title=title:gsub('%%(%x%x)',function(hex)return string.char(tonumber(hex,16))end)
         end
-        if title=='' or title:match('^[Ss]tream%.[%w]+$') then return nil end
+        if title=='' or not literal and title:match('^[Ss]tream%.[%w]+$') then return nil end
         return title
     end
     local function track_name(t)
+        if t.type=='sub' then
+            return (t.external and title_label(t['external-filename'],true) or nil)
+                or title_label(t.title,true) or ('字幕 '..t.id)
+        end
         local parts={}
         local function add(value) if value and value~='' then parts[#parts+1]=value end end
         local lang=lang_label(t.lang)
@@ -218,10 +222,11 @@ return function(c)
                     row(track_name(t),function()
                         c.set_number(p,id)
                         if p=='sid' then c.set_bool('sub-visibility',true) end
-                    end,selected==tostring(id),{stay=true,key=p..':'..id})
+                    end,selected==tostring(id),{stay=true,key=p..':'..id,wrap=typ=='sub' and 0 or nil})
                 end
             end
             separator()
+            if kind=='sub' then row('搜索字幕',function()c.command('script-message-to','mpvnet','show-subtitle-search')end) end
             row(kind=='sub' and '导入本地字幕' or '添加音轨',function()c.open_file(kind)end,false,{icon='plus'})
             if kind=='audio' then link('音频设置','audio-settings') end
         elseif kind=='danmaku' then

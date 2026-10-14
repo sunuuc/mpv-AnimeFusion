@@ -10,6 +10,7 @@
 		<UseWPF>true</UseWPF>
 		<UseWindowsForms>true</UseWindowsForms>
 		<ApplicationIcon>mpv-icon.ico</ApplicationIcon>
+		<ApplicationManifest>app.manifest</ApplicationManifest>
 		<FileVersion>1.3.3.0</FileVersion>
 		<AssemblyVersion>1.3.3.0</AssemblyVersion>
 		<InformationalVersion>1.3.3</InformationalVersion>
@@ -45,6 +46,7 @@
 	<ItemGroup>
 		<PackageReference Include="BangumiNet.Api" />
 		<PackageReference Include="SkiaSharp" />
+        <PackageReference Include="SharpCompress" />
 		<PackageReference Include="CommunityToolkit.Mvvm" />
 		<PackageReference Include="Microsoft.Xaml.Behaviors.Wpf" />
 	</ItemGroup>

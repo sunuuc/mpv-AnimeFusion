@@ -7,6 +7,21 @@ local core=dofile(assert(root)..'/portable_config/script-modules/player_ui_core.
 local checks=0
 local function check(v,label) checks=checks+1;assert(v,label) end
 local function suite()
+ local storage=dofile(root..'/portable_config/script-modules/player_ui_danmaku_online.lua')
+ for _,case in ipairs({
+  {'摇曳百合 S2E1 - 归来的主人公.mp4','摇曳百合','第 2 季','第 1 集'},
+  {'摇曳百合 S1E12','摇曳百合','第 1 季','第 12 集'},
+  {'Series Season 3 E2','Series','第 3 季','第 2 集'},
+  {'Series S0E1','Series','特别篇','第 1 集'},
+  {'电影名字 剧场版','电影名字 剧场版','电影','弹幕'},
+  {'CON S1E1','_CON','第 1 季','第 1 集'},
+  {'设置 S1E1','设置（作品）','第 1 季','第 1 集'},
+  {'作品%PATH%! S2E1','作品_PATH__','第 2 季','第 1 集'},
+ }) do
+  local work,season,episode=storage.storage_context(case[1])
+  check(work==case[2] and season==case[3] and episode==case[4],
+   'danmaku storage distinguishes work, season and episode safely: '..case[1]..' => '..work..'/'..season..'/'..episode)
+ end
  check(core.time(3661)=='1:01:01' and core.rate(1250000)=='1.25 MB/s','units')
  check(core.title('', 'https://server.invalid/a/movie.mkv?token=secret')=='movie.mkv','private URL query hidden')
  local show,episode=core.title_lines('作品名字 (2025) S03E07 - 剧集名字','')
@@ -69,6 +84,12 @@ local function suite()
  for i=9,16 do local v=f:sample(i*.25,96,false);if i==16 then check(v==0,'stalled FPS')end end
  check(f:sample(5,96,true)==0 and f:sample(5.25,nil,false)==nil,'paused/unavailable counter')
  check(#core.wrap(string.rep('很长的字幕标题',30),260,20,2)==2,'long labels bounded to two lines')
+ local complete_subtitle='中文 · Assrt · [异域-11番小队][摇曳百合合集 Yuru Yuri][BDRIP][720P][X264-10bit_AAC][繁体字幕][第01集].tc.ass'
+ for _,width in ipairs({120,260,500}) do
+  local lines=core.wrap(complete_subtitle,width,20,0)
+  check(table.concat(lines)==complete_subtitle and not table.concat(lines):find('…',1,true),
+   'uncapped subtitle wrapping preserves every character and the variant suffix at width '..width)
+ end
  local now,timers,bindings,messages,observers=0,{},{},{},{}
  local clock_config=os.tmpname();local f=assert(io.open(clock_config,'wb'));f:write('show_clock=yes\nnetwork_speed=yes\n');f:close()
  local pos={x=0,y=0};local commands={};local player_overlay_data,volume_overlay_data;local renderer_arguments
@@ -155,7 +176,7 @@ local function suite()
  end}
  package.loaded['mp.utils']={parse_json=function(text)return json_responses[text] or {}end,
   format_json=function(value)local key='json-'..tostring(value);json_responses[key]=value;return key end,
-  getpid=function()return 12345 end,file_info=function()return nil end}
+  getpid=function()return 12345 end,file_info=function(path)if path:match("^danmaku%-private/")then return {is_dir=true} end end}
  dofile(root..'/portable_config/scripts/player_ui.lua');advance(.1)
  local function ui()return props['user-data/player_ui/ui']end
  local function button(id)for _,b in ipairs(ui().controls)do if b.id==id then return b end end end
@@ -335,6 +356,24 @@ local function suite()
  click('sub')
  check(ui().menu=='sub' and not button('subtitle-slot-1') and not button('subtitle-slot-2')
   and not player_overlay_data:find('subtitle-slot',1,true),'subtitle chooser has no unused 1/2 selector')
+ local subtitle_tracks=props['track-list']
+ props['track-list']={
+  {id=12,type='sub',title='Assrt · other title',lang='zh',codec='ass',external=true,
+   ['external-filename']='C:\\字幕\\[CASO][Yuruyuri2][01][BDRIP][1920x1080][x264_FLAC][C38B0799].sc.ass'},
+  {id=13,type='sub',title='Assrt · other title',lang='zh',codec='ass',external=true,
+   ['external-filename']='C:\\字幕\\[CASO][Yuruyuri2][01][BDRIP][1920x1080][x264_FLAC][C38B0799].tc.ass'},
+ }
+ observers['track-list']();advance(.1)
+ for _,suffix in ipairs({'.sc.ass','.tc.ass'}) do
+  local found
+  for _,r in ipairs(ui().rows) do if r.text:sub(-#suffix)==suffix then found=r;break end end
+  check(found and found.key,'subtitle menu retains the complete filename including '..suffix)
+  check(found and found.text=='[CASO][Yuruyuri2][01][BDRIP][1920x1080][x264_FLAC][C38B0799]'..suffix,
+   'subtitle menu contains only the original filename, without language, service, codec or external-track tags')
+ end
+ check(player_overlay_data:find('.sc.ass',1,true) and player_overlay_data:find('.tc.ass',1,true),
+  'rendered ASS menu includes the distinct simplified and traditional subtitle suffixes')
+ props['track-list']=subtitle_tracks;observers['track-list']();advance(.1)
  click(row('sid:3'));check(props.sid==3 and props['secondary-sid']=='no','subtitle chooser selects the primary track')
  click(row('sid:no'));check(props.sid=='no' and props['secondary-sid']=='no','subtitle off does not affect the unused secondary track')
  click('settings');check(ui().menu=='settings' and not button('ai'),'settings owns AI and statistics')
@@ -391,7 +430,7 @@ local function suite()
  check(button('playlist')==nil and ui().menu~='playlist',
   'queued media does not add a playlist button or drawer')
  click('settings');bindings['player_ui-menu-escape']();advance(.1);check(ui().menu=='','settings menu closes cleanly')
- click('sub');check(row('中文（简体） · PGS 图形字幕 · 外挂')~=nil,'localized subtitle label hides URL secrets')
+ click('sub');check(row('Stream.ass')~=nil,'subtitle filename remains literal while URL secrets are hidden')
  bindings['player_ui-menu-escape']();advance(.1)
  click('audio');click(row('添加音轨'))
  check(commands[#commands][1]=='script-message-to' and commands[#commands][2]=='mpvnet'
@@ -528,7 +567,7 @@ local function suite()
   json_responses[comments_json]={comments={{p='2,1,16777215',m='你好世界'}}}
   json_responses[empty_comments_json]={comments={}}
   local old_getenv,old_open,old_remove,old_rename=os.getenv,io.open,os.remove,os.rename
-  local private_path='danmaku-private/mpv-AnimeFusion-danmaku.conf'
+  local private_path='danmaku-private/mpv-AnimeFusion/Danmaku/设置/mpv-AnimeFusion-danmaku.conf'
   local private_servers='api_servers=https://danmaku.example|ME,https://danmaku2.example|Catcat\n'
   local private_files={[private_path]=private_servers}
   os.getenv=function(name)if name=='TEMP' then return out~='' and out or root..'/_probe' end;
@@ -597,7 +636,7 @@ local function suite()
    'one display area governs fixed and scrolling comments without a second limit')
   check(danmaku_state.settings.opacity==204,'percentage opacity maps to upstream byte opacity')
   messages['player_ui-danmaku-save-words'](' English \r\n中文\n\n')
-  check(private_files['danmaku-private/mpv-AnimeFusion-danmaku-blocklist.txt']=='English\n中文',
+  check(private_files['danmaku-private/mpv-AnimeFusion/Danmaku/设置/mpv-AnimeFusion-danmaku-blocklist.txt']=='English\n中文',
    'word blocking persists trimmed UTF-8 words one per line')
   messages['player_ui-danmaku-words']()
   check(commands[#commands][3]=='show-danmaku-blocklist' and commands[#commands][4]=='English\n中文',
@@ -680,15 +719,12 @@ local function suite()
  complete_async(fastest_detail,'auto-episode-one')
  complete_async(pending_async[next_async],empty_comments_json)
  local after_empty=next_async
- complete_async(searches[2],second_search_json)
- check(next_async==after_empty,'empty fastest route waits for the higher priority route, not the next response')
- complete_async(searches[1],first_search_json)
- check(table.concat(pending_async[next_async].spec.args,' '):find(('https://danmaku.example/api/v2/bangumi/21'),1,true),
-  'fallback proceeds from the top of the saved route order')
- complete_async(pending_async[next_async],'auto-episode-one')
- complete_async(pending_async[next_async],comments_json)
  danmaku_state=props['user-data/player_ui/danmaku']
- check(danmaku_state.loaded and danmaku_state.source==1,'first non-empty comments finish automatic loading')
+ check(not danmaku_state.loaded and danmaku_state.source==3 and danmaku_state.autoload_state=='empty',
+  'a successful zero-comment reply keeps its original source')
+ complete_async(searches[2],second_search_json)
+ complete_async(searches[1],first_search_json)
+ check(next_async==after_empty,'late search responses do not switch a successfully matched empty source')
  local after_success=next_async
  event_handlers['file-loaded'][#event_handlers['file-loaded']]();advance(100)
  check(next_async==after_success,'metadata events and elapsed time never resubmit automatic searches')

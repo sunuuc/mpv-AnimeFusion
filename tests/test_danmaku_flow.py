@@ -13,6 +13,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def data_directory(folder):
+    path = folder / "mpv-AnimeFusion" / "Danmaku" / "设置"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 SCRIPT = Path(os.environ.get("ANIMEJANAI_DANMAKU_SCRIPT", ROOT / "portable_config/scripts/player_ui_danmaku.lua"))
 MPV = Path(os.environ.get('ANIMEJANAI_MPV_EXE',r"D:\Apps\mpv-AnimeJaNai\mpv.exe"))
 
@@ -210,6 +216,7 @@ class AutoSearchHandler(BaseHTTPRequestHandler):
 
 class PlatformFallbackHandler(BaseHTTPRequestHandler):
     seen: list[str] = []
+    fail_first_platform = False
 
     def log_message(self, *_args):
         pass
@@ -241,6 +248,9 @@ class PlatformFallbackHandler(BaseHTTPRequestHandler):
             body = {'bangumi': {'episodes': [
                 {'episodeId': 205, 'episodeNumber': 5, 'episodeTitle': '第5集'}]}}
         elif self.path == '/api/v2/comment/205?withRelated=true':
+            if PlatformFallbackHandler.fail_first_platform:
+                self.send_error(503)
+                return
             body = {'comments': []}
         elif self.path == '/api/v2/bangumi/102':
             body = {'bangumi': {'episodes': [
@@ -372,7 +382,7 @@ class DanmakuFlowTest(unittest.TestCase):
         try:
             with tempfile.TemporaryDirectory(prefix='danmaku-scoped-search-') as directory:
                 folder = Path(directory)
-                (folder / 'mpv-AnimeFusion-danmaku.conf').write_text('api_servers=' + ','.join(
+                (data_directory(folder) / 'mpv-AnimeFusion-danmaku.conf').write_text('api_servers=' + ','.join(
                     f'http://127.0.0.1:{server.server_port}/{route}|{route}'
                     for route in ('failed', 'empty', 'slow')) + '\n', encoding='utf-8')
                 result_path = folder / 'state.json'
@@ -434,7 +444,7 @@ mp.add_timeout(15,function()finish('timeout',1)end)
         try:
             with tempfile.TemporaryDirectory(prefix='danmaku-cancel-search-') as directory:
                 folder = Path(directory)
-                (folder / 'mpv-AnimeFusion-danmaku.conf').write_text(
+                (data_directory(folder) / 'mpv-AnimeFusion-danmaku.conf').write_text(
                     f'api_servers=http://127.0.0.1:{server.server_port}/slow|slow\n', encoding='utf-8')
                 result_path = folder / 'state.json'
                 driver = folder / 'driver.lua'
@@ -482,7 +492,7 @@ mp.add_timeout(10,function()finish('timeout',1)end)
                     sample = folder / name
                     sample.write_bytes((bytes([16]) * 256 + bytes([128]) * 128) * 60)
                     samples.append(lua_string(str(sample)))
-                (folder / 'mpv-AnimeFusion-danmaku.conf').write_text(
+                (data_directory(folder) / 'mpv-AnimeFusion-danmaku.conf').write_text(
                     f'api_servers=http://127.0.0.1:{server.server_port}|本地回归\n', encoding='utf-8')
                 result_path = folder / 'state.json'
                 driver = folder / 'driver.lua'
@@ -544,7 +554,7 @@ mp.add_timeout(20,function()finish(1)end)
             server.server_close()
             thread.join(timeout=2)
 
-    def test_automatic_match_queries_all_routes_in_parallel_and_skips_empty_route(self):
+    def test_automatic_match_queries_all_routes_in_parallel_and_keeps_normal_empty_route(self):
         self.check_parallel_routes((0, 2), True)
 
     def test_fast_nonempty_route_loads_before_slow_high_priority_search(self):
@@ -564,7 +574,7 @@ mp.add_timeout(20,function()finish(1)end)
                 folder = Path(directory)
                 sample = folder / '尼古喵喵 (2026) S1E5.yuv'
                 sample.write_bytes((bytes([16]) * 256 + bytes([128]) * 128) * 60)
-                (folder / 'mpv-AnimeFusion-danmaku.conf').write_text(
+                (data_directory(folder) / 'mpv-AnimeFusion-danmaku.conf').write_text(
                     f'api_servers=http://127.0.0.1:{server.server_port}|第一线路,'
                     f'http://127.0.0.1:{server.server_port}/second|第二线路\n', encoding='utf-8')
                 result_path = folder / 'state.json'
@@ -581,6 +591,9 @@ end
 mp.add_timeout(.25,function()mp.commandv('loadfile',sample,'replace')end)
 mp.add_periodic_timer(.05,function()
     local data=mp.get_property_native('user-data/player_ui/danmaku')
+    if type(data)=='table' and data.autoload_state=='empty' then
+        finish({count=data.count,state=data.autoload_state,source=data.source},0)
+    end
     if type(data)=='table' and data.loaded and data.count==1 then
         finish({count=data.count,state=data.autoload_state,source=data.source},0)
     end
@@ -604,7 +617,8 @@ end)
                     outcome['requests'] = list(ParallelAutoloadHandler.seen)
                 self.assertEqual(proc.returncode, 0,
                     (outcome, proc.stderr.decode('utf-8', 'replace')[-1200:]))
-                self.assertEqual(outcome, {'count': 1, 'state': 'loaded', 'source': 2})
+                self.assertEqual(outcome, {'count': 0, 'state': 'empty', 'source': 1} if empty_route_expected
+                    else {'count': 1, 'state': 'loaded', 'source': 2})
                 self.assertGreaterEqual(ParallelAutoloadHandler.max_active, 2,
                     'automatic route searches were not in flight concurrently')
                 self.assertEqual(sum(path.endswith('/api/v2/match') for path in ParallelAutoloadHandler.seen), 0)
@@ -613,7 +627,10 @@ end)
                     self.assertIn('/api/v2/comment/205?withRelated=true', ParallelAutoloadHandler.seen)
                 else:
                     self.assertNotIn('/api/v2/bangumi/101', ParallelAutoloadHandler.seen)
-                self.assertIn('/second/api/v2/comment/305?withRelated=true', ParallelAutoloadHandler.seen)
+                if empty_route_expected:
+                    self.assertNotIn('/second/api/v2/comment/305?withRelated=true', ParallelAutoloadHandler.seen)
+                else:
+                    self.assertIn('/second/api/v2/comment/305?withRelated=true', ParallelAutoloadHandler.seen)
         finally:
             server.shutdown()
             server.server_close()
@@ -621,6 +638,7 @@ end)
 
     def test_automatic_match_switches_to_platform_with_comments(self):
         PlatformFallbackHandler.seen = []
+        PlatformFallbackHandler.fail_first_platform = True
         server = ThreadingHTTPServer(('127.0.0.1', 0), PlatformFallbackHandler)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
@@ -629,7 +647,7 @@ end)
                 folder = Path(directory)
                 sample = folder / '尼古喵喵 (2026) S1E5 - 第5集.yuv'
                 sample.write_bytes((bytes([16]) * 256 + bytes([128]) * 128) * 60)
-                (folder / 'mpv-AnimeFusion-danmaku.conf').write_text(
+                (data_directory(folder) / 'mpv-AnimeFusion-danmaku.conf').write_text(
                     f'api_servers=http://127.0.0.1:{server.server_port}|本地回归\n', encoding='utf-8')
                 result_path = folder / 'state.json'
                 driver = folder / 'driver.lua'
@@ -674,6 +692,7 @@ end)
                 self.assertIn('/api/v2/bangumi/102', PlatformFallbackHandler.seen)
                 self.assertIn('/api/v2/comment/305?withRelated=true', PlatformFallbackHandler.seen)
         finally:
+            PlatformFallbackHandler.fail_first_platform = False
             server.shutdown()
             server.server_close()
             thread.join(timeout=2)
@@ -686,7 +705,7 @@ end)
         try:
             with tempfile.TemporaryDirectory(prefix='animejanai-platform-manual-') as directory:
                 folder = Path(directory)
-                (folder / 'mpv-AnimeFusion-danmaku.conf').write_text(
+                (data_directory(folder) / 'mpv-AnimeFusion-danmaku.conf').write_text(
                     f'api_servers=http://127.0.0.1:{server.server_port}|本地回归\n', encoding='utf-8')
                 result_path = folder / 'state.json'
                 driver = folder / 'driver.lua'
@@ -755,7 +774,7 @@ end)
                 folder = Path(directory)
                 sample = folder / '尼古喵喵 (2026) S1E5.yuv'
                 sample.write_bytes((bytes([16]) * 256 + bytes([128]) * 128) * 60)
-                (folder / 'mpv-AnimeFusion-danmaku.conf').write_text(
+                (data_directory(folder) / 'mpv-AnimeFusion-danmaku.conf').write_text(
                     f'api_servers=http://127.0.0.1:{server.server_port}/unavailable|不可用线路,'
                     f'http://127.0.0.1:{server.server_port}|可用线路\n', encoding='utf-8')
                 result_path = folder / 'state.json'
@@ -807,7 +826,7 @@ end)
                 folder = Path(directory)
                 sample = folder / '尼古喵喵 (2026) S1E5 - 喵喵们要去秘境啦喵.yuv'
                 sample.write_bytes((bytes([16]) * 256 + bytes([128]) * 128) * 60)
-                (folder / 'mpv-AnimeFusion-danmaku.conf').write_text(
+                (data_directory(folder) / 'mpv-AnimeFusion-danmaku.conf').write_text(
                     f'api_servers=http://127.0.0.1:{server.server_port}/wrong|季度不符,'
                     f'http://127.0.0.1:{server.server_port}/empty|空结果,'
                     f'http://127.0.0.1:{server.server_port}|可用线路\n', encoding='utf-8')
@@ -866,7 +885,7 @@ end)
         try:
             with tempfile.TemporaryDirectory(prefix="animejanai-danmaku-flow-") as directory:
                 folder = Path(directory)
-                (folder / "mpv-AnimeFusion-danmaku.conf").write_text(
+                (data_directory(folder) / "mpv-AnimeFusion-danmaku.conf").write_text(
                     f"api_servers=http://127.0.0.1:{server.server_port}|本地测试,"
                     f"http://127.0.0.1:{server.server_port}/unused|第二线路\n", encoding="utf-8")
                 result_path = folder / "state.json"
@@ -934,7 +953,7 @@ mp.add_timeout(25,function()fail('timed out in phase '..phase)end)
                 # opening a media-server stream or putting fixture labels in the UI.
                 frame = bytes([16]) * 256 + bytes([128]) * 128
                 sample.write_bytes(frame * 60)
-                (folder / "mpv-AnimeFusion-danmaku.conf").write_text(
+                (data_directory(folder) / "mpv-AnimeFusion-danmaku.conf").write_text(
                     f"api_servers=http://127.0.0.1:{server.server_port}|本地回归\n", encoding="utf-8")
                 result_path = folder / "state.json"
                 driver = folder / "driver.lua"
@@ -1005,7 +1024,7 @@ mp.add_timeout(30,function()finish({error='automatic matching did not load comme
                 sample = folder / "尼古喵喵 (2026) S1E5 - 喵喵们要去秘境啦喵.yuv"
                 frame = bytes([16]) * 256 + bytes([128]) * 128
                 sample.write_bytes(frame * 60)
-                (folder / "mpv-AnimeFusion-danmaku.conf").write_text(
+                (data_directory(folder) / "mpv-AnimeFusion-danmaku.conf").write_text(
                     f"api_servers=http://127.0.0.1:{server.server_port}|本地回归\n", encoding="utf-8")
                 result_path = folder / "state.json"
                 driver = folder / "driver.lua"
@@ -1066,7 +1085,7 @@ end)
         try:
             with tempfile.TemporaryDirectory(prefix="animejanai-danmaku-cache-") as directory:
                 folder = Path(directory)
-                (folder / "mpv-AnimeFusion-danmaku.conf").write_text(
+                (data_directory(folder) / "mpv-AnimeFusion-danmaku.conf").write_text(
                     f"api_servers=http://127.0.0.1:{server.server_port}|主线路,"
                     f"http://127.0.0.1:{server.server_port}/second|第二线路\n", encoding="utf-8")
                 result_path = folder / "state.json"
@@ -1075,6 +1094,8 @@ end)
 local utils=require('mp.utils')
 local output=%s
 local phase=0
+local real_time=os.time
+os.time=function()return real_time()+(phase>=3 and 601 or 0)end
 local function fail(reason)
     local file=assert(io.open(output,'wb'))
     file:write(utils.format_json({error=reason}));file:close()

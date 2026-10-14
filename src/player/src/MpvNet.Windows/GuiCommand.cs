@@ -23,6 +23,7 @@ public class GuiCommand
     Dictionary<string, Action<IList<string>>>? _commands;
     DanmakuSourcesWindow? _danmakuSourcesWindow;
     DanmakuSearchWindow? _danmakuSearchWindow;
+    SubtitleSearchWindow? _subtitleSearchWindow;
     DanmakuBlocklistWindow? _danmakuBlocklistWindow;
     BangumiMatchWindow? _bangumiMatchWindow;
     TraktMatchWindow? _traktMatchWindow;
@@ -56,6 +57,7 @@ public class GuiCommand
         ["show-decoders"] = args => ShowDecoders(),
         ["show-danmaku-sources"] = ShowDanmakuSources,
         ["show-danmaku-search"] = ShowDanmakuSearch,
+        ["show-subtitle-search"] = ShowSubtitleSearch,
         ["show-danmaku-blocklist"] = ShowDanmakuBlocklist,
         ["show-bangumi-match"] = ShowBangumiMatch,
         ["bangumi-action"] = BangumiAction,
@@ -140,6 +142,24 @@ public class GuiCommand
             _danmakuSearchWindow = null;
             RestorePlayerOwner();
         };
+        ElementHost.EnableModelessKeyboardInterop(window);
+        window.Show();
+    }
+
+    void ShowSubtitleSearch(IList<string> args)
+    {
+        if (_subtitleSearchWindow is { IsCurrent: true } existing)
+        {
+            existing.RestoreResults();
+            if (!existing.IsVisible) existing.Show();
+            existing.Activate();
+            return;
+        }
+        var window = new SubtitleSearchWindow();
+        new WindowInteropHelper(window).Owner = MainForm.Instance!.Handle;
+        _subtitleSearchWindow = window;
+        window.Closed += (_, _) => { if (_subtitleSearchWindow == window) _subtitleSearchWindow = null; RestorePlayerOwner(); };
+        window.IsVisibleChanged += (_, _) => { if (!window.IsVisible) RestorePlayerOwner(); };
         ElementHost.EnableModelessKeyboardInterop(window);
         window.Show();
     }

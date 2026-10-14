@@ -77,13 +77,16 @@ double osd_get_force_video_pts(struct osd_state *osd)
          '    atomic_store(&osd->secondary_interval_ns,\n'
          '                 MP_TIME_S_TO_NS(1.0 / osd->opts->secondary_sub_render_fps));')
     edit('video/out/vo.h', 'struct vo_frame {\n',
-         'struct vo_frame {\n    double playback_speed; // media seconds per wall-clock second\n')
+         'struct vo_frame {\n    double playback_speed; // media seconds per wall-clock second\n'
+         '    bool secondary_sub_paused; // first frame before playback restart completes\n')
     edit('player/video.c', '        .can_drop = opts->frame_dropping & 1,',
-         '        .can_drop = opts->frame_dropping & 1,\n        .playback_speed = mpctx->video_speed,')
+         '        .can_drop = opts->frame_dropping & 1,\n        .playback_speed = mpctx->video_speed,\n'
+         '        .secondary_sub_paused = !mpctx->restart_complete,')
     edit('video/out/vo.c', '    bool request_redraw;            // redraw request from player to VO',
          '    double secondary_anchor_pts;\n    int64_t secondary_anchor_ns;\n'
          '    double secondary_clock_speed;\n    int64_t secondary_next_ns;\n'
          '    bool secondary_clock_valid;\n'
+         '    bool secondary_clock_paused;\n'
          '    bool request_redraw;            // redraw request from player to VO')
     edit('video/out/vo.c', 'static bool render_frame(struct vo *vo)\n', '''// The video frame remains immutable. Only secondary ASS receives this clock;
 // primary subtitles and video/AI processing keep their original timestamps.
@@ -103,7 +106,7 @@ static bool secondary_redraw_due(struct vo *vo)
     struct vo_internal *in = vo->in;
     struct vo_frame *frame = in->current_frame;
     if (!frame || frame->playback_speed <= 0 || frame->display_synced ||
-        in->paused ||
+        in->paused || in->secondary_clock_paused ||
         !in->hasframe || !in->visible || in->vsync_interval <= 1 ||
         !in->secondary_clock_valid || !osd_secondary_needs_redraw(vo->osd))
         return false;
@@ -118,7 +121,7 @@ static double secondary_clock_pts(struct vo_internal *in, int64_t now)
 {
     if (!in->secondary_clock_valid)
         return MP_NOPTS_VALUE;
-    double elapsed = in->paused ? 0 :
+    double elapsed = in->paused || in->secondary_clock_paused ? 0 :
         MP_TIME_NS_TO_S(MPMAX(0, now - in->secondary_anchor_ns));
     return in->secondary_anchor_pts + elapsed * in->secondary_clock_speed;
 }
@@ -129,8 +132,14 @@ static void update_secondary_clock(struct vo *vo, bool new_frame)
     struct vo_frame *frame = in->current_frame;
     int64_t now = mp_time_ns();
     int64_t sample_time = now;
-    if (!frame || !frame->current || frame->current->pts == MP_NOPTS_VALUE ||
+    if (!in->hasframe || !frame || !frame->current || frame->current->pts == MP_NOPTS_VALUE ||
         frame->playback_speed <= 0) {
+        osd_set_secondary_pts(vo->osd, MP_NOPTS_VALUE);
+        return;
+    }
+    // Seek reset retains the old image for redraws. Only a newly submitted
+    // video frame may establish the timeline for the new playback position.
+    if (!in->secondary_clock_valid && !new_frame) {
         osd_set_secondary_pts(vo->osd, MP_NOPTS_VALUE);
         return;
     }
@@ -140,7 +149,11 @@ static void update_secondary_clock(struct vo *vo, bool new_frame)
     double video_pts = frame->current->pts;
     if (frame->display_synced)
         video_pts += frame->ideal_frame_vsync;
-    if (!in->secondary_clock_valid || (new_frame && in->paused)) {
+    bool was_paused = in->secondary_clock_paused;
+    if (new_frame)
+        in->secondary_clock_paused = in->paused || frame->secondary_sub_paused;
+    if (!in->secondary_clock_valid ||
+        (new_frame && (was_paused || in->secondary_clock_paused))) {
         in->secondary_anchor_pts = video_pts;
         in->secondary_anchor_ns = sample_time;
         in->secondary_clock_speed = frame->playback_speed;
@@ -222,19 +235,23 @@ static bool render_frame(struct vo *vo)
     edit('video/out/vo.c', '    in->hasframe = false;\n    in->hasframe_rendered = false;',
          '    in->hasframe = false;\n    in->hasframe_rendered = false;\n'
          '    in->secondary_clock_valid = false;\n'
+         '    in->secondary_clock_paused = true;\n'
          '    in->secondary_anchor_ns = 0;\n    in->secondary_clock_speed = 0;\n'
          '    in->secondary_next_ns = 0;\n'
          '    osd_set_secondary_pts(vo->osd, MP_NOPTS_VALUE);')
     edit('video/out/vo.c', '    if (in->paused != paused) {\n        in->paused = paused;',
          '''    if (in->paused != paused) {
         // The core uses this transition for both user pause and cache pause.
-        // Preserve the position and restart only the wall-clock anchor.
+        // Freeze this position until the first new frame after resume can
+        // re-anchor to the video timeline, rather than slowly correcting a
+        // discontinuity as ordinary playback drift.
         int64_t now = mp_time_ns();
         if (in->secondary_clock_valid) {
             in->secondary_anchor_pts = secondary_clock_pts(in, now);
             in->secondary_anchor_ns = now;
             osd_set_secondary_pts(vo->osd, in->secondary_anchor_pts);
         }
+        in->secondary_clock_paused = true;
         in->secondary_next_ns = 0;
         in->paused = paused;''')
 

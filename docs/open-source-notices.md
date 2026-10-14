@@ -19,6 +19,14 @@
 
 在线弹幕通过 mpv 原生 `subprocess` 异步调用 Windows 自带的 [curl](https://github.com/curl/curl)；请求参数通过 mpv 的参数数组传递，不通过 PowerShell。curl 使用 curl license，由系统提供，本包不重新分发。视频识别仅读取开头 16 MiB，通过 Windows BCrypt API 计算 MD5；本地导入使用 mpv.net 的原生文件选择窗口。
 
+## 在线字幕
+
+字幕搜索和下载通过 [ASSRT 官方 API](https://assrt.net/api/doc) 提供，客户端直接请求服务。字幕服务、账号权限和请求配额受平台规则约束。实现与凭据配置见 [在线字幕](online-subtitles.md)。
+
+字幕包解压使用未修改的 [SharpCompress](https://github.com/adamhathcock/sharpcompress) 0.50.5（MIT），支持 ZIP、RAR 与 7z；许可证原文保留于 `docs/THIRD_PARTY_LICENSES/NuGet/SharpCompress-MIT.txt`。
+
+搜索列表沿用 mpv.net 内附的 [HandyControl](https://github.com/HandyOrg/HandyControl) 滚动控件（MIT），在原控件源码中通过 WPF `IScrollInfo` 直接处理像素输入，不逐次添加滚动动画；许可证见 `THIRD_PARTY_LICENSES/HandyControl-MIT.txt`。
+
 ## Bangumi 同步
 
 BangumiNet.Api（MIT）用于 API 请求；mpv_bangumi_sync（MIT）提供标题、集数匹配和进度同步逻辑；Google OAuth Desktop 示例代码（Apache-2.0）用于浏览器授权。固定版本、移植文件和修改范围见 [Bangumi 源码来源](bangumi-sources.md)。许可证原文及依赖记录随包保留在 `docs/THIRD_PARTY_LICENSES`。

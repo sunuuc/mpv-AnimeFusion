@@ -192,7 +192,7 @@ function M.wrap(value,width,size,maxlines)
     for i,c in ipairs(chars) do
         local cw=(#c>1 and 1 or (c:match('[ilI.,! :;|]') and .3 or .6))*size
         if used+cw>width and line~='' then
-            if #out==maxlines-1 then out[#out+1]=M.ellipsize(line..table.concat(chars,'',i),width,size);return out end
+            if maxlines>0 and #out==maxlines-1 then out[#out+1]=M.ellipsize(line..table.concat(chars,'',i),width,size);return out end
             out[#out+1]=line;line='';used=0
         end
         line=line..c;used=used+cw

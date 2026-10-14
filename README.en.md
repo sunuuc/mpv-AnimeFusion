@@ -17,6 +17,8 @@ An mpv-based player built for anime, bringing together features from many projec
 - **Danmaku**: online comments and local XML, JSON and ASS danmaku files. Online danmaku supports the Dandanplay API v2 interface. No danmaku routes are bundled or provided; users need to add compatible third-party danmaku APIs themselves.
 <img width="2560" height="1494" alt="image" src="https://github.com/user-attachments/assets/6bdd6d74-6248-450c-b015-12f309820c14" />
 
+- **Online subtitles**: search, download and load subtitles from ASSRT.
+
 - **Watch sync**: sync watch progress with Bangumi, Trakt and MyAnimeList.
 <img width="1213" height="1121" alt="image" src="https://github.com/user-attachments/assets/be033a4f-dfde-47be-8f05-7758bec43b91" />
 

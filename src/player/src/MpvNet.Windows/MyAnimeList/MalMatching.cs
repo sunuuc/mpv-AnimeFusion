@@ -16,9 +16,20 @@ public static class MalMatching
         return JsonSerializer.Deserialize<MalLink[]>(stream) ?? [];
     });
     static string TitleIdentity(string title) => Regex.Replace(title.Normalize(NormalizationForm.FormKC).ToLowerInvariant(), @"[\s\p{P}\p{S}]+", "");
-    public static double TitleScore(string input, string title) => BangumiMedia.TitleScore(TitleIdentity(input), TitleIdentity(title));
-    static double Score(MalMedia media, string title) => BangumiMedia.TitleVariants(media.Title)
-        .SelectMany(input => BangumiMedia.TitleVariants(BangumiMedia.Parse(title).Title).Select(name => TitleScore(input, name))).DefaultIfEmpty().Max();
+    public static double TitleScore(string input, string title)
+    {
+        var wanted = BangumiMedia.TitleVariants(input).Select(TitleIdentity).Distinct().ToArray();
+        var names = BangumiMedia.TitleVariants(title).Select(TitleIdentity).Distinct().ToArray();
+        double score = 0;
+        foreach (string a in wanted)
+            foreach (string b in names)
+            {
+                score = Math.Max(score, BangumiMedia.TitleScore(a, b));
+                if (score == 1) return score;
+            }
+        return score;
+    }
+    static double Score(MalMedia media, string title) => TitleScore(media.Title, BangumiMedia.Parse(title).Title);
     static bool DateMatches(MalMedia media, MalSubject subject) => media.Parsed.Year == null
         || subject.StartDate?.StartsWith(media.Parsed.Year + "-", StringComparison.Ordinal) == true;
     static bool SeasonMatches(MalMedia media, MalSubject subject, IEnumerable<MalLink> links, int? catalogueSeason = null)
@@ -42,7 +53,7 @@ public static class MalMatching
         var media = new MalMedia(BangumiMedia.Parse(title), null, null);
         var aliases = Links.Value.Where(l => Math.Max(Score(media, l.Name), Score(media, l.NameCn)) >= .9)
             .Select(l => l.Name).Distinct().Take(5);
-        return new[] { title }.Concat(aliases).Where(s => s.Length > 0).Distinct();
+        return BangumiMedia.SearchTitles(title).Concat(aliases).Where(s => s.Length > 0).Distinct();
     }
     public static async Task<MalSubject?> MatchAsync(MalClient client, MalMedia media, CancellationToken token)
     {

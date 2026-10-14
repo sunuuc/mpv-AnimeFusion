@@ -22,7 +22,8 @@ class SwapchainTest(unittest.TestCase):
         (ROOT / '_probe').mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='swapchain-test-', dir=ROOT / '_probe') as temporary:
             work = Path(temporary)
-            for name, content in [('unpatched', original), ('patched', source)]:
+            unbounded = source.replace('1000000000ULL', 'UINT64_MAX')
+            for name, content in [('unpatched', original), ('unbounded', unbounded), ('patched', source)]:
                 start = content.index('static bool vk_sw_start_frame(')
                 end = content.index('static void present_cb(', start)
                 program = work / (name + '.c')
@@ -31,7 +32,7 @@ class SwapchainTest(unittest.TestCase):
                 subprocess.run([compiler, '-std=c11', '-O2', str(program), '-o', str(binary)], env=env, check=True, capture_output=True)
                 result = subprocess.run([str(binary)], env=env, capture_output=True, text=True, timeout=10)
                 print(name + ': ' + result.stdout.strip())
-                self.assertEqual(result.returncode, 2 if name == 'unpatched' else 0, result.stdout + result.stderr)
+                self.assertEqual(result.returncode, 0 if name == 'patched' else 2, result.stdout + result.stderr)
         # Presentation must be submitted while the normal recording lock is held;
         # capture the actual queue index before the command is submitted/freed.
         submit = source[source.index('static bool vk_sw_submit_frame('):source.index('static void vk_sw_swap_buffers(')]

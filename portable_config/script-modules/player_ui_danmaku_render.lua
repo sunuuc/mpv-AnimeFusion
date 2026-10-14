@@ -1,6 +1,6 @@
 -- DanmakuFactory performs layout once. mpv's native secondary ASS decoder owns
 -- animation, seeking and presentation; this module has no frame update loop.
-return function(mp, utils, on_change)
+return function(mp, utils, on_change, storage_context)
     local M={ready=false,busy=false,count=0,track=nil,error=nil}
     local defaults={resolution={1920,1080},fps=60,displayArea=1,scrollArea=1,
         scrolltime=12,fixtime=5,density=0,lineSpacing=0,topMargin=0,bottomMargin=0,
@@ -10,7 +10,8 @@ return function(mp, utils, on_change)
         blockmode=utils.parse_json('[]'),statmode=utils.parse_json('[]'),
         fontSizeStrict=false,fontSizeNorm=false,blacklist='',blacklistRegex=false}
     local root=os.getenv('LOCALAPPDATA') or os.getenv('APPDATA') or os.getenv('TEMP')
-    M.config_path=root and (root..'/mpv-AnimeFusion-DanmakuFactory.json') or nil
+    root=root and (root..'/mpv-AnimeFusion/Danmaku') or nil
+    M.config_path=root and (root..'/设置/mpv-AnimeFusion-DanmakuFactory.json') or nil
     local executable=mp.command_native({'expand-path','~~/../animejanai/danmaku/DanmakuFactory.exe'})
     local job,serial,ass_path,input_path,owned_input= nil,0,nil,nil,false
     local previous_secondary,previous_style,previous_visibility,previous_display_sync
@@ -18,6 +19,31 @@ return function(mp, utils, on_change)
     local playback_speed=mp.get_property_number('speed',1)
     local timeline={{t=0,rate=playback_speed}}
     local regen_timer
+    local directory_jobs={}
+    local function storage_directory(callback)
+        local work,season,episode=storage_context()
+        local folder=root and (root..'/'..work..'/'..season)
+        if not folder or folder:find('[%%!"&%^()\r\n]') then
+            M.busy=false;M.error='无法创建弹幕目录';on_change();return
+        end
+        local info=utils.file_info(folder)
+        if info and info.is_dir then callback(folder,episode);return end
+        local expected=serial
+        local handle
+        local directory=folder:gsub('/','\\')
+        handle=mp.command_native_async({name='subprocess',args={'cmd.exe','/d','/v:off','/c',
+            'mkdir',directory},playback_only=false,
+            capture_stdout=true,capture_stderr=true},function(ok,result)
+            if handle then directory_jobs[handle]=nil end
+            if expected~=serial then return end
+            local created=utils.file_info(folder)
+            if not ok or not created or not created.is_dir then
+                M.busy=false;M.error='无法创建弹幕目录';on_change();return
+            end
+            callback(folder,episode)
+        end)
+        directory_jobs[handle]=true
+    end
     local function playback_context(args)
         local time=mp.get_property_number('time-pos',0)
         for _,item in ipairs({{'playback-speed',playback_speed},{'playback-time',time}}) do
@@ -93,6 +119,8 @@ return function(mp, utils, on_change)
     end
     function M.cancel()
         serial=serial+1
+        for handle in pairs(directory_jobs) do mp.abort_async_command(handle) end
+        directory_jobs={}
         if regen_timer then regen_timer:kill();regen_timer=nil end
         if job then mp.abort_async_command(job);job=nil end
         M.busy=false
@@ -109,58 +137,59 @@ return function(mp, utils, on_change)
         input_path,owned_input=path,owned or false
         M.busy=true;M.error=nil;if not preserve then M.count=0 end;M.settings=config();on_change()
         local expected=serial
-        local temp=os.getenv('TEMP') or root
-        if not temp then M.busy=false;M.error='本机临时目录不可用';on_change();return end
-        local output=temp..'/mpv-AnimeFusion-danmaku-'..tostring(utils.getpid())..'-'..serial..'.ass'
-        os.remove(output)
-        local args={executable,'--ignore-warnings','--force','-o',output,'-i',path}
-        -- Pass settings through the upstream CLI, which also supports word blocking.
-        -- The saved JSON belongs to this module and is never parsed by the converter.
-        for _,option in ipairs({'displayArea','scrollArea','scrolltime','fixtime','fontsize','fontname',
-            'opacity','density','outline','shadow','bold'}) do
-            args[#args+1]='--'..option:lower();args[#args+1]=tostring(M.settings[option])
-        end
-        for key,option in pairs({lineSpacing='--line-spacing',outlineBlur='--outline-blur',
-            outlineOpacity='--outline-opacity',blacklistRegex='--blacklist-regex'}) do
-            args[#args+1]=option;args[#args+1]=tostring(M.settings[key])
-        end
-        args[#args+1]='--resolution';args[#args+1]=table.concat(M.settings.resolution,'x')
-        args[#args+1]='--blockmode';args[#args+1]=#M.settings.blockmode>0 and table.concat(M.settings.blockmode,'-') or 'null'
-        if M.settings.fontSizeStrict then args[#args+1]='--font-size-strict' end
-        if M.settings.fontSizeNorm then args[#args+1]='--font-size-norm' end
-        if M.settings.blacklist~='' then args[#args+1]='--blacklist';args[#args+1]=M.settings.blacklist end
-        playback_context(args)
-        job=mp.command_native_async({name='subprocess',args=args,playback_only=false,
-            capture_stdout=true,capture_stderr=true},function(ok,result)
-            if expected~=serial then os.remove(output);return end
-            job=nil;M.busy=false
-            local text=ok and result and result.status==0 and read(output,32*1024*1024)
-            if not text or not text:find('[Script Info]',1,true) then
-                os.remove(output);M.error='弹幕转换失败'
-                if mp.msg then mp.msg.error('DanmakuFactory: '..tostring(result and (result.stderr~='' and result.stderr or result.stdout) or '无法运行')) end
-                on_change();return
+        storage_directory(function(temp,episode)
+            local output=temp..'/'..episode..'-'..tostring(utils.getpid())..'-'..serial..'.ass'
+            os.remove(output)
+            local args={executable,'--ignore-warnings','--force','-o',output,'-i',path}
+            -- Pass settings through the upstream CLI, which also supports word blocking.
+            -- The saved JSON belongs to this module and is never parsed by the converter.
+            for _,option in ipairs({'displayArea','scrollArea','scrolltime','fixtime','fontsize','fontname',
+                'opacity','density','outline','shadow','bold'}) do
+                args[#args+1]='--'..option:lower();args[#args+1]=tostring(M.settings[option])
             end
-            detach();M.count=0
-            for _ in text:gmatch('\nDialogue:') do M.count=M.count+1 end
-            ass_path=output;M.ready=true;on_change();attach()
+            for key,option in pairs({lineSpacing='--line-spacing',outlineBlur='--outline-blur',
+                outlineOpacity='--outline-opacity',blacklistRegex='--blacklist-regex'}) do
+                args[#args+1]=option;args[#args+1]=tostring(M.settings[key])
+            end
+            args[#args+1]='--resolution';args[#args+1]=table.concat(M.settings.resolution,'x')
+            args[#args+1]='--blockmode';args[#args+1]=#M.settings.blockmode>0 and table.concat(M.settings.blockmode,'-') or 'null'
+            if M.settings.fontSizeStrict then args[#args+1]='--font-size-strict' end
+            if M.settings.fontSizeNorm then args[#args+1]='--font-size-norm' end
+            if M.settings.blacklist~='' then args[#args+1]='--blacklist';args[#args+1]=M.settings.blacklist end
+            playback_context(args)
+            job=mp.command_native_async({name='subprocess',args=args,playback_only=false,
+                capture_stdout=true,capture_stderr=true},function(ok,result)
+                if expected~=serial then os.remove(output);return end
+                job=nil;M.busy=false
+                local text=ok and result and result.status==0 and read(output,32*1024*1024)
+                if not text or not text:find('[Script Info]',1,true) then
+                    os.remove(output);M.error='弹幕转换失败'
+                    if mp.msg then mp.msg.error('DanmakuFactory: '..tostring(result and (result.stderr~='' and result.stderr or result.stdout) or '无法运行')) end
+                    on_change();return
+                end
+                detach();M.count=0
+                for _ in text:gmatch('\nDialogue:') do M.count=M.count+1 end
+                ass_path=output;M.ready=true;on_change();attach()
+            end)
         end)
     end
     local function xml_escape(text)
         return tostring(text):gsub('&','&amp;'):gsub('<','&lt;'):gsub('>','&gt;'):gsub('"','&quot;'):gsub("'",'&apos;')
     end
     function M.comments(list)
-        local temp=os.getenv('TEMP') or root
-        if not temp then M.error='本机临时目录不可用';on_change();return end
-        local path=temp..'/mpv-AnimeFusion-comments-'..tostring(utils.getpid())..'-'..(serial+1)..'.xml'
-        local lines={'<?xml version="1.0" encoding="UTF-8"?><i>'}
-        for _,item in ipairs(list) do
-            lines[#lines+1]=string.format('<d p="%.3f,%d,25,%d,0,0,0,0">%s</d>',
-                item.t,item.mode,item.color,xml_escape(item.text))
-        end
-        lines[#lines+1]='</i>'
-        local ok,why=write(path,table.concat(lines,'\n'))
-        if not ok then M.error='无法保存弹幕数据：'..tostring(why);on_change();return end
-        M.convert(path,true)
+        M.cancel();M.busy=true;M.error=nil;on_change()
+        storage_directory(function(temp,episode)
+            local path=temp..'/'..episode..'.xml'
+            local lines={'<?xml version="1.0" encoding="UTF-8"?><i>'}
+            for _,item in ipairs(list) do
+                lines[#lines+1]=string.format('<d p="%.3f,%d,25,%d,0,0,0,0">%s</d>',
+                    item.t,item.mode,item.color,xml_escape(item.text))
+            end
+            lines[#lines+1]='</i>'
+            local ok,why=write(path,table.concat(lines,'\n'))
+            if not ok then M.busy=false;M.error='无法保存弹幕数据：'..tostring(why);on_change();return end
+            M.convert(path,false)
+        end)
     end
     local function ass_time(value)
         local cs=math.max(0,math.floor(value*100+.5))
@@ -199,12 +228,14 @@ return function(mp, utils, on_change)
             width+half,y,-half,y,escaped)
         -- Add the event before attach opens the completed ASS file. mpv owns
         -- motion; the notice never needs an overlay, reload or animation timer.
-        local path=ass_path or (os.getenv('TEMP') or root)..'/mpv-AnimeFusion-notice-'
-            ..tostring(utils.getpid())..'-'..serial..'.ass'
-        if write(path,body..line) then
-            ass_path=path
-            if not M.ready then attach() end
-        end
+        storage_directory(function(folder)
+            local path=ass_path or folder..'/提示-'
+                ..tostring(utils.getpid())..'-'..serial..'.ass'
+            if write(path,body..line) then
+                ass_path=path
+                if not M.ready then attach() end
+            end
+        end)
     end
     function M.set(key,value)
         if not M.config_path then return end
@@ -253,7 +284,7 @@ return function(mp, utils, on_change)
                 words[#words+1]=line
             end
         end
-        local path=root..'/mpv-AnimeFusion-danmaku-blocklist.txt'
+        local path=root..'/设置/mpv-AnimeFusion-danmaku-blocklist.txt'
         local ok,why=write(path,table.concat(words,'\n'))
         if not ok then M.error='无法保存屏蔽词：'..tostring(why);on_change();return end
         M.set('blacklist',#words>0 and path or '')

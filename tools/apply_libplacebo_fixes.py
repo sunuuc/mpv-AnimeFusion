@@ -1,4 +1,4 @@
-"""Backport the upstream Vulkan swapchain fixes to the pinned ABI 360 runtime."""
+"""Apply reviewed Vulkan swapchain fixes to the pinned ABI 360 runtime."""
 from pathlib import Path
 import subprocess
 import sys
@@ -9,8 +9,8 @@ actual = subprocess.check_output(['git', '-C', str(source), 'rev-parse', 'HEAD']
 if actual != expected:
     raise RuntimeError('Unexpected libplacebo source: ' + actual)
 patches = Path(__file__).resolve().parents[1] / 'third_party/libplacebo-patches'
-for name in ('e986aaf.patch', 'de357dc.patch'):
+for name in ('e986aaf.patch', 'de357dc.patch', 'bounded-acquire.patch'):
     patch = patches / name
     subprocess.run(['git', '-C', str(source), 'apply', '--check', str(patch)], check=True)
     subprocess.run(['git', '-C', str(source), 'apply', str(patch)], check=True)
-print('Applied upstream swapchain semaphore and recording-lock fixes')
+print('Applied swapchain semaphore, recording-lock and bounded acquisition fixes')

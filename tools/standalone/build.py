@@ -159,7 +159,7 @@ def stage():
     dump(ST/'manifest.json',{'name':META['name'],'version':META['version'],'distribution':'portable','repository':REPO,'component_version':'3.6.0','platform':'win-x64'})
     cp(R/'docs/standalone.md',ST/'使用说明.md')
     for name in ('README.md','README.en.md','CHANGELOG.md'):cp(R/name,ST/name)
-    for name in ('standalone.md','build.md','danmaku-renderer.md','open-source-notices.md','bangumi-sources.md','trakt-sources.md','myanimelist-research.md'):cp(R/'docs'/name,ST/'docs'/name)
+    for name in ('standalone.md','build.md','danmaku-renderer.md','open-source-notices.md','bangumi-sources.md','trakt-sources.md','myanimelist-research.md','online-subtitles.md'):cp(R/'docs'/name,ST/'docs'/name)
     organize_payload()
     dump(E/'components.json',validate_components(ST))
     inspect_payload()
@@ -209,6 +209,9 @@ def inspect_payload():
     for name in ('mpv-AnimeFusion','mpv-AnimeFusionManager'):
         if ('app/'+name+'.dll').encode() not in (ST/(name+'.exe')).read_bytes():
             raise RuntimeError('Portable apphost points to the wrong assembly: '+name)
+    player_host=(ST/'mpv-AnimeFusion.exe').read_bytes()
+    if b'activeCodePage' not in player_host or b'>UTF-8</activeCodePage>' not in player_host:
+        raise RuntimeError('Player apphost is missing its UTF-8 Windows manifest')
     manifest=json.loads((ST/'app/manifest.json').read_text(encoding='utf-8'))
     if manifest['name']!=META['name'] or manifest['version']!=META['version']:
         raise RuntimeError('Package identity does not match release metadata')

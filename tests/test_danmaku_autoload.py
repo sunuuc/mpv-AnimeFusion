@@ -24,10 +24,13 @@ def run(install, video, directory, source_config, records, settings=None):
     directory.mkdir(parents=True, exist_ok=True)
     local = directory / "localdata"
     local.mkdir(exist_ok=True)
-    (local / "mpv-AnimeFusion-danmaku.conf").write_bytes(source_config)
-    (local / "mpv-AnimeFusion-danmaku-sources.json").write_bytes(records)
+    data = local / "mpv-AnimeFusion" / "Danmaku"
+    settings_directory = data / "设置"
+    settings_directory.mkdir(parents=True, exist_ok=True)
+    (settings_directory / "mpv-AnimeFusion-danmaku.conf").write_bytes(source_config)
+    (settings_directory / "mpv-AnimeFusion-danmaku-sources.json").write_bytes(records)
     if settings:
-        (local / "mpv-AnimeFusion-DanmakuFactory.json").write_bytes(settings)
+        (settings_directory / "mpv-AnimeFusion-DanmakuFactory.json").write_bytes(settings)
     lua = DRIVER.replace("@@FACTORY@@", quote(install / "animejanai/danmaku/DanmakuFactory.exe"))
     lua = lua.replace("@@SOURCE@@", quote(SOURCE))
     lua = lua.replace("@@OUTPUT@@", quote(directory / "result.json"))
@@ -41,11 +44,15 @@ def run(install, video, directory, source_config, records, settings=None):
     if not (directory / "result.json").exists():
         raise AssertionError(result.stdout.decode("utf-8", "replace") + result.stderr.decode("utf-8", "replace"))
     trace = json.loads((directory / "result.json").read_text(encoding="utf-8"))
+    assert all(Path(path).resolve().is_relative_to(data.resolve()) for path in trace["generated_paths"]), "Generated danmaku escaped the product data directory"
     for notice in trace["notices"]:
         motion = re.search(r"\\move\(([-\d.]+),[-\d.]+,([-\d.]+),", notice)
         assert motion and float(motion[1]) > float(motion[2]), notice
     assert trace["center_messages"] == 0, trace
     if trace["state"]["loaded"]:
+        assert trace["generated_paths"], "Loaded danmaku did not record its generated files"
+        assert all(len(Path(path).resolve().relative_to(data.resolve()).parts)==3 for path in trace["generated_paths"]), "Danmaku files were not grouped by work and season"
+        assert list(data.rglob('*.xml')), "Original comments were not retained after playback"
         assert trace["state"]["track"] == trace["secondary_sid"]
         assert trace["primary_sid"] != trace["secondary_sid"]
         assert any(str(trace["state"]["count"]) + "条弹幕大军正在袭来~~~" in n for n in trace["notices"])
@@ -54,9 +61,20 @@ def run(install, video, directory, source_config, records, settings=None):
 
 DRIVER = r"""local mp=require 'mp'
 local utils=require 'mp.utils'
-local trace={requests={},notices={},center_messages=0,states={}}
+local trace={requests={},notices={},center_messages=0,states={},generated_paths={},directories={}}
 local async=mp.command_native_async
 mp.command_native_async=function(spec,callback)
+ if spec.args and spec.args[1]=='cmd.exe' then
+  return async(spec,function(ok,result,err)
+   trace.directories[#trace.directories+1]={args=spec.args,ok=ok,status=result and result.status}
+   callback(ok,result,err)
+  end)
+ end
+ if spec.args and spec.args[1]:find('DanmakuFactory.exe',1,true) then
+  for i,arg in ipairs(spec.args) do
+   if arg=='-i' or arg=='-o' then trace.generated_paths[#trace.generated_paths+1]=spec.args[i+1] end
+  end
+ end
  if spec.args and spec.args[1]:find('curl.exe',1,true) then
   local item={path=spec.args[4]:match('^https?://[^/]+(.*)'),started=mp.get_time()}
   trace.requests[#trace.requests+1]=item
@@ -124,6 +142,13 @@ class Handler(BaseHTTPRequestHandler):
                 time.sleep(server.delay)
                 data = {"comments": [{"p": f"{i * 4},1,16777215,[dandan]", "m": f"弹幕 {i}"}
                     for i in range(server.count)]}
+        elif getattr(server, "catalogue", None) and "/search/anime" in self.path:
+            data = {"animes": server.catalogue}
+        elif getattr(server, "catalogue", None) and "/bangumi/" in self.path:
+            data = {"bangumi": {"animeTitle": "远方旅行记", "typeDescription": "剧场版", "episodes": [
+                {"episodeId": 201, "episodeNumber": "1", "episodeTitle": "【dandan】 剧场版"},
+                {"episodeId": 202, "episodeNumber": "2", "episodeTitle": "【dandan】 S1 素材集"},
+                {"episodeId": 203, "episodeNumber": "3", "episodeTitle": "【dandan】 S2 特别映像"}]}}
         else:
             data = {"animes": []}
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
@@ -161,10 +186,29 @@ def loopback(install, video, directory):
                 assert any("弹幕准备中~~~" in n for n in trace["notices"]), trace
             if name in ("slow", "retry", "empty"):
                 assert all("/comment/101" in path for path in server.paths), server.paths
-                assert json.loads((directory / name / "localdata/mpv-AnimeFusion-danmaku-sources.json").read_text(
+                assert json.loads((directory / name / "localdata/mpv-AnimeFusion/Danmaku/设置/mpv-AnimeFusion-danmaku-sources.json").read_text(
                     encoding="utf-8")) == json.loads(records)
             print("PASS", name, "state", state, "requests", server.comment_requests,
                 "rendered", trace["state"]["count"])
+        server.catalogue = [{"animeId": 2, "animeTitle": "远方旅行记(2012)",
+            "typeDescription": "剧场版", "source": "dandan", "episodeCount": 3}]
+        movie = directory / "远方旅行记 (2012).mkv"
+        shutil.copyfile(video, movie)
+        movie_config = ("api_servers=" + url + "|测试线路," + url + "/backup|备用线路\n").encode("utf-8")
+        for name, count, state in [("movie", 3, "loaded"), ("movie-empty", 0, "empty")]:
+            server.failures, server.delay, server.count = 0, 0, count
+            server.comment_requests, server.paths = 0, []
+            trace = run(install, movie, directory / name, movie_config, b'{}')
+            assert trace["state"]["autoload_state"] == state, trace
+            assert server.comment_requests == 1, server.paths
+            assert any("/comment/201" in path for path in server.paths), server.paths
+            saved = (directory / name / "localdata/mpv-AnimeFusion/Danmaku/设置/mpv-AnimeFusion-danmaku-sources.json").read_bytes()
+            assert json.loads(saved), "Successful movie source was not remembered"
+            server.comment_requests, server.paths = 0, []
+            reused = run(install, movie, directory / (name + "-reuse"), movie_config, saved)
+            assert reused["state"]["autoload_state"] == state, reused
+            assert server.comment_requests == 1 and all("/comment/201" in path for path in server.paths), server.paths
+            print("PASS", name, "state", state, "main feature selected, no empty-result source switch, saved source reused")
     finally:
         server.shutdown()
         server.server_close()
@@ -186,7 +230,7 @@ if __name__ == "__main__":
     if args.installed:
         SOURCE = args.install / "portable_config/scripts/player_ui_danmaku.lua"
     if args.live:
-        root = Path(os.environ["LOCALAPPDATA"])
+        root = Path(os.environ["LOCALAPPDATA"]) / "mpv-AnimeFusion" / "Danmaku"
         paths = [root / "mpv-AnimeFusion-danmaku.conf", root / "mpv-AnimeFusion-danmaku-sources.json"]
         before = [p.read_bytes() for p in paths]
         settings_path = root / "mpv-AnimeFusion-DanmakuFactory.json"

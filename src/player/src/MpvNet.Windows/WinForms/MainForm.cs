@@ -74,12 +74,14 @@ public partial class MainForm : Form
             GuiCommand.Current.WindowScaleNet += GuiCommand_WindowScaleNet;
             GuiCommand.Current.ShowMenu += GuiCommand_ShowMenu;
 
+            Directory.CreateDirectory(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "mpv-AnimeFusion", "Danmaku", "设置"));
             Player.Init(Handle, true);
             _geometry = Player.GetPropertyString("geometry");
         Sync.SyncPreferences.Initialize();
         Bangumi.BangumiPlayback.Initialize();
         Trakt.TraktPlayback.Initialize();
         MyAnimeList.MalPlayback.Initialize();
+        Subtitles.SubtitlePlayback.Initialize();
 
             Player.ObservePropertyBool("window-maximized", PropChangeWindowMaximized);
             Player.ObservePropertyBool("window-minimized", PropChangeWindowMinimized);

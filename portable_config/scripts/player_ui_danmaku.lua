@@ -197,7 +197,7 @@ function M.wrap(value,width,size,maxlines)
     for i,c in ipairs(chars) do
         local cw=(#c>1 and 1 or (c:match('[ilI.,! :;|]') and .3 or .6))*size
         if used+cw>width and line~='' then
-            if #out==maxlines-1 then out[#out+1]=M.ellipsize(line..table.concat(chars,'',i),width,size);return out end
+            if maxlines>0 and #out==maxlines-1 then out[#out+1]=M.ellipsize(line..table.concat(chars,'',i),width,size);return out end
             out[#out+1]=line;line='';used=0
         end
         line=line..c;used=used+cw
@@ -567,6 +567,21 @@ function M.episode_query(title)
     return strip_season(anime):gsub('%s+$',''),episode,season
 end
 
+local function supplementary_title(title)
+    local prefix,value=title_width(title):match('^(.-):%s*(.+)$')
+    if not prefix then return nil end
+    prefix=trim(prefix):lower()
+    local labelled=false
+    for _,label in ipairs({'特典','特别篇','特別篇','特别版','特別版','剧场版','劇場版','电影版','電影版'}) do
+        if prefix:sub(-#label)==label then labelled=true;break end
+    end
+    labelled=labelled or prefix:match('%f[%a]special$') or prefix:match('%f[%a]ova$') or prefix:match('%f[%a]oad$')
+    value=trim(value)
+    local length=0
+    for _ in value:gmatch(UTF8_CODEPOINT) do length=length+1 end
+    return labelled and length>=5 and value or nil
+end
+
 function M.search_keyword(title)
     title = M.limit_text(title,512):gsub('[%z\1-\8\11\12\14-\31\127]', '')
     title = title:gsub('^%s*%[[^%]]+%]%s*', '')
@@ -576,7 +591,8 @@ function M.search_keyword(title)
     title = title:gsub('%s*%[[^%]]*[0-9]+[pPkK][^%]]*%]%s*$', '')
     title = title:gsub('%s*%[[^%]]*[Bb][Dd][^%]]*%]%s*$', '')
     title = title:gsub('[%s._%-]+$', ''):gsub('^%s+', ''):gsub('%s+$', '')
-    return M.limit_text(M.show_info(title).series,120)
+    local series=M.show_info(title).series
+    return M.limit_text(supplementary_title(series) or series,120)
 end
 
 local function decode_json(text, parse_json)
@@ -684,12 +700,38 @@ end
 
 function M.series_source_key(media_name)
     local anime,episode,season=M.episode_query(media_name)
-    if not anime or not episode then return nil end
+    if not anime or not episode then
+        if season then return nil end
+        local series=identity(M.search_keyword(media_name))
+        if series=='' then return nil end
+        return series..'/movie/y'..tostring(M.show_info(media_name).year or 0)
+    end
     local info=M.show_info(anime)
     local series=identity(info.series)
     if series=='' then return nil end
     -- Unknown seasons remain distinct; a remembered source must never guess one.
     return series..'/s'..tostring(season or 0)..'/p'..tostring(info.part or 0)
+end
+
+function M.storage_context(media_name)
+    local series,episode,season=M.episode_query(media_name)
+    local info=M.show_info(series or M.search_keyword(media_name))
+    local special_series,special_episode=title_width(media_name):match('^(.-)%s*[Ss]0+[ ._%-]*[Ee](%d+)')
+    if special_series then series=special_series;episode=tonumber(special_episode);season=0 end
+    local function segment(value)
+        value=M.limit_text(value or '',120):gsub('[%z\1-\31<>:"/\\|?*%%!&%^()]','_')
+            :gsub('^[%s.]+',''):gsub('[%s.]+$','')
+        if value=='' then return '未分类' end
+        local device=value:match('^([^.]*)'):upper()
+        if device=='CON' or device=='PRN' or device=='AUX' or device=='NUL'
+            or device:match('^COM%d$') or device:match('^LPT%d$') then value='_'..value end
+        if value=='设置' or value=='历史文件' then value=value..'（作品）' end
+        return value
+    end
+    local work=segment(series or info.series)
+    local part=season==0 and '特别篇' or season and ('第 '..season..' 季')
+        or info.kind=='电影' and '电影' or '未分类'
+    return work,part,episode and ('第 '..episode..' 集') or '弹幕'
 end
 
 local function movie_kind(kind)
@@ -858,8 +900,15 @@ function M.search_results(text, keyword, parse_json, clean)
 end
 
 local PLATFORM_PREFIXES={tencent='qq',iqiyi='qiyi',bilibili='bilibili',migu='migu'}
-local function is_extra_episode(title)
-    local lower=title:lower()
+local function is_extra_episode(title,number)
+    local lower=title_width(title):lower():gsub('^%s*【.-】%s*',''):gsub('^%s*%[.-%]%s*','')
+    local short=trim(title_width(number)):lower()
+    -- The catalogue uses S/SP short numbers for supplementary episodes. Some
+    -- providers renumber the list, retaining the original marker in its title.
+    -- Complete season/episode labels, including S1 E2 and S1.E2, are regular
+    -- episodes rather than the catalogue's standalone S1 supplementary marker.
+    if short:match('^sp?%d+$') or lower:match('^sp?%d+%f[%W]')
+        and not lower:match('^'..SEASON_EPISODE) then return true end
     return title:find('预告',1,true) or title:find('花絮',1,true)
         or title:find('特典',1,true) or title:find('插入歌',1,true)
         or lower:find('opening',1,true) or lower:find('ending',1,true)
@@ -883,7 +932,7 @@ function M.bangumi_episodes(text, parse_json, clean, platform_key)
                 local prefix=(title:match('^【(.-)】') or ''):lower()
                 local global=tonumber(title:match('第%s*(%d+)%s*[集话話]'))
                 out[#out+1]={id=id,number=number,raw_number=tonumber(number),
-                    global_number=global,prefix=prefix,extra=not not is_extra_episode(title),
+                    global_number=global,prefix=prefix,extra=not not is_extra_episode(title,number),
                     label=title~='' and title or ('第'..number..'集')}
             end
         end
@@ -991,6 +1040,10 @@ local function movie_title(value)
     local title=title_width(value)
     for _,version in ipairs(MOVIE_VERSIONS) do
         for _,label in ipairs(version.labels) do title=title:gsub(label,'') end
+    end
+    title=supplementary_title(title) or title
+    for _,prefix in ipairs({'剧场版','劇場版','电影版','電影版'}) do
+        if title:sub(1,#prefix)==prefix then title=trim(title:sub(#prefix+1));break end
     end
     return identity(title)
 end
@@ -1140,7 +1193,7 @@ o.dandanplay_app_id=tostring(o.dandanplay_app_id or ''):gsub('^%s+',''):gsub('%s
 o.dandanplay_app_secret=tostring(o.dandanplay_app_secret or ''):gsub('^%s+',''):gsub('%s+$','')
 local function private_server_config_path()
     local root=os.getenv('LOCALAPPDATA') or os.getenv('APPDATA')
-    if root and root~='' then return root..'/mpv-AnimeFusion-danmaku.conf' end
+    if root and root~='' then return root..'/mpv-AnimeFusion/Danmaku/设置/mpv-AnimeFusion-danmaku.conf' end
     root=os.getenv('XDG_CONFIG_HOME')
     if root and root~='' then return root..'/animejanai-danmaku.conf' end
     root=os.getenv('HOME')
@@ -1281,7 +1334,7 @@ renderer=(function()
 -- inlined module: player_ui_danmaku_render.lua
 -- DanmakuFactory performs layout once. mpv's native secondary ASS decoder owns
 -- animation, seeking and presentation; this module has no frame update loop.
-return function(mp, utils, on_change)
+return function(mp, utils, on_change, storage_context)
     local M={ready=false,busy=false,count=0,track=nil,error=nil}
     local defaults={resolution={1920,1080},fps=60,displayArea=1,scrollArea=1,
         scrolltime=12,fixtime=5,density=0,lineSpacing=0,topMargin=0,bottomMargin=0,
@@ -1291,7 +1344,8 @@ return function(mp, utils, on_change)
         blockmode=utils.parse_json('[]'),statmode=utils.parse_json('[]'),
         fontSizeStrict=false,fontSizeNorm=false,blacklist='',blacklistRegex=false}
     local root=os.getenv('LOCALAPPDATA') or os.getenv('APPDATA') or os.getenv('TEMP')
-    M.config_path=root and (root..'/mpv-AnimeFusion-DanmakuFactory.json') or nil
+    root=root and (root..'/mpv-AnimeFusion/Danmaku') or nil
+    M.config_path=root and (root..'/设置/mpv-AnimeFusion-DanmakuFactory.json') or nil
     local executable=mp.command_native({'expand-path','~~/../animejanai/danmaku/DanmakuFactory.exe'})
     local job,serial,ass_path,input_path,owned_input= nil,0,nil,nil,false
     local previous_secondary,previous_style,previous_visibility,previous_display_sync
@@ -1299,6 +1353,31 @@ return function(mp, utils, on_change)
     local playback_speed=mp.get_property_number('speed',1)
     local timeline={{t=0,rate=playback_speed}}
     local regen_timer
+    local directory_jobs={}
+    local function storage_directory(callback)
+        local work,season,episode=storage_context()
+        local folder=root and (root..'/'..work..'/'..season)
+        if not folder or folder:find('[%%!"&%^()\r\n]') then
+            M.busy=false;M.error='无法创建弹幕目录';on_change();return
+        end
+        local info=utils.file_info(folder)
+        if info and info.is_dir then callback(folder,episode);return end
+        local expected=serial
+        local handle
+        local directory=folder:gsub('/','\\')
+        handle=mp.command_native_async({name='subprocess',args={'cmd.exe','/d','/v:off','/c',
+            'mkdir',directory},playback_only=false,
+            capture_stdout=true,capture_stderr=true},function(ok,result)
+            if handle then directory_jobs[handle]=nil end
+            if expected~=serial then return end
+            local created=utils.file_info(folder)
+            if not ok or not created or not created.is_dir then
+                M.busy=false;M.error='无法创建弹幕目录';on_change();return
+            end
+            callback(folder,episode)
+        end)
+        directory_jobs[handle]=true
+    end
     local function playback_context(args)
         local time=mp.get_property_number('time-pos',0)
         for _,item in ipairs({{'playback-speed',playback_speed},{'playback-time',time}}) do
@@ -1374,6 +1453,8 @@ return function(mp, utils, on_change)
     end
     function M.cancel()
         serial=serial+1
+        for handle in pairs(directory_jobs) do mp.abort_async_command(handle) end
+        directory_jobs={}
         if regen_timer then regen_timer:kill();regen_timer=nil end
         if job then mp.abort_async_command(job);job=nil end
         M.busy=false
@@ -1390,58 +1471,59 @@ return function(mp, utils, on_change)
         input_path,owned_input=path,owned or false
         M.busy=true;M.error=nil;if not preserve then M.count=0 end;M.settings=config();on_change()
         local expected=serial
-        local temp=os.getenv('TEMP') or root
-        if not temp then M.busy=false;M.error='本机临时目录不可用';on_change();return end
-        local output=temp..'/mpv-AnimeFusion-danmaku-'..tostring(utils.getpid())..'-'..serial..'.ass'
-        os.remove(output)
-        local args={executable,'--ignore-warnings','--force','-o',output,'-i',path}
-        -- Pass settings through the upstream CLI, which also supports word blocking.
-        -- The saved JSON belongs to this module and is never parsed by the converter.
-        for _,option in ipairs({'displayArea','scrollArea','scrolltime','fixtime','fontsize','fontname',
-            'opacity','density','outline','shadow','bold'}) do
-            args[#args+1]='--'..option:lower();args[#args+1]=tostring(M.settings[option])
-        end
-        for key,option in pairs({lineSpacing='--line-spacing',outlineBlur='--outline-blur',
-            outlineOpacity='--outline-opacity',blacklistRegex='--blacklist-regex'}) do
-            args[#args+1]=option;args[#args+1]=tostring(M.settings[key])
-        end
-        args[#args+1]='--resolution';args[#args+1]=table.concat(M.settings.resolution,'x')
-        args[#args+1]='--blockmode';args[#args+1]=#M.settings.blockmode>0 and table.concat(M.settings.blockmode,'-') or 'null'
-        if M.settings.fontSizeStrict then args[#args+1]='--font-size-strict' end
-        if M.settings.fontSizeNorm then args[#args+1]='--font-size-norm' end
-        if M.settings.blacklist~='' then args[#args+1]='--blacklist';args[#args+1]=M.settings.blacklist end
-        playback_context(args)
-        job=mp.command_native_async({name='subprocess',args=args,playback_only=false,
-            capture_stdout=true,capture_stderr=true},function(ok,result)
-            if expected~=serial then os.remove(output);return end
-            job=nil;M.busy=false
-            local text=ok and result and result.status==0 and read(output,32*1024*1024)
-            if not text or not text:find('[Script Info]',1,true) then
-                os.remove(output);M.error='弹幕转换失败'
-                if mp.msg then mp.msg.error('DanmakuFactory: '..tostring(result and (result.stderr~='' and result.stderr or result.stdout) or '无法运行')) end
-                on_change();return
+        storage_directory(function(temp,episode)
+            local output=temp..'/'..episode..'-'..tostring(utils.getpid())..'-'..serial..'.ass'
+            os.remove(output)
+            local args={executable,'--ignore-warnings','--force','-o',output,'-i',path}
+            -- Pass settings through the upstream CLI, which also supports word blocking.
+            -- The saved JSON belongs to this module and is never parsed by the converter.
+            for _,option in ipairs({'displayArea','scrollArea','scrolltime','fixtime','fontsize','fontname',
+                'opacity','density','outline','shadow','bold'}) do
+                args[#args+1]='--'..option:lower();args[#args+1]=tostring(M.settings[option])
             end
-            detach();M.count=0
-            for _ in text:gmatch('\nDialogue:') do M.count=M.count+1 end
-            ass_path=output;M.ready=true;on_change();attach()
+            for key,option in pairs({lineSpacing='--line-spacing',outlineBlur='--outline-blur',
+                outlineOpacity='--outline-opacity',blacklistRegex='--blacklist-regex'}) do
+                args[#args+1]=option;args[#args+1]=tostring(M.settings[key])
+            end
+            args[#args+1]='--resolution';args[#args+1]=table.concat(M.settings.resolution,'x')
+            args[#args+1]='--blockmode';args[#args+1]=#M.settings.blockmode>0 and table.concat(M.settings.blockmode,'-') or 'null'
+            if M.settings.fontSizeStrict then args[#args+1]='--font-size-strict' end
+            if M.settings.fontSizeNorm then args[#args+1]='--font-size-norm' end
+            if M.settings.blacklist~='' then args[#args+1]='--blacklist';args[#args+1]=M.settings.blacklist end
+            playback_context(args)
+            job=mp.command_native_async({name='subprocess',args=args,playback_only=false,
+                capture_stdout=true,capture_stderr=true},function(ok,result)
+                if expected~=serial then os.remove(output);return end
+                job=nil;M.busy=false
+                local text=ok and result and result.status==0 and read(output,32*1024*1024)
+                if not text or not text:find('[Script Info]',1,true) then
+                    os.remove(output);M.error='弹幕转换失败'
+                    if mp.msg then mp.msg.error('DanmakuFactory: '..tostring(result and (result.stderr~='' and result.stderr or result.stdout) or '无法运行')) end
+                    on_change();return
+                end
+                detach();M.count=0
+                for _ in text:gmatch('\nDialogue:') do M.count=M.count+1 end
+                ass_path=output;M.ready=true;on_change();attach()
+            end)
         end)
     end
     local function xml_escape(text)
         return tostring(text):gsub('&','&amp;'):gsub('<','&lt;'):gsub('>','&gt;'):gsub('"','&quot;'):gsub("'",'&apos;')
     end
     function M.comments(list)
-        local temp=os.getenv('TEMP') or root
-        if not temp then M.error='本机临时目录不可用';on_change();return end
-        local path=temp..'/mpv-AnimeFusion-comments-'..tostring(utils.getpid())..'-'..(serial+1)..'.xml'
-        local lines={'<?xml version="1.0" encoding="UTF-8"?><i>'}
-        for _,item in ipairs(list) do
-            lines[#lines+1]=string.format('<d p="%.3f,%d,25,%d,0,0,0,0">%s</d>',
-                item.t,item.mode,item.color,xml_escape(item.text))
-        end
-        lines[#lines+1]='</i>'
-        local ok,why=write(path,table.concat(lines,'\n'))
-        if not ok then M.error='无法保存弹幕数据：'..tostring(why);on_change();return end
-        M.convert(path,true)
+        M.cancel();M.busy=true;M.error=nil;on_change()
+        storage_directory(function(temp,episode)
+            local path=temp..'/'..episode..'.xml'
+            local lines={'<?xml version="1.0" encoding="UTF-8"?><i>'}
+            for _,item in ipairs(list) do
+                lines[#lines+1]=string.format('<d p="%.3f,%d,25,%d,0,0,0,0">%s</d>',
+                    item.t,item.mode,item.color,xml_escape(item.text))
+            end
+            lines[#lines+1]='</i>'
+            local ok,why=write(path,table.concat(lines,'\n'))
+            if not ok then M.busy=false;M.error='无法保存弹幕数据：'..tostring(why);on_change();return end
+            M.convert(path,false)
+        end)
     end
     local function ass_time(value)
         local cs=math.max(0,math.floor(value*100+.5))
@@ -1480,12 +1562,14 @@ return function(mp, utils, on_change)
             width+half,y,-half,y,escaped)
         -- Add the event before attach opens the completed ASS file. mpv owns
         -- motion; the notice never needs an overlay, reload or animation timer.
-        local path=ass_path or (os.getenv('TEMP') or root)..'/mpv-AnimeFusion-notice-'
-            ..tostring(utils.getpid())..'-'..serial..'.ass'
-        if write(path,body..line) then
-            ass_path=path
-            if not M.ready then attach() end
-        end
+        storage_directory(function(folder)
+            local path=ass_path or folder..'/提示-'
+                ..tostring(utils.getpid())..'-'..serial..'.ass'
+            if write(path,body..line) then
+                ass_path=path
+                if not M.ready then attach() end
+            end
+        end)
     end
     function M.set(key,value)
         if not M.config_path then return end
@@ -1534,7 +1618,7 @@ return function(mp, utils, on_change)
                 words[#words+1]=line
             end
         end
-        local path=root..'/mpv-AnimeFusion-danmaku-blocklist.txt'
+        local path=root..'/设置/mpv-AnimeFusion-danmaku-blocklist.txt'
         local ok,why=write(path,table.concat(words,'\n'))
         if not ok then M.error='无法保存屏蔽词：'..tostring(why);on_change();return end
         M.set('blacklist',#words>0 and path or '')
@@ -1597,6 +1681,9 @@ end)()(mp,utils,function()
         end
     end
     publish()
+end,function()
+    return online.storage_context(online.query_name(mp.get_property('path',''),
+        mp.get_property('media-title',''),core.clean))
 end)
 local function kill() renderer.cancel() end
 local function clear() renderer.clear() end
@@ -1754,14 +1841,6 @@ end
 local function get_search_cache(keyword)
     local key=tostring(keyword or ''):lower()
     local entry=search_cache[key]
-    if entry and entry.completed_at and os.time()-entry.completed_at>600
-        and not (search_batch and search_batch.key==key) then
-        search_cache[key]=nil
-        for i,value in ipairs(search_cache_order) do
-            if value==key then table.remove(search_cache_order,i);break end
-        end
-        entry=nil
-    end
     if entry then
         for i,value in ipairs(search_cache_order) do
             if value==key then table.remove(search_cache_order,i);break end
@@ -2156,16 +2235,22 @@ local function automatic_match_all_routes(attempt)
                     if attempt.finished then return end
                     local list,parse_error
                     if not comment_error then list,parse_error=parse_remote(comments or '') end
-                    if list and #list>0 then
+                    if list then
                         remember_source(attempt.name,index,candidate,available)
                         attempt.finished=true;cancel_request();source=index
-                        adopt(list,online.limit_text(candidate.label..' · '..episode.label,220,core.clean),candidate.key)
-                        route_log(index,'弹幕读取','载入 '..#list..' 条弹幕');return
+                        if #list>0 then
+                            adopt(list,online.limit_text(candidate.label..' · '..episode.label,220,core.clean),candidate.key)
+                            route_log(index,'弹幕读取','载入 '..#list..' 条弹幕')
+                        else
+                            status='该集没有弹幕';autoload_state='empty';publish()
+                            route_log(index,'弹幕读取','该集返回 0 条弹幕')
+                        end
+                        return
                     end
                     if comment_error or parse_error then
                         append_attempt_error(attempt,index,'弹幕读取',comment_error or parse_error)
                     end
-                    route_log(index,'弹幕读取',list and ('该集返回 '..#list..' 条弹幕，继续查找') or comment_error or parse_error)
+                    route_log(index,'弹幕读取',comment_error or parse_error)
                     -- Exhaust this route's other platforms before moving to the next route.
                     if not priority_fallback and #attempt.queue>1 then
                         state.next_position=position+1

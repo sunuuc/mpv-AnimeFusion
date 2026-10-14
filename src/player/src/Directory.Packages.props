@@ -4,6 +4,7 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageVersion Include="SkiaSharp" Version="3.119.4" />
+    <PackageVersion Include="SharpCompress" Version="0.50.5" />
     <PackageVersion Include="BangumiNet.Api" Version="1.2.1" />
     <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.0" />
     <PackageVersion Include="NGettext" Version="0.6.7" />

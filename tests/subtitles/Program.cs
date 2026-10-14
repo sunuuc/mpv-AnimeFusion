@@ -1,0 +1,533 @@
+using System.Net;
+using System.IO;
+using System.Net.Http;
+using System.Text;
+using MpvNet.Windows.Subtitles;
+
+static class Program
+{
+    static int _checks;
+    static readonly string Root = Path.Combine(Path.GetTempPath(), "AnimeFusion-Subtitles-" + Guid.NewGuid().ToString("N"));
+    const string Results = """
+        {"status":0,"sub":{"subs":[{"id":1,"native_name":"YuruYuri 第二季","lang":{"desc":"简"}}]}}
+        """;
+    static readonly SubtitleQuery Query = new("YuruYuri", 2, 1, "zh");
+    static void Check(bool value, string message)
+    {
+        if (!value) throw new Exception(message);
+        _checks++;
+    }
+    static HttpResponseMessage Json(string value, HttpStatusCode status = HttpStatusCode.OK)
+        => new(status) { Content = new StringContent(value, Encoding.UTF8, "application/json") };
+    static HttpResponseMessage Redirect(string location, HttpStatusCode status = HttpStatusCode.MovedPermanently)
+        => new(status) { Headers = { Location = new Uri(location, UriKind.RelativeOrAbsolute) } };
+    static SubtitleStore Store(string name) => CreateStore(name);
+    static SubtitleStore CreateStore(string name)
+    { var store=new SubtitleStore(Path.Combine(Root,name));store.Save(new(new string('a',32)));return store; }
+    static T? VisualChild<T>(System.Windows.DependencyObject parent) where T:System.Windows.DependencyObject
+    {
+        for(int i=0;i<System.Windows.Media.VisualTreeHelper.GetChildrenCount(parent);i++)
+        {
+            var child=System.Windows.Media.VisualTreeHelper.GetChild(parent,i);
+            if(child is T match)return match;
+            if(VisualChild<T>(child) is T descendant)return descendant;
+        }
+        return null;
+    }
+    static void Advance(System.Windows.Controls.ListBox list, int milliseconds)
+    {
+        var frame=new System.Windows.Threading.DispatcherFrame();
+        var timer=new System.Windows.Threading.DispatcherTimer{Interval=TimeSpan.FromMilliseconds(8)};
+        var deadline=DateTime.UtcNow.AddMilliseconds(milliseconds);
+        timer.Tick+=(_,_)=>{list.UpdateLayout();if(DateTime.UtcNow>=deadline){timer.Stop();frame.Continue=false;}};
+        timer.Start();System.Windows.Threading.Dispatcher.PushFrame(frame);list.UpdateLayout();
+    }
+    static void Wheel(System.Windows.Controls.ScrollViewer scroll,int delta)
+    { scroll.RaiseEvent(new System.Windows.Input.MouseWheelEventArgs(System.Windows.Input.Mouse.PrimaryDevice,Environment.TickCount,delta){RoutedEvent=System.Windows.Input.Mouse.MouseWheelEvent}); }
+    static async Task Fails(Func<Task> action, string expected)
+    {
+        try { await action(); }
+        catch (SubtitleServiceException error) { Check(error.Message.Contains(expected), "Expected concise error: " + expected); return; }
+        throw new Exception("Expected request failure");
+    }
+    static byte[] Zip(string[] names)
+    {
+        using var bytes=new MemoryStream();
+        using(var archive=new System.IO.Compression.ZipArchive(bytes,System.IO.Compression.ZipArchiveMode.Create,true))
+            foreach(string name in names)
+            { using var stream=archive.CreateEntry(name).Open();stream.Write(Encoding.UTF8.GetBytes("1\n00:00:00,000 --> 00:00:01,000\nfixture\n")); }
+        return bytes.ToArray();
+    }
+    static async Task Main(string[] args)
+    {
+        try
+        {
+            var rootStore=Store("direct-root");
+            Check(rootStore.Root==Path.Combine(Root,"direct-root")&&!Directory.Exists(Path.Combine(rootStore.Root,"Downloads")),"Subtitle storage uses Subtitles directly without a Downloads child");
+            var directLibrary=new SubtitleLibrary(rootStore.Root);
+            var directQuery=new SubtitleQuery("Root fixture",1,1,"");
+            var directResult=new SubtitleResult(SubtitleSource.Assrt,"root","fixture","简","",[]);
+            foreach (string format in new[] { "", "不明", "其他", "  不明  " })
+                Check((directResult with { Format = format }).FormatLabel == "字幕", "Unspecified format badge uses 字幕");
+            foreach (string format in new[] { "ASS", "SSA", "SRT" })
+                Check((directResult with { Format = format }).FormatLabel == format, "Known format badge remains unchanged");
+            var languageHandler = new Handler((_, _) => Json("""
+                {"status":0,"sub":{"subs":[
+                {"id":1,"native_name":"fixture","lang":{"langlist":{"langfra":true}}},
+                {"id":2,"native_name":"fixture","lang":{"langlist":{"langkor":true}}},
+                {"id":3,"native_name":"fixture","lang":{"langlist":{"langspa":true}}},
+                {"id":4,"native_name":"fixture","lang":{"langlist":{"langdeu":true}}},
+                {"id":5,"native_name":"fixture","lang":{"langlist":{"langara":true}}},
+                {"id":6,"native_name":"fixture","lang":{"langlist":{"langhin":true}}},
+                {"id":7,"native_name":"fixture","lang":{"langlist":{"langeng":true,"langjpn":true}}},
+                {"id":8,"native_name":"fixture","lang":{"langlist":{"langfuture":true}}},
+                {"id":9,"native_name":"fixture"},
+                {"id":10,"native_name":"fixture","lang":{"langlist":{"langdou":true}}},
+                {"id":11,"native_name":"fixture","lang":{"desc":"简繁","langlist":{"langchs":true,"langcht":true}}}
+                ]}}
+                """));
+            using (var languageHttp = new HttpClient(languageHandler))
+            {
+                var page = await new AssrtClient(languageHttp, Store("dynamic-language")).SearchAsync(Query with { Language = "" }, 1, default);
+                foreach (var (id, code) in new[] { ("1", "fr"), ("2", "ko"), ("3", "es"), ("4", "de"), ("5", "ar"), ("6", "hi"), ("11", "zh") })
+                {
+                    var item = page.Results.Single(result => result.Id == id);
+                    Check(item.MatchesFilter(null, code, null), "Returned language flag dynamically resolves and filters: " + code);
+                    Check(item.Languages.Single().Name.Length > 0, "Returned language has a system language name: " + code);
+                }
+                Check(page.Results.Single(result => result.Id == "7").Languages.Count == 2, "Multilingual result appears in every returned language");
+                foreach (string id in new[] { "8", "9", "10" })
+                    Check(page.Results.Single(result => result.Id == id).MatchesFilter(null, "other", null), "Unknown or unspecified language uses Other");
+                Check(!page.Results.Single(result => result.Id == "10").MatchesFilter(null, "zh", null), "Bilingual flag alone does not invent Chinese");
+                Check(languageHandler.Count == 1, "Language filters never issue an additional service request");
+            }
+            Check(directLibrary.FilePath(directQuery,directResult,"episode.srt").StartsWith(Path.Combine(rootStore.Root,"Root fixture","第 1 季")),"Work and season folders are direct children of the configured subtitle root");
+            var templatePath=Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,"../../../../../src/player/src/MpvNet.Windows/WPF/SubtitleSearchWindow.xaml"));
+            var template=System.Xml.Linq.XDocument.Load(templatePath);
+            var runs=template.Descendants().Where(e=>e.Name.LocalName=="Run" && (string?)e.Attribute("Text") is string t && t.StartsWith("{Binding"));
+            Check(runs.All(e=>e.Attribute("Text")!.Value.Contains("Mode=OneWay")),"Read-only subtitle display bindings are one-way");
+            Check(template.Descendants().Any(e => (string?)e.Attribute("Content") == "搜索" && (string?)e.Attribute("Click") == "Search_Click"), "Explicit search button is present and connected");
+            Check(!template.Descendants().Any(e => (string?)e.Attribute("Content") == "加载更多"), "Pagination button remains removed");
+            Check(template.Descendants().Any(e => e.Attributes().Any(a => a.Name.LocalName == "Name" && a.Value == "SeasonChips")), "Season filter is present");
+            Check(template.Descendants().Any(e=>e.Attributes().Any(a=>a.Name.LocalName=="Name"&&a.Value=="ResultCount")),"Search result total remains visible below the list");
+            Check(!template.Descendants().Any(e => (string?)e.Attribute("Click") == "Language_Click"), "No language button list is hardcoded in XAML");
+            Check(template.Descendants().Any(e=>(string?)e.Attribute("Text")=="{Binding FormatLabel}")
+                && !template.Descendants().Any(e=>(string?)e.Attribute("Text")=="字幕" || (string?)e.Attribute("Text")=="{Binding Summary}"),"The left badge shows the returned format without a duplicate source or language row");
+            Check(template.Descendants().Single(e=>(string?)e.Attribute("Text")=="{Binding Details}").Attribute("TextWrapping")==null,
+                "Language, date and size stay on one metadata line");
+            Check(!template.ToString().Contains("提供字幕"), "Footer source hint removed");
+            Check(template.Descendants().Count(e => e.Name.LocalName == "ListBox") == 1
+                && !template.ToString().Contains("FilesList") && !template.ToString().Contains("BackButton"), "Search results are the only selection level; no clickable episode files or back step");
+            Check(!template.ToString().Contains("LoadButton") && !template.ToString().Contains("下载并加载"), "No separate download button remains");
+            string windowCode=File.ReadAllText(templatePath+".cs");
+            Check(template.ToString().Contains("PreviewMouseLeftButtonUp=\"Result_Click\"") && windowCode.Contains("await LoadAsync(result)")
+                && !windowCode.Contains("Result_Changed") && !windowCode.Contains("FilesList"), "Explicit result click downloads directly; automatic selection never downloads");
+            Check(windowCode.Contains("if (_closed) return") && windowCode.IndexOf("        Close();",windowCode.IndexOf("async Task LoadAsync",StringComparison.Ordinal),StringComparison.Ordinal)
+                <windowCode.IndexOf("await SubtitlePlayback.Current.DownloadAsync",StringComparison.Ordinal),"The search window closes before playback owns the download");
+            Check(!windowCode.Contains("_download.DownloadAsync")&&!windowCode.Contains("NewRequest()"),"Window lifetime no longer owns or cancels the selected download");
+            var sourceTemplate=System.Xml.Linq.XDocument.Load(Path.Combine(Path.GetDirectoryName(templatePath)!,"SubtitleSourcesWindow.xaml"));
+            Check(sourceTemplate.Descendants().Count(e=>(string?)e.Attribute("Content")=="获取密钥")==1
+                && sourceTemplate.Descendants().Count(e=>(string?)e.Attribute("Content")=="验证")==1, "ASSRT uses one concise get-key and verify control");
+            Check(!sourceTemplate.Descendants().Any(e=>e.Name.LocalName=="Expander") && !sourceTemplate.ToString().Contains("登录")
+                && !sourceTemplate.ToString().Contains("高级设置"), "Unsupported standalone account mode and expanded explanation removed");
+            string playbackCode=File.ReadAllText(Path.Combine(Path.GetDirectoryName(templatePath)! ,"../Subtitles/SubtitlePlayback.cs"));
+            Check(playbackCode.Contains(@"\fs8\bord0.6") && !playbackCode.Contains("字幕已加载")
+                && playbackCode.Contains("if (text.Length == 0)"), "Progress uses compact OSD units and successful loading clears the notice immediately");
+            Check(!windowCode.Contains("SeriesQuery"), "Search results are not hidden according to the current video's type");
+            Check(windowCode.Contains("season == _media.Season") && playbackCode.Contains("path == null || !current"), "Package from another season or work is saved without loading into the current video");
+            Check(windowCode.Contains("Search_Click(object sender, RoutedEventArgs e) => Search(refresh: true)")
+                && windowCode.Contains("e.Handled = true; Search(refresh: true)"),"Click and Enter explicitly refresh subtitle results");
+            Check(windowCode.Contains("Status.Text = loading ?") && windowCode.Contains("if (hasResults || loading) EmptyState.Visibility = Visibility.Collapsed")
+                && !windowCode.Contains("Empty(\"正在搜索字幕"),"Search progress only appears in the footer, including when no results exist yet");
+            Check(windowCode.IndexOf("        RefreshResults();",windowCode.IndexOf("foreach (var local",StringComparison.Ordinal),StringComparison.Ordinal)
+                < windowCode.IndexOf("await search.SearchAsync",StringComparison.Ordinal),"Local result count and empty-state visibility refresh before any awaited catalogue or API request");
+            Check(windowCode.Contains("failed.Fail(SubtitleSource.Assrt, error)")&&windowCode.Contains("ApplySearch(failed)"),"Query errors use the same non-overlapping result state as service errors");
+            Check(windowCode.Contains("_searchGeneration == generation") && windowCode.Contains("if (refresh) ResetSearch()"),"Refresh replaces results and ignores stale replies");
+            string danmakuCode=File.ReadAllText(Path.Combine(Path.GetDirectoryName(templatePath)!,"DanmakuSearchWindow.xaml.cs"));
+            Check(danmakuCode.Contains("Search_Click(object sender, RoutedEventArgs e) => Search(refresh: true)")
+                && danmakuCode.Contains("refresh ? \"true\" : \"false\""),"Danmaku search button explicitly refreshes through the existing script command");
+            int danmakuFilter=danmakuCode.IndexOf("void SourceChip_Click(",StringComparison.Ordinal);
+            Check(danmakuCode[danmakuFilter..danmakuCode.IndexOf("void Search_Click(",danmakuFilter,StringComparison.Ordinal)].Contains("player_ui-danmaku-search-filter"),"Danmaku source chip retains cached filtering");
+            foreach(string method in new[]{"Source_Click","Language_Click","Season_Click"})
+            {
+                int start=windowCode.IndexOf("void "+method+"(",StringComparison.Ordinal);
+                int end=windowCode.IndexOf("\n    }",start,StringComparison.Ordinal);
+                string handlerBody=windowCode[start..end];
+                Check(handlerBody.Contains("RefreshResults()") && !handlerBody.Contains("Search()") && !handlerBody.Contains("ResetSearch()"),"Filter handler is local only: "+method);
+            }
+            Exception? templateError=null;
+            var renderThread=new Thread(()=>
+            {
+                try
+                {
+                    var itemTemplate=template.Descendants().First(e=>e.Name.LocalName=="DataTemplate");
+                    var dataTemplate=(System.Windows.DataTemplate)System.Windows.Markup.XamlReader.Parse(itemTemplate.ToString());
+                    var panel=(System.Windows.FrameworkElement)dataTemplate.LoadContent();
+                    panel.DataContext=new SubtitleResult(SubtitleSource.Assrt,"1","fixture","简","简 · 2016-06-13 · 605.3 KB",[]){Format="SSA"};
+                    panel.Measure(new System.Windows.Size(520,1000));panel.Arrange(new System.Windows.Rect(panel.DesiredSize));panel.UpdateLayout();
+                    Check(panel.ActualHeight>0,"Real result template renders without read-only binding crash");
+                    Check(panel.ActualHeight==84,"Compact result card stays at its normal minimum height");
+                    Check(VisualChild<System.Windows.Controls.TextBlock>(panel)!.Text=="SSA","The actual result template binds its format badge");
+                    var resources=System.Xml.Linq.XDocument.Load(Path.Combine(Path.GetDirectoryName(templatePath)!,"Resources.xaml"));
+                    var shared=resources.Descendants().First(e=>e.Name.LocalName=="Style" && e.Attributes().Any(a=>a.Name.LocalName=="Key"&&a.Value=="MatchList"));
+                    foreach(var element in shared.Descendants().Where(e=>e.Name.NamespaceName=="clr-namespace:HandyControl.Controls"))
+                        element.Name=System.Xml.Linq.XName.Get(element.Name.LocalName,"clr-namespace:HandyControl.Controls;assembly=mpv-AnimeFusion");
+                    foreach(var color in new[]{System.Windows.Media.Colors.DimGray,System.Windows.Media.Colors.WhiteSmoke})
+                    {
+                        MpvNet.Windows.UI.Theme.Current=new(){Foreground=System.Windows.Media.Brushes.White,Background=new System.Windows.Media.SolidColorBrush(color)};
+                        var dictionary=new System.Xml.Linq.XElement(System.Xml.Linq.XName.Get("ResourceDictionary","http://schemas.microsoft.com/winfx/2006/xaml/presentation"),
+                            new System.Xml.Linq.XAttribute(System.Xml.Linq.XNamespace.Xmlns+"x","http://schemas.microsoft.com/winfx/2006/xaml"),
+                            new System.Xml.Linq.XAttribute(System.Xml.Linq.XNamespace.Xmlns+"ui","clr-namespace:MpvNet.Windows.UI;assembly=mpv-AnimeFusion"),new System.Xml.Linq.XElement(shared));
+                        dictionary.Add(new System.Xml.Linq.XAttribute(System.Xml.Linq.XNamespace.Xmlns+"hc","clr-namespace:HandyControl.Controls;assembly=mpv-AnimeFusion"));
+                        var styles=(System.Windows.ResourceDictionary)System.Windows.Markup.XamlReader.Parse(dictionary.ToString());
+                        var list=new System.Windows.Controls.ListBox{Style=(System.Windows.Style)styles["MatchList"],Width=500,Height=280};
+                        Check(System.Windows.Controls.VirtualizingPanel.GetScrollUnit(list)==System.Windows.Controls.ScrollUnit.Pixel
+                            && System.Windows.Controls.VirtualizingPanel.GetIsVirtualizingWhenGrouping(list)
+                            && System.Windows.Controls.ScrollViewer.GetPanningMode(list)==System.Windows.Controls.PanningMode.VerticalOnly,
+                            "Shared search list uses native pixel scrolling, including grouped results and touch panning");
+                        list.ItemContainerStyle=new System.Windows.Style(typeof(System.Windows.Controls.ListBoxItem));
+                        list.ItemContainerStyle.Setters.Add(new System.Windows.Setter(System.Windows.FrameworkElement.HeightProperty,160d));
+                        for(int i=0;i<40;i++)list.Items.Add(new SubtitleResult(SubtitleSource.Assrt,i.ToString(),"fixture "+i,"中文","",[]){Season=i/10+1});
+                        foreach(bool enabled in new[]{true,false,true})
+                        {
+                            list.IsEnabled=enabled;list.ApplyTemplate();list.Measure(new System.Windows.Size(500,280));list.Arrange(new System.Windows.Rect(0,0,500,280));list.UpdateLayout();
+                            var border=(System.Windows.Controls.Border)list.Template.FindName("Bd",list);
+                            Check(border.Background is System.Windows.Media.SolidColorBrush brush&&brush.Color.A==0,"Shared list remains transparent in enabled/disabled/restored states for either theme");
+                        }
+                        foreach(bool grouped in new[]{false,true})
+                        {
+                            if(grouped)
+                            {
+                                var groupedTemplate=System.Xml.Linq.XDocument.Load(Path.Combine(Path.GetDirectoryName(templatePath)!,"DanmakuSearchWindow.xaml"));
+                                var groupStyle=groupedTemplate.Descendants().First(e=>e.Name.LocalName=="Style"&&e.Attributes().Any(a=>a.Name.LocalName=="Key"&&a.Value=="ResultGroupItem"));
+                                dictionary.Add(new System.Xml.Linq.XElement(groupStyle));
+                                var groupResources=(System.Windows.ResourceDictionary)System.Windows.Markup.XamlReader.Parse(dictionary.ToString());
+                                list.GroupStyle.Add(new System.Windows.Controls.GroupStyle{ContainerStyle=(System.Windows.Style)groupResources["ResultGroupItem"]});
+                                System.Windows.Data.CollectionViewSource.GetDefaultView(list.Items).GroupDescriptions.Add(new System.Windows.Data.PropertyGroupDescription("Season"));
+                            }
+                            list.Measure(new System.Windows.Size(500,280));list.Arrange(new System.Windows.Rect(0,0,500,280));list.UpdateLayout();
+                            var scroll=VisualChild<System.Windows.Controls.ScrollViewer>(list)!;
+                            scroll.ScrollToVerticalOffset(7);list.UpdateLayout();
+                            Check(Math.Abs(scroll.VerticalOffset-7)<.1,"Small scroll offset stays within an item instead of snapping to a row, grouped="+grouped);
+                            scroll.ScrollToVerticalOffset(0);list.UpdateLayout();scroll.LineDown();list.UpdateLayout();
+                            Check(scroll.VerticalOffset>0&&scroll.VerticalOffset<160,"Native line scroll moves fewer pixels than one result, grouped="+grouped);
+                            scroll.ScrollToVerticalOffset(0);list.UpdateLayout();
+                            VisualChild<System.Windows.Controls.VirtualizingStackPanel>(list)!.MouseWheelDown();list.UpdateLayout();
+                            Check(scroll.VerticalOffset>0&&scroll.VerticalOffset<160,"Native wheel scroll stays below one tall result, grouped="+grouped);
+                            Check(scroll is HandyControl.Controls.ScrollViewer{IsPixelScrollingEnabled:true},"Both lists use direct pixel input in the existing HandyControl control");
+                            scroll.ScrollToVerticalOffset(0);list.UpdateLayout();
+                            Wheel(scroll,-2);list.UpdateLayout();
+                            Check(Math.Abs(scroll.VerticalOffset-2)<.1,"Tiny input moves two pixels rather than a fixed wheel step, grouped="+grouped);
+                            scroll.ScrollToVerticalOffset(0);list.UpdateLayout();
+                            for(int i=0;i<10;i++)Wheel(scroll,-2);
+                            list.UpdateLayout();
+                            Check(Math.Abs(scroll.VerticalOffset-20)<.1,"All fine input received before layout is applied on that frame without lag or lost distance, grouped="+grouped);
+                            Wheel(scroll,2);list.UpdateLayout();
+                            Check(Math.Abs(scroll.VerticalOffset-18)<.1,"Direction reverses on the next layout without waiting for animation, grouped="+grouped);
+                            Advance(list,200);
+                            Check(Math.Abs(scroll.VerticalOffset-18)<.1,"Stopping input leaves no animation tail or old completion jump, grouped="+grouped);
+                            scroll.ScrollToVerticalOffset(0);list.UpdateLayout();
+                            for(int i=1;i<=30;i++)
+                            {
+                                Wheel(scroll,-2);list.UpdateLayout();
+                                Check(Math.Abs(scroll.VerticalOffset-i*2)<.1,"Every fine input tracks the current frame, grouped="+grouped+", sample="+i);
+                            }
+                            scroll.ScrollToVerticalOffset(0);list.UpdateLayout();Wheel(scroll,120);list.UpdateLayout();Wheel(scroll,-2);list.UpdateLayout();
+                            Check(Math.Abs(scroll.VerticalOffset-2)<.1,"Overscroll at the top does not delay a reversed input");
+                            scroll.ScrollToBottom();list.UpdateLayout();Wheel(scroll,-120);list.UpdateLayout();double bottom=scroll.VerticalOffset;
+                            Wheel(scroll,2);list.UpdateLayout();Check(Math.Abs(scroll.VerticalOffset-(bottom-2))<.1,"Overscroll at the bottom does not delay a reversed input");
+                            scroll.ScrollToVerticalOffset(43);list.UpdateLayout();Wheel(scroll,-2);list.UpdateLayout();
+                            Check(Math.Abs(scroll.VerticalOffset-45)<.1,"Native scrollbar or programmatic scrolling resets the wheel baseline");
+                            list.ItemContainerStyle=new System.Windows.Style(typeof(System.Windows.Controls.ListBoxItem));list.ItemTemplate=dataTemplate;
+                            for(int i=0;i<list.Items.Count;i++)list.Items[i]=new SubtitleResult(SubtitleSource.Assrt,i.ToString(),string.Join(' ',Enumerable.Repeat("variable title",i%4+1)),"简","简 · 2016-06-13 · 605.3 KB",[]){Season=i/10+1,Format="SSA"};
+                            list.UpdateLayout();scroll.ScrollToTop();list.UpdateLayout();
+                            for(int i=1;i<=60;i++)
+                            {
+                                Wheel(scroll,-3);list.UpdateLayout();
+                                Check(Math.Abs(scroll.VerticalOffset-i*3)<.1,"Variable-height actual result cards follow each layout without a row snap, grouped="+grouped+", sample="+i);
+                            }
+                            list.ItemTemplate=null;
+                            list.ItemContainerStyle=new System.Windows.Style(typeof(System.Windows.Controls.ListBoxItem));
+                            list.ItemContainerStyle.Setters.Add(new System.Windows.Setter(System.Windows.FrameworkElement.HeightProperty,160d));
+                        }
+                    }
+                    Check(template.Descendants().Where(e=>e.Name.LocalName=="ListBox").All(e=>(string?)e.Attribute("Style")=="{StaticResource MatchList}"),"Subtitle results and files use the shared themed list");
+                    var danmakuTemplate=System.Xml.Linq.XDocument.Load(Path.Combine(Path.GetDirectoryName(templatePath)!,"DanmakuSearchWindow.xaml"));
+                    Check(danmakuTemplate.Descendants().Where(e=>e.Name.LocalName=="ListBox").All(e=>(string?)e.Attribute("Style")=="{StaticResource MatchList}"),"Danmaku works and episodes use the same pixel scrolling style");
+                }
+                catch(Exception error){templateError=error;}
+            });
+            renderThread.SetApartmentState(ApartmentState.STA);renderThread.Start();renderThread.Join();
+            if(templateError!=null)throw templateError;
+            if(args.Contains("--scroll-only")){Console.WriteLine($"Search UI and scrolling checks passed: {_checks}; no desktop interaction.");return;}
+            Check(!Query.MatchesTitle(["Laid-Back Camp Movie"]), "Other works rejected");
+            var shortTitle = Query with {Title="摇曳百合",Names=[]};
+            Check(shortTitle.MatchesTitle(["Yuru Yuri 2/摇曳百合 第二季/輕鬆百合 第二季"]),"Short CJK title matches a season pack without catalogue aliases");
+            Check(shortTitle.MatchesTitle(["轻松百合♪♪ 第二季 BDRIP 全/輕鬆百合♪♪ 第二季 BDRIP 全/摇曳百合♪♪ 第二季 BDRIP 全"]),"Existing filename parser handles multilingual pack release labels");
+            Check(!shortTitle.MatchesTitle(["摇曳百合的其他故事 第二季"]),"Short names do not match unrelated longer titles");
+            Check(!shortTitle.MatchesTitle(["", " / "]),"Empty API title and alias fields do not enter the filename parser");
+            Check(!shortTitle.MatchesTitle(["Other Work 1.HDTV.addic7ed ["]),"Publication-name matching only parses the anime title, not episode-title metadata");
+            Check(Query.MatchesEpisode("YuruYuri S02E01") && !Query.MatchesEpisode("YuruYuri S01E01")
+                && !Query.MatchesEpisode("YuruYuri S02E02"), "Season and episode verified");
+            Check(!Query.MatchesEpisode("YuruYuri OVA"), "Specials excluded from regular episode requests");
+            Check(Query.MatchesEpisode("轻松百合♪♪ 第二季 BDRIP 全/搖曳百合♪♪ 第二季 BDRIP 全"), "Second-season pack retained");
+            Check((Query with { Season = 0 }).MatchesEpisode("YuruYuri OVA"), "Explicit special request retained");
+            Check(Query.MatchesFile("[Group] YuruYuri [01].ass") && !Query.MatchesFile("[Group] YuruYuri [02].ass"), "Pack files use existing filename parser");
+            Check(MpvNet.Windows.Bangumi.BangumiMedia.FromPlayback("[Group][Series][11][B24E8407].sc.ass","[Group][Series][11][B24E8407].sc.ass").EpisodeNumber==11
+                &&MpvNet.Windows.Bangumi.BangumiMedia.FromPlayback("[Group][Series][12][115BD6E2].sc.ass","[Group][Series][12][115BD6E2].sc.ass").EpisodeNumber==12,
+                "Hexadecimal checksums cannot become E8407 or E2 episode markers");
+            Check(!(Query with { Episode = null, Year = 2012 }).MatchesEpisode("YuruYuri (2018)"), "Movie year verified");
+            var collectionNames=new[]{"[Group][Yuru Yuri][01].sc.ass","[Group][Yuru Yuri 2][01].sc.ass","[Group][Yuru Yuri San Hai][01].sc.ass"};
+            var collectionQuery=Query with{Names=["YuruYuri"]};
+            var collectionResult=new SubtitleResult(SubtitleSource.Assrt,"collection","Collection","中文","",[]){Collection=true,PackageNames=collectionNames};
+            var collectionFiles=collectionNames.Select(name=>new SubtitleFile(SubtitleSource.Assrt,"collection",0,name,"")).ToArray();
+            var collectionLibrary=new SubtitleLibrary(Path.Combine(Root,"collection-library"));
+            Check(collectionLibrary.CurrentFile(collectionQuery,collectionResult,collectionFiles)?.Name==collectionNames[1],"Mixed-season collection chooses the numbered current-season title, not another season's first episode; actual="
+                +collectionLibrary.CurrentFile(collectionQuery,collectionResult,collectionFiles)?.Name+"; titles="+string.Join('|',collectionNames.Select(name=>string.Join(',',AnitomySharp.AnitomySharp.Parse(name).Where(e=>e.Category==AnitomySharp.Element.ElementCategory.ElementAnimeTitle).Select(e=>e.Value)))));
+            foreach(var file in collectionFiles)
+            {
+                string path=collectionLibrary.FilePath(collectionQuery,collectionResult,file.Name);Directory.CreateDirectory(Path.GetDirectoryName(path)!);File.WriteAllText(path,"fixture");
+                collectionLibrary.Save(collectionQuery,collectionResult,file,path,true);
+            }
+            var collectionTracks=collectionLibrary.Tracks(MpvNet.Windows.Trakt.TraktMedia.Parse("YuruYuri S2E1","",new Dictionary<string,string>()));
+            Check(collectionTracks.Count==1&&collectionTracks[0].Path.EndsWith(collectionNames[1]),"Other season files remain stored but cannot enter the current episode's subtitle menu");
+            int queries=0;
+            var cacheHandler=new Handler((_,_)=>Json("""
+                {"status":0,"sub":{"subs":[
+                {"id":1,"native_name":"YuruYuri 第一季","lang":{"desc":"英"}},
+                {"id":2,"native_name":"YuruYuri 第二季","lang":{"desc":"简"}},
+                {"id":3,"native_name":"YuruYuri 第二季","lang":{"desc":"日"}}]}}
+                """));
+            using(var cacheHttp=new HttpClient(cacheHandler))
+            {
+                using var search=new SubtitleSearch(new(cacheHttp,Store("cache")));
+                Task<SubtitleQuery> MakeQuery(CancellationToken token){queries++;return Task.FromResult(Query with {Season=null,Language=""});}
+                var progress=new Progress<SubtitleSearchResult>();
+                var first=await search.SearchAsync("YuruYuri",MakeQuery,progress,default);
+                Check(first.Complete&&first.Results.Count==3&&cacheHandler.Count==1,"Initial search retains all seasons and languages");
+                Check(first.Results.Count(r=>r.MatchesFilter(null,"zh",2))==1,"Chinese second season filters stored results");
+                Check(first.Results.Count(r=>r.MatchesFilter(null,"en",1))==1,"English first season filters stored results");
+                var repeated=await search.SearchAsync(" yuruyuri ",MakeQuery,progress,default);
+                Check(ReferenceEquals(first,repeated)&&queries==1&&cacheHandler.Count==1,"Filters and automatic reuse make no new requests");
+                Check(first.Results.Count(r=>r.MatchesFilter(null,"",null))==3,"All restores the complete cached result");
+                var refreshed=await search.SearchAsync("YuruYuri",MakeQuery,progress,default,refresh:true);
+                Check(!ReferenceEquals(first,refreshed)&&queries==2&&cacheHandler.Count==2,"Explicit search refreshes and replaces the snapshot");
+                var started=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                var pending=search.SearchAsync("cancelled",async token=>{started.SetResult();await Task.Delay(Timeout.Infinite,token);return Query;},progress,default);
+                await started.Task;
+                var replacement=await search.SearchAsync("cancelled",MakeQuery,progress,default,refresh:true);
+                try{await pending;throw new Exception("Old search must cancel");}
+                catch(OperationCanceledException){Check(replacement.Complete,"Explicit refresh cancels old replies");}
+            }
+            string searchCode=File.ReadAllText(Path.Combine(Path.GetDirectoryName(templatePath)!,"../Subtitles/SubtitleSearch.cs"));
+            Check(!searchCode.Contains("page <= 20")&&searchCode.Contains("added == 0"),"Pagination retains every page and stops empty or repeated pages");
+            Check(Enum.GetNames<SubtitleSource>().SequenceEqual(new[]{"Assrt"})&&!sourceTemplate.ToString().Contains("OpenSubtitles")
+                &&!windowCode.Contains("OpenSubtitles")&&!template.ToString().Contains("OpenSubtitles"),"Only ASSRT remains in code, settings and search UI");
+            var packStore = Store("packs");
+            packStore.Save(new(new string('a',32)));
+            var packHandler = new Handler((request,count)=>
+            {
+                string body=request.Content!.ReadAsStringAsync().Result;
+                Check(request.Method==HttpMethod.Post&&request.RequestUri!.AbsolutePath=="/v1/sub/search"&&body.Contains("q=YuruYuri")
+                    &&body.Contains("filelist=1"),"Canonical search requests package metadata through the official POST without downloading individual files");
+                return Json("""
+                {"status":0,"sub":{"subs":[
+                {"id":1,"native_name":"YuruYuri 第一季","lang":{"desc":"简"}},
+                {"id":2,"native_name":"YuruYuri 第二季","lang":{"desc":"简"}},
+                {"id":3,"native_name":"YuruYuri","videoname":"YuruYuri","lang":{"desc":"简"}},
+                {"id":4,"native_name":"YuruYuri 第二季 OVA","lang":{"desc":"简"}},
+                {"id":5,"native_name":"ゆるゆり/摇曳百合/輕鬆百合/YuruYuri","videoname":"[字幕组][合集(1+2+3期+OVA)]","subtype":"SSA","size":619874,"lang":{"desc":"繁"},"vote_score":16,"down_count":0,"view_count":7041,"upload_time":"2016-06-13 02:47:55","producer":{"producer":"制作组","verifier":"校对组","source":"转载","uploader":"上传者"}}]}}
+                """);
+            });
+            using(var packHttp=new HttpClient(packHandler))
+            {
+                var result=await new AssrtClient(packHttp,packStore).SearchAsync(Query with {Title="YuruYuri！", Names=["YuruYuri!"]},1,default);
+                Check(result.Results.Count==5 && result.Results.Any(r=>r.Id=="5"), "All retains the full API response, including season collections and specials");
+                Check(result.Results.Count(r=>r.MatchesFilter(null,"",null))==5,"All is not the union of recognized season chips");
+                var collection=result.Results.Single(r=>r.Id=="5");
+                Check(collection.MatchesFilter(null,"zh",2)&&collection.Collection,"Collections remain visible for the current season rather than being assumed to be season one");
+                Check(collection.Title=="ゆるゆり/摇曳百合/輕鬆百合/YuruYuri/[字幕组][合集(1+2+3期+OVA)]","Result title retains both the work aliases and the full release name");
+                Check(collection.Format=="SSA"&&collection.Details=="繁 · 2016-06-13 · 605.3 KB","Metadata only displays language, date and package size without a raw vote score");
+                Check(result.Results[0].Format==""&&result.Results[0].Details=="简","Missing format, date and size have no placeholder labels");
+                Check(result.Results.Single(r=>r.Id=="3").Title=="YuruYuri","Identical work and release names are not repeated");
+            }
+            var sparseHandler=new Handler((request,count)=>Json(count==1
+                ? "{\"status\":0,\"sub\":{\"subs\":["+string.Join(',',Enumerable.Range(1,15).Select(id=>$"{{\"id\":{id},\"native_name\":\"Other Work\",\"lang\":{{\"desc\":\"简\"}}}}"))+"]}}"
+                : "{\"status\":0,\"sub\":{\"subs\":[{\"id\":99,\"native_name\":\"YuruYuri 第二季\",\"lang\":{\"desc\":\"简\"}}]}}"));
+            using(var sparseHttp=new HttpClient(sparseHandler))
+            using(var sparseSearch=new SubtitleSearch(new(sparseHttp,packStore)))
+            {
+                var result=await sparseSearch.SearchAsync("YuruYuri",_=>Task.FromResult(Query),new Progress<SubtitleSearchResult>(),default);
+                Check(result.Complete && result.Results.Count==16 && result.Results.Any(r=>r.Id=="99") && sparseHandler.Count==2,"All keeps both pages without local title suppression");
+            }
+            var invalidHandler=new Handler((_,_)=>Json("{\"status\":0,\"sub\":{\"subs\":[{\"fileid\":1,\"videoname\":\"YuruYuri\"}]}}"));
+            using(var invalidHttp=new HttpClient(invalidHandler))
+                await Fails(()=>new AssrtClient(invalidHttp,packStore).SearchAsync(Query,1,default),"返回结果异常");
+            var validAliasHandler=new Handler((_,count)=>Json(count==1
+                ? "{\"status\":0,\"sub\":{\"subs\":[{\"fileid\":1}]}}"
+                : "{\"status\":0,\"sub\":{\"subs\":[{\"id\":2,\"native_name\":\"YuruYuri 第二季\",\"lang\":{\"desc\":\"简\"}}]}}"));
+            using(var validAliasHttp=new HttpClient(validAliasHandler))
+            {
+                var result=await new AssrtClient(validAliasHttp,packStore).SearchAsync(Query with {Names=["Alias"]},1,default);
+                Check(result.Results.Single().Id=="2" && validAliasHandler.Count==2,"A malformed response does not block the existing trusted-alias search");
+            }
+            var movieHandler=new Handler((request,_)=>
+            {
+                Check(request.Headers.Authorization==null&&!request.Headers.Contains("Api-Key"),"Download host receives no credentials");
+                return new(HttpStatusCode.OK){Content=new StringContent("1\n00:00:00,000 --> 00:00:01,000\nfixture\n")};
+            });
+            using(var movieHttp=new HttpClient(movieHandler))
+            {
+                var library=new SubtitleLibrary(Store("movie").Root);
+                var downloader=new SubtitleDownload(movieHttp,library);
+                var query=Query with{Season=null,Episode=null};
+                var result=new SubtitleResult(SubtitleSource.Assrt,"1","YuruYuri","中文","",[]){DownloadName="fixture.srt",DownloadUrl="https://download.example/fixture.srt"};
+                string file=(await downloader.DownloadAsync(query,result,null,[],null,default))!;
+                Check(File.ReadAllText(file).Contains("fixture"),"Movie download retains original subtitle contents");
+                Check(await downloader.DownloadAsync(query,result,null,[],null,default)==file&&movieHandler.Count==1,"Saved movie subtitle reuses local bytes");
+            }
+            var wholeStore=Store("whole-season");
+            var detailStore=Store("package-detail");detailStore.Save(new(new string('a',32)));
+            var detailHandler=new Handler((request,_)=>
+            {
+                Check(request.Method==HttpMethod.Post&&request.RequestUri!.AbsolutePath=="/v1/sub/detail"
+                    &&request.Content!.ReadAsStringAsync().Result=="id=7","Package metadata uses the official detail POST and requests the full package");
+                Check(request.Headers.CacheControl?.NoCache==true,"Temporary package links bypass cached detail responses");
+                return Json("{\"status\":0,\"sub\":{\"subs\":[{\"native_name\":\"作品\",\"videoname\":\"[字幕组]合集\",\"subtype\":\"ASS\",\"lang\":{\"desc\":\"简繁\"},\"upload_time\":\"2016-06-13 02:47:55\",\"size\":2097152,\"filename\":\"season.rar\",\"url\":\"https://download.example/season.rar\",\"filelist\":[{\"f\":\"single.ass\",\"url\":\"https://download.example/onthefly/single.ass\"}]}]}}");
+            });
+            using(var detailHttp=new HttpClient(detailHandler))
+            {
+                var detail=await new AssrtClient(detailHttp,detailStore).DetailAsync(new(SubtitleSource.Assrt,"7","Fixture","中文","",[]),default);
+                Check(detail.DownloadName=="season.rar"&&detail.DownloadUrl.EndsWith("/season.rar")&&detail.Files.Count==0,"Detail retains only the original package download, not episode URLs");
+                Check(detail.Title=="作品/[字幕组]合集"&&detail.Format=="ASS"&&detail.Details=="简繁 · 2016-06-13 · 2 MB","Detail uses the same full title and compact metadata as search");
+            }
+            var wholeLibrary=new SubtitleLibrary(wholeStore.Root);
+            var names=new[]{"[CASO][Yuruyuri2][01][BDRIP][1920x1080][x264_FLAC][C38B0799].sc.ass","[CASO][Yuruyuri2][01][BDRIP][1920x1080][x264_FLAC][C38B0799].tc.ass",
+                "[CASO][Yuruyuri2][02][BDRIP][1920x1080][x264_FLAC][C38B0799].sc.ass","[CASO][Yuruyuri2][02][BDRIP][1920x1080][x264_FLAC][C38B0799].tc.ass"};
+            var wholeHandler=new Handler((request,_)=>
+            {
+                Check(request.RequestUri!.AbsolutePath=="/season.zip","Series only requests the original compressed package, never an episode URL");
+                Check(!request.Headers.Contains("Api-Key")&&request.Headers.Authorization==null,"Package host receives no API credentials");
+                return new(HttpStatusCode.OK){Content=new ByteArrayContent(Zip(names))};
+            });
+            using(var wholeHttp=new HttpClient(wholeHandler))
+            {
+                var query=Query with{Title="摇曳百合"};
+                var result=new SubtitleResult(SubtitleSource.Assrt,"7","整季字幕","简繁","简繁 · 2016-06-13 · 2 MB",[]){Format="ASS",Season=2,LanguageCode="zh",DownloadName="season.zip",DownloadUrl="https://download.example/season.zip"};
+                var download=new SubtitleDownload(wholeHttp,wholeLibrary);
+                var progressMessages=new List<string>();
+                string selected=(await download.DownloadAsync(query,result,null,[],new Messages(progressMessages),default))!;
+                Check(progressMessages.Contains("下载字幕 100%")&&progressMessages.Contains("解压字幕 100%"),"Download bytes and archive entries report actual progress events");
+                Check(progressMessages.Count(message=>message.StartsWith("下载字幕 "))<=11&&progressMessages.Count(message=>message.StartsWith("解压字幕 "))<=11,"Percentage progress is bounded without a polling timer");
+                Check(wholeHandler.Count==1&&wholeLibrary.Package(query,result)!.Files.Count==4,"One package request saves all episode variants locally");
+                Check(File.Exists(wholeLibrary.ArchivePath(query,result)),"Original compressed package remains permanently in the shared work/package directory");
+                Check(selected.EndsWith(".sc.ass")&&selected.Contains("[01]"),"Current episode is selected after extraction");
+                wholeLibrary.Remember(query.Title,2,selected);
+                var next=MpvNet.Windows.Trakt.TraktMedia.Parse("摇曳百合 S2E2","",new Dictionary<string,string>());
+                var tracks=wholeLibrary.Tracks(next);
+                Check(tracks.Count==2&&tracks.Single(t=>t.Preferred).Path.EndsWith(".sc.ass"),"Next episode lists its saved alternatives and prefers the previous language/version");
+                wholeLibrary.Remember(query.Title,2,tracks.Single(t=>t.Path.EndsWith(".tc.ass")).Path);
+                string nextPath=(await download.DownloadAsync(query with{Episode=2},result,null,[],null,default))!;
+                Check(nextPath.Contains("[02]")&&nextPath.EndsWith(".tc.ass")&&wholeHandler.Count==1,"Next episode and remembered version use the cached package without network");
+                Check(await download.DownloadAsync(query with{Episode=3},result,null,[],null,default)==null,"No current episode never loads a different episode");
+                Check(new SubtitleLibrary(wholeLibrary.Root).Tracks(next).Single(t=>t.Preferred).Path.EndsWith(".tc.ass"),"Track choice persists after reopening");
+                Check(wholeLibrary.Tracks(MpvNet.Windows.Trakt.TraktMedia.Parse("摇曳百合 S1E2","",new Dictionary<string,string>())).Count==0,"Different seasons never share cached subtitles");
+                Check(await download.DownloadAsync(query with{Season=1},result,null,[],null,default)==null&&wholeHandler.Count==1,"A cached single-season archive cannot supply another season merely because its file lacks an explicit season token");
+                Check(wholeLibrary.Results(query.Title).Single().Files.Count==4,"Local search lists the complete extracted pack");
+                var saved=wholeLibrary.Results(query.Title).Single();
+                Check(saved.Title==result.Title&&saved.Format==result.Format&&saved.Details==result.Details,"Local results retain the same full title, format and compact metadata after reopening");
+                Check(!File.ReadAllText(Path.Combine(wholeLibrary.SeasonDirectory(query.Title,2),"subtitles.json")).Contains("https://"),"Local index does not store expiring download links");
+                await Fails(()=>download.DownloadAsync(query,result with{DownloadName="single.srt"},null,[],null,default),"整包");
+                Check(wholeHandler.Count==1,"A single-file series result is rejected before any request");
+            }
+            var mixedStore=Store("mixed-seasons");var mixedLibrary=new SubtitleLibrary(mixedStore.Root);
+            var mixedNames=new[]{"Collection/Example/[Group][Example][01].sc.ass","Collection/Example2/[Group][Example 2][01].sc.ass",
+                "Collection/Example2/[Group][Example 2][02].sc.ass","Collection/Example3/[Group][Different official title][01].tc.ass",
+                "Collection/Extras/[Group][Example][OVA1].tc.ass","Collection/Other/[Group][Unidentified title][01].ass"};
+            var mixedHandler=new Handler((_,_)=>new(HttpStatusCode.OK){Content=new ByteArrayContent(Zip(mixedNames))});
+            using(var mixedHttp=new HttpClient(mixedHandler))
+            {
+                var query=new SubtitleQuery("Example",2,1,"zh");
+                var result=new SubtitleResult(SubtitleSource.Assrt,"mixed","Whole collection","简繁","",[]){LanguageCode="zh",DownloadName="collection.zip",DownloadUrl="https://download.example/collection.zip"};
+                var download=new SubtitleDownload(mixedHttp,mixedLibrary);
+                var selected=await download.DownloadAsync(query,result,null,[],null,default);
+                Check(selected!=null&&selected.Contains("第 2 季")&&selected.EndsWith("[01].sc.ass"),"Archive folders identify a multi-season collection even when the API does not mark it");
+                var saved=mixedLibrary.Results("Example").Single();
+                Check(saved.Files.Count==6&&saved.AvailableSeasons.ToHashSet().SetEquals(new int?[]{-1,0,1,2,3}),"A collection creates season, special and unclassified indexes while remaining one local result");
+                Check(saved.Files.Any(file=>file.LocalPath.Contains("第 1 季"))&&saved.Files.Any(file=>file.LocalPath.Contains("第 3 季"))
+                    &&saved.Files.Any(file=>file.LocalPath.Contains("特别篇"))&&saved.Files.Any(file=>file.LocalPath.Contains("未分类")),"Extracted files are physically stored in their own sections");
+                Check(saved.MatchesFilter(null,"zh",1)&&saved.MatchesFilter(null,"zh",3)&&!saved.MatchesFilter(null,"zh",4),"Local season filters reflect downloaded sections rather than every season");
+                foreach(int season in new[]{1,2,3})
+                {
+                    string title=$"Example S{season}E1";
+                    var tracks=mixedLibrary.Tracks(MpvNet.Windows.Trakt.TraktMedia.Parse(title,"",new Dictionary<string,string>()));
+                    Check(tracks.Count==1&&tracks[0].Path.Contains($"第 {season} 季"),"Playback lists only its own season and episode: "+title);
+                    string? path=await download.DownloadAsync(query with{Season=season},result,null,[],null,default);
+                    Check(path==tracks[0].Path&&mixedHandler.Count==1,"Cross-season reuse makes no additional package request: "+season);
+                }
+                mixedLibrary.Remember("Example",2,selected!);
+                Check(mixedLibrary.Tracks(MpvNet.Windows.Trakt.TraktMedia.Parse("Example S2E2","",new Dictionary<string,string>())).Single().Preferred,"Season preference applies to the next episode after splitting a collection");
+                Check(File.Exists(mixedLibrary.ArchivePath(query,result))&&Directory.GetFiles(mixedLibrary.Root,"*.zip",SearchOption.AllDirectories).Length==1,"Every season shares exactly one original archive");
+                Check(mixedLibrary.CurrentFile(query with{Season=4},saved,saved.Files)==null,"An unrecognized or missing season cannot load another season's episode");
+            }
+            foreach(string entryName in new[]{"../../escape.srt","folder/episode [01].srt"})
+            {
+                var archiveStore=Store(Guid.NewGuid().ToString("N"));var archiveLibrary=new SubtitleLibrary(archiveStore.Root);
+                var archiveHandler=new Handler((_,_)=>new(HttpStatusCode.OK){Content=new ByteArrayContent(Zip([entryName]))});
+                using var archiveHttp=new HttpClient(archiveHandler);
+                var result=new SubtitleResult(SubtitleSource.Assrt,"9","Fixture","中文","",[]){Season=2,LanguageCode="zh",DownloadName="fixture.zip",DownloadUrl="https://download.example/fixture.zip"};
+                var download=new SubtitleDownload(archiveHttp,archiveLibrary);
+                if(entryName.StartsWith(".."))await Fails(()=>download.DownloadAsync(Query,result,null,[],null,default),"文件名无效");
+                else
+                {
+                    await download.DownloadAsync(Query,result,null,[],null,default);
+                    Check(File.Exists(archiveLibrary.FilePath(Query,result,entryName)),"Original package subdirectories are retained");
+                }
+            }
+            var redirectStore=Store("redirect");
+            var handler=new Handler((request,count)=>
+            {
+                Check(request.Headers.Authorization?.Parameter==new string('a',32),"ASSRT key stays in the authorization header");
+                return count==1?Redirect("/v1/sub/search?q=YuruYuri"):Json(Results);
+            });
+            using(var http=new HttpClient(handler))
+            {
+                await Fails(()=>new AssrtClient(http,redirectStore).SearchAsync(Query,1,default),"服务暂时不可用");
+                Check(handler.Count==1,"Search POST is not redirected or retried");
+            }
+            handler=new((_,_)=>Redirect("https://other.example/v1/sub/search"));
+            using(var http=new HttpClient(handler))
+            {
+                await Fails(()=>new AssrtClient(http,redirectStore).SearchAsync(Query,1,default),"服务暂时不可用");
+                Check(handler.Count==1,"Foreign redirect cannot receive the key");
+            }
+            handler=new((_,_)=>Json("{}",HttpStatusCode.TooManyRequests));
+            using(var http=new HttpClient(handler))
+                await Fails(()=>new AssrtClient(http,redirectStore).SearchAsync(Query,1,default),"请求太频繁");
+            handler = new((_, _) => throw new Exception("Invalid credentials must not make a network request"));
+            using (var http = new HttpClient(handler))
+            {
+                var client = new AssrtClient(http, new SubtitleStore(Path.Combine(Root,"no-key")));
+                await Fails(() => client.SearchAsync(Query, 1, default), "请填写 API 密钥");
+                await Fails(() => client.ValidateTokenAsync("invalid-fixture", default), "API 密钥格式不正确");
+                Check(handler.Count == 0, "Missing or malformed ASSRT key checked locally");
+            }
+            Console.WriteLine($"Subtitle checks passed: {_checks}; no desktop interaction or real service credentials used.");
+        }
+        finally
+        {
+            if (Directory.Exists(Root)) Directory.Delete(Root, recursive: true);
+        }
+    }
+    sealed class Messages(List<string> messages):IProgress<string>
+    { public void Report(string message)=>messages.Add(message); }
+    sealed class Handler(Func<HttpRequestMessage, int, HttpResponseMessage> respond) : HttpMessageHandler
+    {
+        public int Count { get; private set; }
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested();
+            return Task.FromResult(respond(request, ++Count));
+        }
+    }
+}

@@ -46,6 +46,7 @@ static bool vk_sw_recreate(pl_swapchain sw, int w, int h) {
     chain = (struct vk_swapchain){
         .swapchain = (VkSwapchainKHR) valid_semaphore,
         .sems_in = {semaphores, 1}, .images = {images},
+        .last_imgidx = -1,
     };
     sw->priv->current = &chain;
     sw->priv->suboptimal = sw->priv->needs_recreate = false;
@@ -59,6 +60,10 @@ static VKAPI_ATTR VkResult VKAPI_CALL acquire(VkDevice dev, VkSwapchainKHR sw,
     uint64_t timeout, VkSemaphore semaphore, VkFence fence, uint32_t *idx)
 {
     calls++;
+    if (mode >= 5 && timeout == UINT64_MAX) {
+        invalid_uses++;
+        return VK_TIMEOUT;
+    }
     if ((uintptr_t)semaphore != valid_semaphore) {
         invalid_uses++;
         return VK_ERROR_VALIDATION_FAILED_EXT;
@@ -67,6 +72,10 @@ static VKAPI_ATTR VkResult VKAPI_CALL acquire(VkDevice dev, VkSwapchainKHR sw,
         return VK_ERROR_OUT_OF_DATE_KHR;
     if (mode == 4)
         return VK_ERROR_DEVICE_LOST;
+    if (mode == 5)
+        return VK_TIMEOUT;
+    if (mode == 6)
+        return VK_NOT_READY;
     *idx = 0;
     return mode == 3 ? VK_SUBOPTIMAL_KHR : VK_SUCCESS;
 }
@@ -76,13 +85,13 @@ static VKAPI_ATTR VkResult VKAPI_CALL acquire(VkDevice dev, VkSwapchainKHR sw,
 int main(void) {
     struct vk_ctx vk = { .AcquireNextImageKHR = acquire };
     for (int repeat = 0; repeat < 1000; repeat++) {
-        for (mode = 0; mode < 5; mode++) {
+        for (mode = 0; mode < 7; mode++) {
             calls = invalid_uses = 0;
             struct priv p = { .vk = &vk };
             struct swapchain sw = { .priv = &p };
             struct pl_swapchain_frame frame;
             bool ok = vk_sw_start_frame(&sw, &frame);
-            bool expected = mode != 2 && mode != 4;
+            bool expected = mode == 0 || mode == 1 || mode == 3;
             if (ok) pl_mutex_unlock(&p.lock);
             if (ok != expected || p.lock || invalid_uses) {
                 printf("FAIL mode=%d calls=%d invalid_semaphore_uses=%d\n", mode, calls, invalid_uses);
@@ -90,6 +99,6 @@ int main(void) {
             }
         }
     }
-    puts("PASS 5000 acquire/recreate cases: normal, outdated, repeated outdated, suboptimal, device lost");
+    puts("PASS 7000 acquire/recreate cases: normal, outdated, repeated outdated, suboptimal, device lost, timeout, not ready");
     return 0;
 }

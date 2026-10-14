@@ -207,6 +207,54 @@ assert(result[2].id=='202' and #result[2].platforms==2,'platform children were f
 assert(result[2].platforms[1].name=='腾讯视频' and result[2].platforms[2].name=='爱奇艺')
 """)
 
+    def test_labelled_standalone_supplement_matches_short_title(self):
+        online_path = lua_long(str(ONLINE).replace(chr(92), "/"))
+        lua_eval(f"""
+local online=dofile({online_path})
+local title='魔卡少女樱特典：包在小可身上 (2000)'
+assert(online.search_keyword(title)=='包在小可身上')
+assert(online.search_keyword('作品名称：另一段冒险 S2E1')=='作品名称:另一段冒险')
+local found=online.auto_candidates({{{{series='剧场版 包在小可身上!',kind='剧场版',year=2000,
+    platforms={{{{id='4874340',key='bilibili'}}}}}},
+    {{series='魔卡少女樱',kind='TV动画',year=1998,platforms={{{{id='1940'}}}}}}}},title)
+assert(#found==1 and found[1].id=='4874340')
+local episode=online.auto_episode({{{{id='100',label='正片'}}}},title,found[1])
+assert(episode and episode.id=='100')
+assert(not online.auto_episode({{{{id='100',label='正片'}},{{id='101',label='另一正片'}}}},title,found[1]))
+assert(#online.auto_candidates({{{{series='包在小可身上',kind='TV动画',platforms={{{{id='1940'}}}}}}}},title)==0)
+""")
+
+    def test_movie_supplements_do_not_block_main_feature(self):
+        online_path = lua_long(str(ONLINE).replace(chr(92), "/"))
+        lua_eval(f"""
+local online=dofile({online_path})
+local data={{bangumi={{episodes={{
+    {{episodeId=100,episodeNumber='1',episodeTitle='【dandan】 剧场版'}},
+    {{episodeId=101,episodeNumber='2',episodeTitle='【dandan】 S1 素材集'}},
+    {{episodeId=102,episodeNumber='3',episodeTitle='【dandan】 S2 カウントダウン'}},
+    {{episodeId=103,episodeNumber='S3',episodeTitle='Event Footage Collection'}},
+    {{episodeId=104,episodeNumber='SP4',episodeTitle='采访'}},
+    {{episodeId=105,episodeNumber='6',episodeTitle='【dandan】 S5 Anime Sanctuaries'}},
+}}}}}}
+local episodes=online.bangumi_episodes('x',function()return data end)
+assert(not episodes[1].extra)
+for i=2,#episodes do assert(episodes[i].extra,'Supplement was classified as the main feature') end
+assert(online.auto_episode(episodes,'远方旅行记 (2012)',{{kind='剧场版'}}).id=='100')
+local tv=online.bangumi_episodes('x',function()return {{bangumi={{episodes={{{{episodeId=200,
+    episodeNumber='1',episodeTitle='【dandan】 S1E1 The Beginning'}}}}}}}} end)
+assert(not tv[1].extra and online.auto_episode(tv,'远方旅行记 S1E1').id=='200')
+for _,label in ipairs({{'S1 E1','S1.E1','S1_E1','S1-E1'}}) do
+    local regular=online.bangumi_episodes('x',function()return {{bangumi={{episodes={{{{episodeId=200,
+        episodeNumber='1',episodeTitle='【dandan】 '..label..' The Beginning'}}}}}}}} end)
+    assert(not regular[1].extra,'Complete season/episode label misclassified: '..label)
+end
+local duplicate=online.bangumi_episodes('x',function()return {{bangumi={{episodes={{{{episodeId=1,
+    episodeNumber='1',episodeTitle='正片'}},{{episodeId=2,episodeNumber='2',episodeTitle='正片'}}}}}}}} end)
+assert(not online.auto_episode(duplicate,'远方旅行记 (2012)',{{kind='movie'}}))
+assert(online.series_source_key('远方旅行记 (2012)')==online.series_source_key('远方旅行记 (2012).mkv'))
+assert(online.series_source_key('远方旅行记 (2012)')~=online.series_source_key('远方旅行记 (2020)'))
+""")
+
     def test_roman_and_explicit_season_markers(self):
         online_path = lua_long(str(ONLINE).replace(chr(92), "/"))
         lua_eval(f"""

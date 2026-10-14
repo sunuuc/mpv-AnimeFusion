@@ -125,7 +125,7 @@
             </Grid>
 
             <Grid Grid.Row="4" Margin="0,0,0,4">
-                <ListBox x:Name="ShowList" SelectionChanged="Show_Changed" BorderThickness="0" Background="Transparent"
+                <ListBox x:Name="ShowList" Style="{StaticResource MatchList}" SelectionChanged="Show_Changed" BorderThickness="0" Background="Transparent"
                          ItemContainerStyle="{StaticResource ResultListBoxItem}"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                          VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.IsVirtualizingWhenGrouping="True"
@@ -157,7 +157,7 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <ListBox x:Name="EpisodeList" Visibility="Collapsed" SelectionChanged="Episode_Changed"
+                <ListBox x:Name="EpisodeList" Style="{StaticResource MatchList}" Visibility="Collapsed" SelectionChanged="Episode_Changed"
                          BorderThickness="0" Background="Transparent" ItemContainerStyle="{StaticResource ResultListBoxItem}"
                          VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.IsVirtualizingWhenGrouping="True"
                          VirtualizingStackPanel.VirtualizationMode="Recycling" ScrollViewer.CanContentScroll="True">

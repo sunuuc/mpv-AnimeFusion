@@ -320,6 +320,21 @@ function M.episode_query(title)
     return strip_season(anime):gsub('%s+$',''),episode,season
 end
 
+local function supplementary_title(title)
+    local prefix,value=title_width(title):match('^(.-):%s*(.+)$')
+    if not prefix then return nil end
+    prefix=trim(prefix):lower()
+    local labelled=false
+    for _,label in ipairs({'特典','特别篇','特別篇','特别版','特別版','剧场版','劇場版','电影版','電影版'}) do
+        if prefix:sub(-#label)==label then labelled=true;break end
+    end
+    labelled=labelled or prefix:match('%f[%a]special$') or prefix:match('%f[%a]ova$') or prefix:match('%f[%a]oad$')
+    value=trim(value)
+    local length=0
+    for _ in value:gmatch(UTF8_CODEPOINT) do length=length+1 end
+    return labelled and length>=5 and value or nil
+end
+
 function M.search_keyword(title)
     title = M.limit_text(title,512):gsub('[%z\1-\8\11\12\14-\31\127]', '')
     title = title:gsub('^%s*%[[^%]]+%]%s*', '')
@@ -329,7 +344,8 @@ function M.search_keyword(title)
     title = title:gsub('%s*%[[^%]]*[0-9]+[pPkK][^%]]*%]%s*$', '')
     title = title:gsub('%s*%[[^%]]*[Bb][Dd][^%]]*%]%s*$', '')
     title = title:gsub('[%s._%-]+$', ''):gsub('^%s+', ''):gsub('%s+$', '')
-    return M.limit_text(M.show_info(title).series,120)
+    local series=M.show_info(title).series
+    return M.limit_text(supplementary_title(series) or series,120)
 end
 
 local function decode_json(text, parse_json)
@@ -437,12 +453,38 @@ end
 
 function M.series_source_key(media_name)
     local anime,episode,season=M.episode_query(media_name)
-    if not anime or not episode then return nil end
+    if not anime or not episode then
+        if season then return nil end
+        local series=identity(M.search_keyword(media_name))
+        if series=='' then return nil end
+        return series..'/movie/y'..tostring(M.show_info(media_name).year or 0)
+    end
     local info=M.show_info(anime)
     local series=identity(info.series)
     if series=='' then return nil end
     -- Unknown seasons remain distinct; a remembered source must never guess one.
     return series..'/s'..tostring(season or 0)..'/p'..tostring(info.part or 0)
+end
+
+function M.storage_context(media_name)
+    local series,episode,season=M.episode_query(media_name)
+    local info=M.show_info(series or M.search_keyword(media_name))
+    local special_series,special_episode=title_width(media_name):match('^(.-)%s*[Ss]0+[ ._%-]*[Ee](%d+)')
+    if special_series then series=special_series;episode=tonumber(special_episode);season=0 end
+    local function segment(value)
+        value=M.limit_text(value or '',120):gsub('[%z\1-\31<>:"/\\|?*%%!&%^()]','_')
+            :gsub('^[%s.]+',''):gsub('[%s.]+$','')
+        if value=='' then return '未分类' end
+        local device=value:match('^([^.]*)'):upper()
+        if device=='CON' or device=='PRN' or device=='AUX' or device=='NUL'
+            or device:match('^COM%d$') or device:match('^LPT%d$') then value='_'..value end
+        if value=='设置' or value=='历史文件' then value=value..'（作品）' end
+        return value
+    end
+    local work=segment(series or info.series)
+    local part=season==0 and '特别篇' or season and ('第 '..season..' 季')
+        or info.kind=='电影' and '电影' or '未分类'
+    return work,part,episode and ('第 '..episode..' 集') or '弹幕'
 end
 
 local function movie_kind(kind)
@@ -611,8 +653,15 @@ function M.search_results(text, keyword, parse_json, clean)
 end
 
 local PLATFORM_PREFIXES={tencent='qq',iqiyi='qiyi',bilibili='bilibili',migu='migu'}
-local function is_extra_episode(title)
-    local lower=title:lower()
+local function is_extra_episode(title,number)
+    local lower=title_width(title):lower():gsub('^%s*【.-】%s*',''):gsub('^%s*%[.-%]%s*','')
+    local short=trim(title_width(number)):lower()
+    -- The catalogue uses S/SP short numbers for supplementary episodes. Some
+    -- providers renumber the list, retaining the original marker in its title.
+    -- Complete season/episode labels, including S1 E2 and S1.E2, are regular
+    -- episodes rather than the catalogue's standalone S1 supplementary marker.
+    if short:match('^sp?%d+$') or lower:match('^sp?%d+%f[%W]')
+        and not lower:match('^'..SEASON_EPISODE) then return true end
     return title:find('预告',1,true) or title:find('花絮',1,true)
         or title:find('特典',1,true) or title:find('插入歌',1,true)
         or lower:find('opening',1,true) or lower:find('ending',1,true)
@@ -636,7 +685,7 @@ function M.bangumi_episodes(text, parse_json, clean, platform_key)
                 local prefix=(title:match('^【(.-)】') or ''):lower()
                 local global=tonumber(title:match('第%s*(%d+)%s*[集话話]'))
                 out[#out+1]={id=id,number=number,raw_number=tonumber(number),
-                    global_number=global,prefix=prefix,extra=not not is_extra_episode(title),
+                    global_number=global,prefix=prefix,extra=not not is_extra_episode(title,number),
                     label=title~='' and title or ('第'..number..'集')}
             end
         end
@@ -744,6 +793,10 @@ local function movie_title(value)
     local title=title_width(value)
     for _,version in ipairs(MOVIE_VERSIONS) do
         for _,label in ipairs(version.labels) do title=title:gsub(label,'') end
+    end
+    title=supplementary_title(title) or title
+    for _,prefix in ipairs({'剧场版','劇場版','电影版','電影版'}) do
+        if title:sub(1,#prefix)==prefix then title=trim(title:sub(#prefix+1));break end
     end
     return identity(title)
 end

@@ -1,0 +1,96 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="MpvNet.Windows.WPF.SubtitleSearchWindow"
+        Title="搜索字幕" Width="560" Height="620" MinWidth="500" MinHeight="430"
+        ShowInTaskbar="False" WindowStartupLocation="CenterOwner" WindowStyle="None" ResizeMode="NoResize"
+        AllowsTransparency="True" Background="Transparent" Foreground="{Binding Theme.Foreground}" FontSize="14"
+        UseLayoutRounding="True" SnapsToDevicePixels="True" Loaded="Window_Loaded" Closed="Window_Closed">
+    <Window.Resources>
+        <Style x:Key="FilterButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="Margin" Value="0,0,7,0" />
+        </Style>
+    </Window.Resources>
+    <Border Margin="1" CornerRadius="8" Background="{Binding Theme.Background}"
+            BorderBrush="{Binding Theme.MenuBackground}" BorderThickness="1">
+        <Border.Effect><DropShadowEffect BlurRadius="12" ShadowDepth="2" Opacity="0.18" /></Border.Effect>
+        <Grid Margin="18,16,18,15">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <Grid Margin="2,0,0,13">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="搜索字幕" FontSize="24" FontWeight="SemiBold" />
+                </StackPanel>
+                <Button Grid.Column="1" Content="来源设置" Click="Settings_Click" VerticalAlignment="Center" />
+            </Grid>
+            <Grid Grid.Row="1" Margin="0,0,0,10">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <TextBox x:Name="SearchBox" Style="{StaticResource MatchTextBox}" MaxLength="160"
+                         KeyDown="SearchBox_KeyDown" TextChanged="SearchBox_TextChanged" Padding="13,9" />
+                <Button Grid.Column="1" Content="搜索" Margin="10,0,0,0" Click="Search_Click" />
+            </Grid>
+            <Grid x:Name="SourceRow" Grid.Row="2" Margin="0,0,0,10">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="58" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                <TextBlock Text="来源" Foreground="{Binding Theme.Foreground2}" VerticalAlignment="Center" />
+                <WrapPanel x:Name="SourceChips" Grid.Column="1">
+                    <Button Content="全部" Tag="all" Style="{StaticResource FilterButton}" Click="Source_Click" />
+                    <Button Content="ASSRT" Tag="assrt" Style="{StaticResource FilterButton}" Click="Source_Click" />
+                    <Button Content="本地" Tag="local" Style="{StaticResource FilterButton}" Click="Source_Click" />
+                </WrapPanel>
+            </Grid>
+            <Grid x:Name="SeasonRow" Grid.Row="3" Margin="0,0,0,10">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="58" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                <TextBlock Text="季度" Foreground="{Binding Theme.Foreground2}" VerticalAlignment="Center" />
+                <WrapPanel x:Name="SeasonChips" Grid.Column="1" />
+            </Grid>
+            <Grid x:Name="LanguageRow" Grid.Row="4" Margin="0,0,0,10">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="58" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                <TextBlock Text="语言" Foreground="{Binding Theme.Foreground2}" VerticalAlignment="Center" />
+                <WrapPanel x:Name="LanguageChips" Grid.Column="1" />
+            </Grid>
+            <Grid Grid.Row="5">
+                <ListBox x:Name="ResultsList" Style="{StaticResource MatchList}" PreviewMouseLeftButtonUp="Result_Click" KeyDown="Result_KeyDown" BorderThickness="0" Background="Transparent"
+                         ItemContainerStyle="{StaticResource MatchResultItem}" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling">
+                    <ListBox.ItemTemplate><DataTemplate>
+                        <Grid MinHeight="84">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="64" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                            <Border Background="{Binding DataContext.Theme.MenuBackground, RelativeSource={RelativeSource AncestorType=Window}}"
+                                    Width="58" Height="68" CornerRadius="4" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding FormatLabel}" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" TextAlignment="Center" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                            <StackPanel Grid.Column="1" Margin="10,2,2,2" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="15" TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding Details}" Margin="0,5,0,0" TextTrimming="CharacterEllipsis"
+                                           Foreground="{Binding DataContext.Theme.Foreground2, RelativeSource={RelativeSource AncestorType=Window}}">
+                                    <TextBlock.Style><Style TargetType="TextBlock"><Style.Triggers>
+                                        <DataTrigger Binding="{Binding Details}" Value=""><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
+                                    </Style.Triggers></Style></TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
+                        </Grid>
+                    </DataTemplate></ListBox.ItemTemplate>
+                </ListBox>
+                <StackPanel x:Name="EmptyState" HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="420"
+                            Margin="24,12" IsHitTestVisible="False" Visibility="Collapsed">
+                    <TextBlock x:Name="EmptyHeading" FontSize="18" FontWeight="SemiBold" TextAlignment="Center" />
+                    <TextBlock x:Name="EmptyDescription" Margin="0,8,0,0" Foreground="{Binding Theme.Foreground2}"
+                               TextWrapping="Wrap" TextAlignment="Center" />
+                </StackPanel>
+            </Grid>
+            <StackPanel Grid.Row="6" Margin="2,8,2,0">
+                <TextBlock x:Name="ResultCount" Text="共 0 条搜索结果" Foreground="{Binding Theme.Foreground2}" />
+                <TextBlock x:Name="Status" Style="{StaticResource MatchStatusText}" />
+            </StackPanel>
+            <Grid Grid.Row="7" Margin="0,12,0,0">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <Button Content="字幕目录" HorizontalAlignment="Left" Click="Folder_Click" />
+                <Button Grid.Column="1" Content="关闭" IsCancel="True" Click="Close_Click" />
+            </Grid>
+        </Grid>
+    </Border>
+</Window>

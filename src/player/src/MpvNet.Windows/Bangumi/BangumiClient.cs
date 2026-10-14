@@ -123,11 +123,16 @@ public sealed class BangumiClient
         try
         {
             var api = await AuthenticatedClientAsync(cancellationToken).ConfigureAwait(false);
-            var result = await api.V0.Search.Subjects.PostAsync(new SubjectsPostRequestBody
+            var subjects = new List<Subject>();
+            foreach (string title in BangumiMedia.SearchTitles(keyword))
             {
-                Keyword = keyword, Filter = new() { Type = [2] }
-            }, c => c.QueryParameters.Limit = 20, cancellationToken).ConfigureAwait(false);
-            return result?.Data?.Where(s => s.Id > 0).ToArray() ?? [];
+                var result = await api.V0.Search.Subjects.PostAsync(new SubjectsPostRequestBody
+                {
+                    Keyword = title, Filter = new() { Type = [2] }
+                }, c => c.QueryParameters.Limit = 20, cancellationToken).ConfigureAwait(false);
+                subjects.AddRange(result?.Data?.Where(s => s.Id > 0) ?? []);
+            }
+            return subjects.DistinctBy(s => s.Id).ToArray();
         }
         finally { _gate.Release(); }
     }

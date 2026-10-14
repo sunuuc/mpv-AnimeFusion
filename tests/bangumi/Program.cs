@@ -76,6 +76,20 @@ static class Program
         Check(BangumiMedia.Parse("Example Season 3").Key == BangumiMedia.Parse("Example S3E1").Key && BangumiMedia.Parse("Example 3rd Season").Season == 3,
             "English season formats resolve the correct season");
         Check(BangumiMedia.Parse("我的摄影 2026").EpisodeNumber == null, "Unnumbered files do not trigger automatic search");
+        var shortFilm = BangumiMedia.Parse("魔卡少女樱特典：包在小可身上 (2000)");
+        Check(BangumiMedia.SearchTitles(shortFilm.Title).SequenceEqual(new[] { shortFilm.Title, "包在小可身上" }),
+            "Labelled standalone supplements search their separately catalogued title");
+        Check(BangumiMedia.SearchTitles("Example: Another Adventure S2E1").Count() == 1,
+            "Ordinary series subtitles retain their franchise and episode identity");
+        var shortSubject = new Subject { Id=26354, NameCn="剧场版 包在小可身上！", Platform="剧场版", Date="2000-07-15" };
+        Check(shortFilm.MatchSubject([shortSubject, new() { Id=1940, NameCn="魔卡少女樱", Platform="TV", Date="1998-04-07" }])?.Id == 26354,
+            "Standalone short resolves without selecting its parent TV series");
+        Check(shortFilm.MatchSubject([new() { Id=26354, NameCn=shortSubject.NameCn, Platform="剧场版", Date="2001-07-15" }]) == null,
+            "Supplemental-title matching still checks the requested release year");
+        Check(MpvNet.Windows.MyAnimeList.MalMatching.TitleScore(shortFilm.Title, "包在小可身上") == 1,
+            "MAL cross-site mapping recognizes labelled supplementary titles");
+        Check(MpvNet.Windows.MyAnimeList.MalMatching.TitleScore("劇場版 ケロちゃんにおまかせ！", "ケロちゃんにおまかせ！") == 1,
+            "MAL verifies Japanese titles without catalogue medium prefixes");
         var episodes = new List<Episode>
         {
             new() { Id = 201, Type = 1, Ep = 1, Sort = 1 },

@@ -62,7 +62,7 @@ public sealed record BangumiMedia(string Title, int Season, double? EpisodeNumbe
         }
         else
         {
-            match = Regex.Match(text, @"^(.*?)\s*(?:[eE](\d+(?:\.\d+)?)\b|第\s*(\d+(?:\.\d+)?)\s*[集话話])");
+            match = Regex.Match(text, @"^(.*?)\s*(?:(?<![A-Za-z0-9])[eE](\d+(?:\.\d+)?)\b|第\s*(\d+(?:\.\d+)?)\s*[集话話])");
             if (match.Success)
             {
                 text = match.Groups[1].Value;
@@ -119,6 +119,7 @@ public sealed record BangumiMedia(string Title, int Season, double? EpisodeNumbe
         foreach (var subject in subjects.DistinctBy(s => s.Id))
         {
             if (IsMovie(subject) != movie) continue;
+            if (movie && Year != null && subject.Date?.StartsWith(Year.Value + "-", StringComparison.Ordinal) != true) continue;
             var names = SubjectTitles(subject).SelectMany(TitleVariants).Select(Parse).ToArray();
             var seasons = names.Where(n => n.HasSeason).Select(n => n.Season).Distinct().ToArray();
             if (!movie && (seasons.Length > 1 || (seasons.FirstOrDefault(1) != Season))) continue;
@@ -163,10 +164,34 @@ public sealed record BangumiMedia(string Title, int Season, double? EpisodeNumbe
             string value = part.Trim();
             if (value.Length == 0) continue;
             yield return value;
+            string movie = Regex.Replace(value, @"^(?:剧场版|劇場版|电影版|電影版|Gekijouban\b)\s*", "", RegexOptions.IgnoreCase);
+            if (movie != value && movie.Length > 0) yield return movie;
+            string? supplementary = SupplementaryTitle(value);
+            if (supplementary != null) yield return supplementary;
             // Bilingual aliases may prepend a Latin title to a CJK translation.
             string translated = Regex.Replace(value, @"^[A-Za-z][A-Za-z0-9 ._'&:+\-]*\s+(?=[\p{IsCJKUnifiedIdeographs}\p{IsHiragana}\p{IsKatakana}])", "");
             if (translated != value) yield return translated;
         }
+    }
+
+    static string? SupplementaryTitle(string title)
+    {
+        // Library titles can prefix a separately catalogued short with its franchise
+        // and medium. Only labelled supplements qualify; an ordinary series subtitle
+        // must retain its franchise identity.
+        var match = Regex.Match(title.Normalize(NormalizationForm.FormKC),
+            @"^.+?(?:特典|特别篇|特別篇|特别版|特別版|剧场版|劇場版|电影版|電影版|\bSpecial|\bOVA|\bOAD)\s*:\s*(.+)$", RegexOptions.IgnoreCase);
+        string value = match.Groups[1].Value.Trim();
+        return match.Success && value.EnumerateRunes().Count() >= 5 ? value : null;
+    }
+
+    public static IEnumerable<string> SearchTitles(string title)
+    {
+        yield return title;
+        var parsed = Parse(title);
+        // Missing episode and season metadata identifies the standalone-title path.
+        if (parsed.EpisodeNumber == null && !parsed.HasSeason && SupplementaryTitle(parsed.Title) is string supplementary)
+            yield return supplementary;
     }
 
     static string TitleIdentity(string title) => Regex.Replace(title.ToLowerInvariant(), @"[\s\p{P}\p{S}]+", "");
