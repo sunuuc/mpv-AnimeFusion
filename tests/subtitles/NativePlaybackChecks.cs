@@ -175,14 +175,33 @@ try
     type.GetMethod("Search",fields)!.Invoke(window,[true]);WaitForSearch();
     int requests=handler.Requests;Check(requests>0,"The first window search performs the isolated HTTP request");
     var completed=type.GetField("_searchResult",fields)!.GetValue(window);
+    generation=(int)type.GetField("_searchGeneration",fields)!.GetValue(window)!;
+    var displayed=items.ToArray();var originalQuery=type.GetField("_query",fields)!.GetValue(window);
+    foreach(string text in new[]{"测试作品 新", "测试作品", "测试作", ""})searchBox.Text=text;
+    searchBox.Text="测试作";
+    var editFrame=new System.Windows.Threading.DispatcherFrame();
+    var editTimer=new System.Windows.Threading.DispatcherTimer{Interval=TimeSpan.FromMilliseconds(800)};
+    editTimer.Tick+=(_,_)=>{editTimer.Stop();editFrame.Continue=false;};editTimer.Start();
+    System.Windows.Threading.Dispatcher.PushFrame(editFrame);
+    Check(handler.Requests==requests&&(int)type.GetField("_searchGeneration",fields)!.GetValue(window)! ==generation,
+     "Typing, deleting and clearing text issue zero extra requests after the former debounce interval");
+    Check(items.SequenceEqual(displayed)&&Equals(originalQuery,type.GetField("_query",fields)!.GetValue(window)),
+     "Editing preserves the searched results and their query for filtering and downloading");
     type.GetMethod("OnClosing",fields)!.Invoke(window,[new System.ComponentModel.CancelEventArgs()]);
     window.RestoreResults();
     type.GetMethod("Window_Loaded",fields)!.Invoke(window,[window,new System.Windows.RoutedEventArgs()]);
     Check(handler.Requests==requests&&ReferenceEquals(completed,type.GetField("_searchResult",fields)!.GetValue(window)),
      "A real window close/restore sequence adds zero HTTP requests and retains the same complete search snapshot");
-    type.GetMethod("Search_Click",fields)!.Invoke(window,[window,new System.Windows.RoutedEventArgs()]);WaitForSearch();
+    Check(searchBox.Text=="测试作"&&items.Select(item=>(item.Id,item.Title)).SequenceEqual(displayed.Select(item=>(item.Id,item.Title))),
+     "Reopening retains the edited draft and existing results without searching the draft");
+    var oldRequest=(System.Threading.CancellationTokenSource)type.GetField("_searchLifetime",fields)!.GetValue(window)!;
+    type.GetMethod("Search_Click",fields)!.Invoke(window,[window,new System.Windows.RoutedEventArgs()]);
+    Check(oldRequest.IsCancellationRequested,"An explicit search cancels the previous request before submitting the new keyword");
+    WaitForSearch();
     Check(handler.Requests>requests&&!ReferenceEquals(completed,type.GetField("_searchResult",fields)!.GetValue(window)),
      "The explicit Search button still issues a new request after restoring the cached window");
+    Check(((SubtitleSearchResult)type.GetField("_searchResult",fields)!.GetValue(window)!).Query.Title=="测试作",
+     "The explicit Search button submits the edited keyword");
     type.GetMethod("Media_Changed",fields)!.Invoke(window,null);
     Check(lifetime.IsCancellationRequested&&(bool)type.GetField("_canClose",fields)!.GetValue(window)!&&!window.IsCurrent,
      "Changing video ends the old search lifetime and permits final disposal");

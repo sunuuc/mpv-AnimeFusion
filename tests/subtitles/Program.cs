@@ -142,7 +142,10 @@ static class Program
             Check(windowCode.IndexOf("        RefreshResults();",windowCode.IndexOf("foreach (var local",StringComparison.Ordinal),StringComparison.Ordinal)
                 < windowCode.IndexOf("await search.SearchAsync",StringComparison.Ordinal),"Local result count and empty-state visibility refresh before any awaited catalogue or API request");
             Check(windowCode.Contains("failed.Fail(SubtitleSource.Assrt, error)")&&windowCode.Contains("ApplySearch(failed)"),"Query errors use the same non-overlapping result state as service errors");
-            Check(windowCode.Contains("_searchGeneration == generation") && windowCode.Contains("if (refresh) ResetSearch()"),"Refresh replaces results and ignores stale replies");
+            Check(windowCode.Contains("_searchGeneration == generation") && windowCode.Contains("_searchLifetime.Cancel(); _searchLifetime.Dispose();")
+                && windowCode.Contains("ResetSearch();"),"Refresh cancels the old request, replaces results and ignores stale replies");
+            Check(!template.Descendants().Any(e => e.Attribute("TextChanged") != null) && !windowCode.Contains("_autoSearch"),
+                "Editing subtitle search text has no automatic request or debounce timer");
             string danmakuCode=File.ReadAllText(Path.Combine(Path.GetDirectoryName(templatePath)!,"DanmakuSearchWindow.xaml.cs"));
             Check(danmakuCode.Contains("Search_Click(object sender, RoutedEventArgs e) => Search(refresh: true)")
                 && danmakuCode.Contains("refresh ? \"true\" : \"false\""),"Danmaku search button explicitly refreshes through the existing script command");

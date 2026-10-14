@@ -110,6 +110,7 @@ return function(c)
             link('播放设置','playback-settings')
             link('缩放模式','scale')
             link('超分与补帧','ai')
+            link('音频设置','audio-settings','audio')
             link('字幕设置','sub-settings','sub')
             link('弹幕设置','danmaku-settings','danmaku')
             link('同步设置','sync-settings','bangumi')
@@ -228,7 +229,6 @@ return function(c)
             separator()
             if kind=='sub' then row('搜索字幕',function()c.command('script-message-to','mpvnet','show-subtitle-search')end) end
             row(kind=='sub' and '导入本地字幕' or '添加音轨',function()c.open_file(kind)end,false,{icon='plus'})
-            if kind=='audio' then link('音频设置','audio-settings') end
         elseif kind=='danmaku' then
             local d=c.prop('user-data/player_ui/danmaku',{}) or {}
             row('关闭',function()if d.enabled then c.command('script-message','player_ui-danmaku-toggle')end end,not d.loaded or not d.enabled,{stay=true})

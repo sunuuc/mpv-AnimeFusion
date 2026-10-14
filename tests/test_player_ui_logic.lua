@@ -93,7 +93,7 @@ local function suite()
  local now,timers,bindings,messages,observers=0,{},{},{},{}
  local clock_config=os.tmpname();local f=assert(io.open(clock_config,'wb'));f:write('show_clock=yes\nnetwork_speed=yes\n');f:close()
  local pos={x=0,y=0};local commands={};local player_overlay_data,volume_overlay_data;local renderer_arguments
- local props={pause=false,['core-idle']=false,['idle-active']=false,['window-minimized']=false,['playlist-count']=1,['playlist-pos']=0,
+ local props={pause=false,['mouse-pos/hover']=true,['core-idle']=false,['idle-active']=false,['window-minimized']=false,['playlist-count']=1,['playlist-pos']=0,
    ['time-pos']=10,duration=120,['file-size']=1024,seekable=true,volume=50,['volume-max']=100,speed=1,sid=2,aid=1,['secondary-sid']='no',
   ['track-list']={{id=1,type='audio',title='A',lang='jpn',codec='aac',['audio-channels']='2.0',selected=true},
    {id=2,type='sub',title='https://media.example/Stream.ass?token=private',lang='zh-Hans',codec='hdmv_pgs_subtitle',external=true,selected=true},
@@ -329,7 +329,17 @@ local function suite()
  advance(3)
  check(ui().visible,'HUD stays visible while the pointer remains on a bottom control')
  bindings['player_ui-leave']();advance(.1)
- check(ui().visible,'mouse-leave cannot hide controls while the pointer is still over them')
+  check(ui().visible,'mouse-leave cannot hide controls while the pointer is still over them')
+ props['mouse-pos/hover']=false;bindings['player_ui-leave']();advance(.1)
+ check(not ui().visible and ui().mouse_x==-1 and ui().hover==nil,
+  'native mouse leave hides the HUD even when mpv retains the last coordinates over a control')
+ props['mouse-pos/hover']=true;bindings['player_ui-move']();advance(.1)
+ check(ui().visible,'returning to the player restores the HUD after a real mouse leave')
+ click('settings');click(row('audio-settings'));props.pause=true
+ props['mouse-pos/hover']=false;bindings['player_ui-leave']();advance(.1)
+ check(not ui().visible and ui().menu=='' and #ui().menu_boxes==0,
+  'leaving the player closes parent and child menus and hides controls even while paused')
+ props.pause=false;props['mouse-pos/hover']=true;bindings['player_ui-move']();advance(.1)
  pos.x=-20;pos.y=-20;bindings['player_ui-leave']();advance(.1)
  check(not ui().visible and not button('close'),'HUD hides after the pointer leaves the player')
  bindings['player_ui-move']();advance(.1)
@@ -380,10 +390,14 @@ local function suite()
  check(button('close')==nil and button('menu-close')==nil,'settings uses native window chrome and has no drawn panel X')
   check(#ui().menu_boxes==1 and ui().menu_boxes[1].x1-ui().menu_boxes[1].x0==200,
    'Hills settings popover uses a compact width')
-   check(has_row('缩放模式') and has_row('超分与补帧') and has_row('字幕设置') and has_row('弹幕设置')
+   check(has_row('缩放模式') and has_row('超分与补帧') and has_row('字幕设置') and has_row('弹幕设置') and has_row('音频设置')
     and not has_row('播放列表')
     and not has_row('音轨') and not has_row('字幕') and not has_row('弹幕') and not has_row('播放速度'),
    'Hills settings menu has no duplicate bottom-row controls')
+  click(row('audio-settings'))
+  check(ui().menu=='audio-settings' and ui().menu_boxes[1].kind=='settings' and has_row('重置延迟'),
+   'audio settings open under the settings menu using the existing delay controls')
+  bindings['player_ui-menu-escape']();advance(.1)
   click(row('ai'))
   local boxes=ui().menu_boxes
   local settings_box,ai_box=boxes[1],boxes[2]
@@ -432,7 +446,7 @@ local function suite()
  click('settings');bindings['player_ui-menu-escape']();advance(.1);check(ui().menu=='','settings menu closes cleanly')
  click('sub');check(row('Stream.ass')~=nil,'subtitle filename remains literal while URL secrets are hidden')
  bindings['player_ui-menu-escape']();advance(.1)
- click('audio');click(row('添加音轨'))
+ click('audio');check(not has_row('音频设置'),'audio track chooser has no settings entry');click(row('添加音轨'))
  check(commands[#commands][1]=='script-message-to' and commands[#commands][2]=='mpvnet'
   and commands[#commands][3]=='load-audio','add-audio control delegates to the existing mpvnet loader')
  click('sub');click(row('导入本地字幕'))
@@ -720,14 +734,58 @@ local function suite()
  complete_async(pending_async[next_async],empty_comments_json)
  local after_empty=next_async
  danmaku_state=props['user-data/player_ui/danmaku']
- check(not danmaku_state.loaded and danmaku_state.source==3 and danmaku_state.autoload_state=='empty',
-  'a successful zero-comment reply keeps its original source')
+ check(not danmaku_state.loaded and danmaku_state.autoload_state=='loading',
+  'a first-match zero-comment reply waits for other candidates instead of completing early')
  complete_async(searches[2],second_search_json)
  complete_async(searches[1],first_search_json)
- check(next_async==after_empty,'late search responses do not switch a successfully matched empty source')
+ check(table.concat(pending_async[next_async].spec.args,' '):find(('https://danmaku.example/api/v2/bangumi/21'),1,true),
+  'first-match empty fallback continues with the remaining configured routes')
+ complete_async(pending_async[next_async],'auto-episode-one')
+ complete_async(pending_async[next_async],comments_json)
+ check(props['user-data/player_ui/danmaku'].loaded and props['user-data/player_ui/danmaku'].source==1,
+  'a later nonempty route wins over a previously verified empty route')
  local after_success=next_async
  event_handlers['file-loaded'][#event_handlers['file-loaded']]();advance(100)
  check(next_async==after_success,'metadata events and elapsed time never resubmit automatic searches')
+ props.path='C:/Video/Empty work S1E1.mkv';props['media-title']='Empty work S1E1'
+ event_handlers['start-file'][#event_handlers['start-file']]();before=next_async
+ event_handlers['file-loaded'][#event_handlers['file-loaded']]()
+ json_responses['empty-work']={animes={{animeId=601,animeTitle='Empty work',source='qq'}}}
+ local empty_searches={}
+ for i=1,3 do empty_searches[i]=find_async_after(before,'https://danmaku'..(i==1 and '' or i)..'.example/api/v2/search/anime?keyword=Empty%20work') end
+ for i=1,3 do
+  complete_async(empty_searches[i],'empty-work')
+  complete_async(pending_async[next_async],'auto-episode-one')
+  complete_async(pending_async[next_async],empty_comments_json)
+  check(props['user-data/player_ui/danmaku'].autoload_state==(i==3 and 'empty' or 'loading'),
+   'first match reports no comments only after all three candidate routes are verified, route '..i)
+ end
+ before=next_async;event_handlers['start-file'][#event_handlers['start-file']]();event_handlers['file-loaded'][#event_handlers['file-loaded']]()
+ check(next_async==before+1 and table.concat(pending_async[next_async].spec.args,' '):find('/api/v2/comment/17',1,true),
+  'an already verified empty source is reused directly without searching the work again')
+ complete_async(pending_async[next_async],empty_comments_json)
+ check(props['user-data/player_ui/danmaku'].autoload_state=='empty','remembered source returning zero keeps the empty state')
+ props.path='C:/Video/Platform work S1E1.mkv';props['media-title']='Platform work S1E1'
+ event_handlers['start-file'][#event_handlers['start-file']]();before=next_async;event_handlers['file-loaded'][#event_handlers['file-loaded']]()
+ json_responses['platform-work']={animes={{animeId=701,animeTitle='Platform work',source='qq'},
+  {animeId=702,animeTitle='Platform work',source='iqiyi'}}}
+ complete_async(find_async_after(before,'https://danmaku.example/api/v2/search/anime?keyword=Platform%20work'),'platform-work')
+ complete_async(pending_async[next_async],'auto-episode-one');complete_async(pending_async[next_async],empty_comments_json)
+ check(table.concat(pending_async[next_async].spec.args,' '):find('/api/v2/bangumi/',1,true)
+  and props['user-data/player_ui/danmaku'].autoload_state=='loading','first-match empty continues with another platform on the same route')
+ complete_async(pending_async[next_async],'auto-episode-one');complete_async(pending_async[next_async],comments_json)
+ check(props['user-data/player_ui/danmaku'].loaded,'the second platform loads after the first returns zero')
+ props.path='C:/Video/Unverified work S1E1.mkv';props['media-title']='Unverified work S1E1'
+ event_handlers['start-file'][#event_handlers['start-file']]();before=next_async;event_handlers['file-loaded'][#event_handlers['file-loaded']]()
+ json_responses['unverified-work']={animes={{animeId=801,animeTitle='Unverified work',source='qq'}}}
+ local unverified={}
+ for i=1,3 do unverified[i]=find_async_after(before,'https://danmaku'..(i==1 and '' or i)..'.example/api/v2/search/anime?keyword=Unverified%20work') end
+ complete_async(unverified[1],'unverified-work');complete_async(pending_async[next_async],'auto-episode-one');complete_async(pending_async[next_async],empty_comments_json)
+ json_responses['failed-response']={success=false,errorMessage='fixture request failed'}
+ complete_async(unverified[2],'failed-response');complete_async(unverified[3],'failed-response')
+ check(props['user-data/player_ui/danmaku'].autoload_state=='error','a partially failed initial check does not claim the episode has no comments')
+ before=next_async;event_handlers['start-file'][#event_handlers['start-file']]();event_handlers['file-loaded'][#event_handlers['file-loaded']]()
+ check(next_async==before+3,'an unverified empty source is not remembered and retried playback searches all routes')
  props.path='C:/Video/星海里的旅行者 (2024) S2E5.mkv'
  props['media-title']='星海里的旅行者 (2024) S2E5'
  event_handlers['start-file'][#event_handlers['start-file']]()

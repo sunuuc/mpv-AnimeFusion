@@ -200,7 +200,7 @@ def loopback(install, video, directory):
             server.comment_requests, server.paths = 0, []
             trace = run(install, movie, directory / name, movie_config, b'{}')
             assert trace["state"]["autoload_state"] == state, trace
-            assert server.comment_requests == 1, server.paths
+            assert server.comment_requests == (2 if name == "movie-empty" else 1), server.paths
             assert any("/comment/201" in path for path in server.paths), server.paths
             saved = (directory / name / "localdata/mpv-AnimeFusion/Danmaku/设置/mpv-AnimeFusion-danmaku-sources.json").read_bytes()
             assert json.loads(saved), "Successful movie source was not remembered"
@@ -208,7 +208,7 @@ def loopback(install, video, directory):
             reused = run(install, movie, directory / (name + "-reuse"), movie_config, saved)
             assert reused["state"]["autoload_state"] == state, reused
             assert server.comment_requests == 1 and all("/comment/201" in path for path in server.paths), server.paths
-            print("PASS", name, "state", state, "main feature selected, no empty-result source switch, saved source reused")
+            print("PASS", name, "state", state, "initial empty checks all routes, saved empty source reused")
     finally:
         server.shutdown()
         server.server_close()
@@ -230,7 +230,7 @@ if __name__ == "__main__":
     if args.installed:
         SOURCE = args.install / "portable_config/scripts/player_ui_danmaku.lua"
     if args.live:
-        root = Path(os.environ["LOCALAPPDATA"]) / "mpv-AnimeFusion" / "Danmaku"
+        root = Path(os.environ["LOCALAPPDATA"]) / "mpv-AnimeFusion" / "Danmaku" / "设置"
         paths = [root / "mpv-AnimeFusion-danmaku.conf", root / "mpv-AnimeFusion-danmaku-sources.json"]
         before = [p.read_bytes() for p in paths]
         settings_path = root / "mpv-AnimeFusion-DanmakuFactory.json"

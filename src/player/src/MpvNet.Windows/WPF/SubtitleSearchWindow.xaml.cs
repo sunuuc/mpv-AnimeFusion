@@ -10,7 +10,6 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Data;
-using System.Windows.Threading;
 using MpvNet.Windows.Native;
 using MpvNet.Windows.Subtitles;
 using MpvNet.Windows.Bangumi;
@@ -36,7 +35,6 @@ public partial class SubtitleSearchWindow : Window
     string _displayedKeyword = "";
     int _searchGeneration;
     readonly CancellationTokenSource _lifetime = new();
-    readonly DispatcherTimer _autoSearch = new() { Interval = TimeSpan.FromMilliseconds(500) };
     SubtitleQuery? _query;
     string _source = "all", _language = "zh", _season = "all";
     bool _ready, _closed, _canClose;
@@ -57,7 +55,6 @@ public partial class SubtitleSearchWindow : Window
         SearchBox.Text = _media.Title;
         ResultsList.ItemsSource = _results;
         CollectionViewSource.GetDefaultView(_results).Filter = FilterResult;
-        _autoSearch.Tick += (_, _) => { _autoSearch.Stop(); Search(); };
         Player.StartFile += Media_Changed;
         Player.Shutdown += Media_Changed;
     }
@@ -74,7 +71,6 @@ public partial class SubtitleSearchWindow : Window
         if (_ready && !_canClose)
         {
             e.Cancel = true;
-            _autoSearch.Stop();
             Hide();
         }
         base.OnClosing(e);
@@ -83,9 +79,8 @@ public partial class SubtitleSearchWindow : Window
     public void RestoreResults()
     {
         if (!_ready || _closed) return;
-        string keyword = SearchBox.Text.Normalize(NormalizationForm.FormKC).Trim();
-        if (_query == null || !keyword.Equals(_displayedKeyword, StringComparison.OrdinalIgnoreCase)) { Search(); return; }
-        RefreshLocalResults(keyword);
+        if (_query == null) return;
+        RefreshLocalResults(_displayedKeyword);
         RefreshSeasons();
         RefreshResults();
     }
@@ -114,7 +109,6 @@ public partial class SubtitleSearchWindow : Window
     void Window_Closed(object? sender, EventArgs e)
     {
         _closed = true;
-        _autoSearch.Stop();
         Player.StartFile -= Media_Changed; Player.Shutdown -= Media_Changed;
         _search.Dispose(); _searchLifetime.Cancel(); _lifetime.Cancel();
         _api.Dispose();
@@ -136,17 +130,24 @@ public partial class SubtitleSearchWindow : Window
     async void Search(bool refresh = false)
     {
         if (!_ready || _closed) return;
-        _autoSearch.Stop();
         string keyword = SearchBox.Text.Normalize(NormalizationForm.FormKC).Trim();
         int generation = ++_searchGeneration;
-        if (refresh) ResetSearch();
+        if (!keyword.Equals(_displayedKeyword, StringComparison.OrdinalIgnoreCase))
+            _season = _media.Kind == "show" && keyword.Equals(_media.Title.Normalize(NormalizationForm.FormKC).Trim(), StringComparison.OrdinalIgnoreCase)
+                ? _media.Season > 0 ? _media.Season.ToString() : "other" : "all";
+        if (refresh)
+        {
+            _searchLifetime.Cancel(); _searchLifetime.Dispose();
+            _searchLifetime = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+            ResetSearch();
+        }
         ShowResults();
         if (keyword.Length == 0) { ResetSearch(); Empty("输入作品名开始搜索"); return; }
+        _displayedKeyword = keyword;
         RefreshLocalResults(keyword);
         RefreshSeasons();
         RefreshResults();
         _query ??= new(keyword, SelectedSeason, keyword.Equals(_media.Title, StringComparison.OrdinalIgnoreCase) ? _media.Episode : null, "");
-        _displayedKeyword = keyword;
         if (_store.Credentials.AssrtToken.Length == 0 || _source == "local") { RefreshSeasons(); RefreshResults(); return; }
         var search = _search;
         var progress = new Progress<SubtitleSearchResult>(result =>
@@ -244,7 +245,7 @@ public partial class SubtitleSearchWindow : Window
 
     void RefreshSeasons()
     {
-        bool current = SearchBox.Text.Normalize(NormalizationForm.FormKC).Trim().Equals(_media.Title.Normalize(NormalizationForm.FormKC).Trim(), StringComparison.OrdinalIgnoreCase);
+        bool current = _displayedKeyword.Equals(_media.Title.Normalize(NormalizationForm.FormKC).Trim(), StringComparison.OrdinalIgnoreCase);
         var seasons = _results.SelectMany(result => result.Local ? result.AvailableSeasons : [result.Season]).Where(season => season is > 0).Select(season => season!.Value)
             .Append(current && _media.Kind == "show" ? _media.Season : 0).Where(season => season > 0).Distinct().Order().ToArray();
         SeasonChips.Children.Clear();
@@ -323,14 +324,6 @@ public partial class SubtitleSearchWindow : Window
         if (_language == language) return;
         _language = language; RefreshChips(LanguageChips, _language); RefreshResults();
     }
-    void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
-    {
-        if (!_ready) return;
-        _season = _media.Kind == "show" && SearchBox.Text.Normalize(NormalizationForm.FormKC).Trim().Equals(_media.Title.Normalize(NormalizationForm.FormKC).Trim(), StringComparison.OrdinalIgnoreCase)
-            ? _media.Season > 0 ? _media.Season.ToString() : "other" : "all";
-        ResetSearch(); _autoSearch.Start();
-    }
-
     void Season_Click(object sender, RoutedEventArgs e)
     {
         _season = (string)((Button)sender).Tag; RefreshChips(SeasonChips, _season); RefreshResults();
@@ -338,7 +331,6 @@ public partial class SubtitleSearchWindow : Window
 
     void ResetSearch()
     {
-        _autoSearch.Stop();
         _query = null; _searchResult = null; _displayedKeyword = ""; _results.Clear();
         ResultCount.Text = "共 0 条搜索结果";
         Status.Text = ""; EmptyState.Visibility = Visibility.Collapsed;

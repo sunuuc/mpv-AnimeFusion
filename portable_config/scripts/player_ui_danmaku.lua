@@ -2208,6 +2208,16 @@ local function automatic_match_all_routes(attempt)
     local advance
     local function finish()
         attempt.finished=true
+        if not next(attempt.errors) then
+            for _,index in ipairs(attempt.queue) do
+                local empty=states[index].empty
+                if empty then
+                    remember_source(attempt.name,index,empty.candidate,empty.episodes)
+                    source=index;status='该集没有弹幕';autoload_state='empty';publish()
+                    return
+                end
+            end
+        end
         finish_match(attempt)
     end
     local function try_route(index)
@@ -2235,16 +2245,16 @@ local function automatic_match_all_routes(attempt)
                     if attempt.finished then return end
                     local list,parse_error
                     if not comment_error then list,parse_error=parse_remote(comments or '') end
-                    if list then
+                    if list and #list>0 then
                         remember_source(attempt.name,index,candidate,available)
                         attempt.finished=true;cancel_request();source=index
-                        if #list>0 then
-                            adopt(list,online.limit_text(candidate.label..' · '..episode.label,220,core.clean),candidate.key)
-                            route_log(index,'弹幕读取','载入 '..#list..' 条弹幕')
-                        else
-                            status='该集没有弹幕';autoload_state='empty';publish()
-                            route_log(index,'弹幕读取','该集返回 0 条弹幕')
-                        end
+                        adopt(list,online.limit_text(candidate.label..' · '..episode.label,220,core.clean),candidate.key)
+                        route_log(index,'弹幕读取','载入 '..#list..' 条弹幕')
+                        return
+                    elseif list then
+                        state.empty=state.empty or {candidate=candidate,episodes=available}
+                        route_log(index,'弹幕读取','该集返回 0 条弹幕，继续核验其他来源')
+                        next_candidate(position+1)
                         return
                     end
                     if comment_error or parse_error then

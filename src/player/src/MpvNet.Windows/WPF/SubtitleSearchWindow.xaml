@@ -30,7 +30,7 @@
             <Grid Grid.Row="1" Margin="0,0,0,10">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                 <TextBox x:Name="SearchBox" Style="{StaticResource MatchTextBox}" MaxLength="160"
-                         KeyDown="SearchBox_KeyDown" TextChanged="SearchBox_TextChanged" Padding="13,9" />
+                         KeyDown="SearchBox_KeyDown" Padding="13,9" />
                 <Button Grid.Column="1" Content="搜索" Margin="10,0,0,0" Click="Search_Click" />
             </Grid>
             <Grid x:Name="SourceRow" Grid.Row="2" Margin="0,0,0,10">

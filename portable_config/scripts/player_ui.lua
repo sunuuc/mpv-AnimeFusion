@@ -594,6 +594,7 @@ return function(c)
             link('播放设置','playback-settings')
             link('缩放模式','scale')
             link('超分与补帧','ai')
+            link('音频设置','audio-settings','audio')
             link('字幕设置','sub-settings','sub')
             link('弹幕设置','danmaku-settings','danmaku')
             link('同步设置','sync-settings','bangumi')
@@ -712,7 +713,6 @@ return function(c)
             separator()
             if kind=='sub' then row('搜索字幕',function()c.command('script-message-to','mpvnet','show-subtitle-search')end) end
             row(kind=='sub' and '导入本地字幕' or '添加音轨',function()c.open_file(kind)end,false,{icon='plus'})
-            if kind=='audio' then link('音频设置','audio-settings') end
         elseif kind=='danmaku' then
             local d=c.prop('user-data/player_ui/danmaku',{}) or {}
             row('关闭',function()if d.enabled then c.command('script-message','player_ui-danmaku-toggle')end end,not d.loaded or not d.enabled,{stay=true})
@@ -1546,16 +1546,16 @@ sync_timers=function()
     if not want_clock and clock_timer then clock_timer:kill();clock_timer=nil end
 end
 local function pointer_over_hud()
-    if not layout then return false end
+    if not layout or not bool('mouse-pos/hover') then return false end
     local x,y=mp.get_mouse_pos()
     if not core.finite(x) or not core.finite(y) then return false end
     x=x/layout.scale;y=y/layout.scale
     return y>=layout.seek.y0 and y<=layout.h or hit(x,y)~=nil
 end
-local function hide()
+local function hide(force)
     hide_timer=nil
-    if state.menu or state.drag or bool('pause') or bool('idle-active',true) then return end
-    if pointer_over_hud() then hide_timer=mp.add_timeout(o.hide_timeout,hide);return end
+    if not force and (state.menu or state.drag or bool('pause') or bool('idle-active',true)) then return end
+    if not force and pointer_over_hud() then hide_timer=mp.add_timeout(o.hide_timeout,hide);return end
     state.visible=false;state.hover=nil;bind_mouse(false);sync_timers();request_render()
 end
 show=function()
@@ -1586,7 +1586,8 @@ mp.add_forced_key_binding('mouse_leave','player_ui-leave',function()
         local b=hit(state.x,state.y);state.hover=b and b.id or nil;menus.hover(b);show()
         return
     end
-    menus.hover(nil);state.x=-1;state.y=-1;state.hover=nil;state.drag=nil;state.pressed=nil;hide()
+    menus.close();cancel_pointer();state.x=-1;state.y=-1
+    kill(hide_timer);hide_timer=nil;hide(true)
 end)
 mp.add_key_binding('UP','player_ui-volume-up',function()volume(o.volume_step)end,{repeatable=true})
 mp.add_key_binding('DOWN','player_ui-volume-down',function()volume(-o.volume_step)end,{repeatable=true})
