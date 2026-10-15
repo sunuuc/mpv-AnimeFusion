@@ -10,9 +10,9 @@
     "repo": "sunuuc/mpv-AnimeFusion",
     "tag": "standalone-v1.3.4",
     "name": "native-build-inputs.7z",
-    "sha256": "64cc22979cce4f96e06a106efa3cf0cab72adbab3e47f902192ef99588be6843",
-    "bytes": 87134198,
-    "origin": "GitHub Actions source build 38695810770 from 90f23b63432d5db5f2aa4293fe8071b140d8188b; continuous secondary ASS timeline, cached subtitle switching, statistics header and libplacebo fixes; provenance and source patches in build-info/native."
+    "sha256": "e0081b62926ef17e15c3e6f4cc0b810125d9ed28f5d0f7885904f28537f4e981",
+    "bytes": 87135246,
+    "origin": "GitHub Actions source build 38705973751 from cbf00a849c1264550a47634c24b9e0794303224e; continuous secondary ASS timeline, cached subtitle switching, statistics header and libplacebo fixes; provenance and source patches in build-info/native."
   },
   "libass": {
     "repo": "libass/libass",
