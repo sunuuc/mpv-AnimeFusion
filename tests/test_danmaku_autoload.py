@@ -55,7 +55,7 @@ def run(install, video, directory, source_config, records, settings=None):
         assert list(data.rglob('*.xml')), "Original comments were not retained after playback"
         assert trace["state"]["track"] == trace["secondary_sid"]
         assert trace["primary_sid"] != trace["secondary_sid"]
-        assert any(str(trace["state"]["count"]) + "条弹幕大军正在袭来~~~" in n for n in trace["notices"])
+        assert any(str(trace["state"]["count"]) + "条弹幕已装填完毕" in n for n in trace["notices"])
     return trace
 
 
@@ -97,7 +97,7 @@ mp.commandv=function(...)
  if args[1]=='sub-add' then
   local file=assert(io.open(args[2],'rb'));local body=file:read('*a');file:close()
   for line in body:gmatch('[^\r\n]+') do
-   if line:find('弹幕准备中~~~',1,true) or line:find('条弹幕大军正在袭来~~~',1,true) then
+   if line:find('弹幕准备中~~~',1,true) or line:find('条弹幕已装填完毕',1,true) then
     trace.notices[#trace.notices+1]=line
    end
   end

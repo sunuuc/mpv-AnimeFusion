@@ -45,7 +45,7 @@ class ComponentContracts(unittest.TestCase):
         changelog=(ROOT/'CHANGELOG.md').read_text(encoding='utf-8')
         section=re.search(
             r'(?ms)^## \['+re.escape(version)+r'\][^\n]*\n(.*?)(?=^## |\Z)', changelog)
-        self.assertEqual(notes, section.group(1).strip()+'\n')
+        self.assertEqual(notes, re.sub(r'(?m)^### ', '## ', section.group(1)).strip()+'\n')
         self.assertNotIn('Hills Lite',notes)
         self.assertNotIn('首次',notes)
 

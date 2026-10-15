@@ -554,13 +554,13 @@ mp.add_timeout(20,function()finish(1)end)
             server.server_close()
             thread.join(timeout=2)
 
-    def test_automatic_match_queries_all_routes_in_parallel_and_keeps_normal_empty_route(self):
+    def test_automatic_match_queries_all_routes_in_parallel_and_skips_empty_route(self):
         self.check_parallel_routes((0, 2), True)
 
     def test_fast_nonempty_route_loads_before_slow_high_priority_search(self):
         self.check_parallel_routes((15, 0), False)
 
-    def check_parallel_routes(self, delays, empty_route_expected):
+    def check_parallel_routes(self, delays, first_route_checked):
         ParallelAutoloadHandler.search_delays = delays
         ParallelAutoloadHandler.seen = []
         ParallelAutoloadHandler.active = 0
@@ -617,20 +617,16 @@ end)
                     outcome['requests'] = list(ParallelAutoloadHandler.seen)
                 self.assertEqual(proc.returncode, 0,
                     (outcome, proc.stderr.decode('utf-8', 'replace')[-1200:]))
-                self.assertEqual(outcome, {'count': 0, 'state': 'empty', 'source': 1} if empty_route_expected
-                    else {'count': 1, 'state': 'loaded', 'source': 2})
+                self.assertEqual(outcome, {'count': 1, 'state': 'loaded', 'source': 2})
                 self.assertGreaterEqual(ParallelAutoloadHandler.max_active, 2,
                     'automatic route searches were not in flight concurrently')
                 self.assertEqual(sum(path.endswith('/api/v2/match') for path in ParallelAutoloadHandler.seen), 0)
                 self.assertEqual(sum('/api/v2/search/anime?' in path for path in ParallelAutoloadHandler.seen), 2)
-                if empty_route_expected:
+                if first_route_checked:
                     self.assertIn('/api/v2/comment/205?withRelated=true', ParallelAutoloadHandler.seen)
                 else:
                     self.assertNotIn('/api/v2/bangumi/101', ParallelAutoloadHandler.seen)
-                if empty_route_expected:
-                    self.assertNotIn('/second/api/v2/comment/305?withRelated=true', ParallelAutoloadHandler.seen)
-                else:
-                    self.assertIn('/second/api/v2/comment/305?withRelated=true', ParallelAutoloadHandler.seen)
+                self.assertIn('/second/api/v2/comment/305?withRelated=true', ParallelAutoloadHandler.seen)
         finally:
             server.shutdown()
             server.server_close()

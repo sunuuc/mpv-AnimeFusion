@@ -106,7 +106,7 @@ require(
     "local fraction=core.clamp(num('volume',0)/max_volume,0,1)",
     "volume_osd.data=table.concat(output,'\\n')",
     "local last_volume=num('volume',100)",
-    "if playback_ready and state.menu then draw_menu() end",
+    "if state.menu then draw_menu() end",
     "local function loading_indicator(w,h,u)",
     "mp.register_event('playback-restart',function()",
 )
