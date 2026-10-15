@@ -25,8 +25,16 @@ def download(item):
     url=f'https://github.com/{item["repo"]}/releases/{release_path}/{item["name"]}'
     for attempt in range(3):
         try:
-            req=urllib.request.Request(url,headers={'User-Agent':'mpv-AnimeFusion-full-build'})
-            with urllib.request.urlopen(req,timeout=90) as src, dest.open('wb') as out:shutil.copyfileobj(src,out,1024*1024)
+            if item['repo']==REPO and os.environ.get('GH_TOKEN'):
+                release=next(r for r in api(f'repos/{REPO}/releases?per_page=100')
+                    if r['tag_name']==item['tag'])
+                asset=next(a for a in release['assets'] if a['name']==item['name'])
+                with dest.open('wb') as out:
+                    run('gh','api',f'repos/{REPO}/releases/assets/{asset["id"]}',
+                        '-H','Accept: application/octet-stream',stdout=out)
+            else:
+                req=urllib.request.Request(url,headers={'User-Agent':'mpv-AnimeFusion-full-build'})
+                with urllib.request.urlopen(req,timeout=90) as src, dest.open('wb') as out:shutil.copyfileobj(src,out,1024*1024)
             if sha(dest)!=item['sha256']:raise RuntimeError('Download hash mismatch: '+item['name'])
             print('VERIFIED INPUT',item['name'],dest.stat().st_size,flush=True);return dest
         except Exception:

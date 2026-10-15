@@ -57,3 +57,5 @@ python tools/standalone/security_verify.py scan dist/installer complete-evidence
 原生运行库由 `tools/standalone/dependencies.json` 固定版本与哈希，使用 AnimeJaNai 三队列配置和连续推进的第二字幕轨。
 
 固定输入、源提交、补丁和逐文件哈希在 `app/build-info/native` 中记录。需要主动更新原生内核时，先单独运行原生构建工作流；`MPV_NATIVE_OUTPUT` 可显式指定候选运行库，但普通前端发布默认使用已固定的输入。
+
+原生工作流通过后，将其产物与必需资源打包为固定输入，记录来源提交和工作流编号，并更新依赖哈希。正式发布前，输入文件可暂存在当前版本的草稿发行页；同仓库 Actions 通过 GitHub 授权接口下载并校验，不提前公开未完成的发行版。
