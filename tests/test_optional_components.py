@@ -28,15 +28,17 @@ class ComponentContracts(unittest.TestCase):
                      'THIRD_PARTY_LICENSES/Google-OAuth-Desktop-Apache-2.0.txt',
                      'THIRD_PARTY_LICENSES/NuGet/Bangumi-dependencies.json'):
             self.assertIn(name,files)
-    def test_bangumi_personal_configuration_is_not_packaged(self):
+    def test_session_and_personal_configuration_is_not_packaged(self):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp)
             config=root/'portable_config';config.mkdir()
-            for name in ('bangumi.json','bangumi-app.json'):
+            for name in ('bangumi.json','bangumi-app.json','playback-error.json','playback-error.json.tmp'):
                 (config/name).write_text('private-fixture',encoding='utf-8')
             clean_session_files(root)
             self.assertFalse((config/'bangumi.json').exists())
             self.assertFalse((config/'bangumi-app.json').exists())
+            self.assertFalse((config/'playback-error.json').exists())
+            self.assertFalse((config/'playback-error.json.tmp').exists())
 
     def test_release_page_contains_only_current_version_changes(self):
         import re

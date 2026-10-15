@@ -207,7 +207,7 @@ def organize_payload():
 def clean_session_files(app):
     for folder in ('cache','watch_later'):
         shutil.rmtree(app/'portable_config'/folder,ignore_errors=True)
-    for name in ('settings.xml','saved-props.json','startup-diagnostic.json','startup-diagnostic.json.tmp','playback-diagnostic.json','bangumi.json','bangumi-app.json','trakt.json','mal.json','sync.json'):
+    for name in ('settings.xml','saved-props.json','startup-diagnostic.json','startup-diagnostic.json.tmp','playback-diagnostic.json','playback-error.json','playback-error.json.tmp','bangumi.json','bangumi-app.json','trakt.json','mal.json','sync.json'):
         (app/'portable_config'/name).unlink(missing_ok=True)
 
 def inspect_payload():

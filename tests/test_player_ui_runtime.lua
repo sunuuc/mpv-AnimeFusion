@@ -344,7 +344,7 @@ steps[#steps+1]=function(next_)
  end)end)
 end
 steps[#steps+1]=function(next_)
- click('audio',function()click(row('audio-settings'),function()
+ click('settings',function()click(row('audio-settings'),function()
   click(row('提前 0.1 秒'),function()
    check(math.abs(mp.get_property_number('audio-delay',0)+.1)<.001,'audio delay advances earlier by 0.1 seconds')
    click(row('延后 0.1 秒'),function()
