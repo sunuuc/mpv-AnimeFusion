@@ -22,6 +22,14 @@ class Param(C.Structure):
 
 class Viewport(unittest.TestCase):
     def test_screen_composition_and_resize(self):
+        # Python hosts libmpv here, so match the player's UTF-8 narrow file APIs.
+        # Leave LC_NUMERIC in C, as required by the libmpv client API.
+        runtime = C.CDLL('ucrtbase')
+        runtime.setlocale.argtypes = [C.c_int, C.c_char_p]
+        runtime.setlocale.restype = C.c_char_p
+        original_locale = runtime.setlocale(2, None)  # LC_CTYPE
+        self.assertIsNotNone(runtime.setlocale(2, b'.UTF8'))
+        self.addCleanup(runtime.setlocale, 2, original_locale)
         directory = os.add_dll_directory(str(INSTALL))
         dll = C.CDLL(str(INSTALL / 'app/libmpv-2.dll'))
         signatures = {
