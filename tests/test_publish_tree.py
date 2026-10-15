@@ -48,5 +48,35 @@ class SourceTreeTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'request failed'):
             self.build_tree([{'path': 'file.txt'}], api)
 
+    def test_existing_draft_retains_version_when_target_changes(self):
+        source = ast.parse((ROOT/'tools/standalone/publish.py').read_text(encoding='utf-8'))
+        statement = next(node for node in source.body if isinstance(node, ast.If)
+                         and isinstance(node.test, ast.Name) and node.test.id == 'old')
+        requests = []
+        def api(endpoint, payload, method):
+            requests.append((endpoint, payload, method))
+            return {'id': 1, 'tag_name': payload.get('tag_name', 'untagged-draft'), 'draft': True}
+        scope = {'api': api, 'REPO': 'owner/project', 'commit': 'new-source', 'notes': 'notes',
+                 'META': {'tag': 'v1.3.4', 'name': 'Player', 'version': '1.3.4'},
+                 'LOCK': {'native_and_ui_resources': {'name': 'native.7z'}},
+                 'old': [{'id': 1, 'draft': True, 'assets': [{'name': 'native.7z'}]}]}
+        exec(compile(ast.Module(body=[statement], type_ignores=[]), 'publish.py', 'exec'), scope)
+        self.assertEqual(scope['rel']['tag_name'], 'v1.3.4')
+        self.assertEqual(requests[0][1]['target_commitish'], 'new-source')
+        self.assertEqual(requests[0][2], 'PATCH')
+
+    def test_publishing_draft_explicitly_keeps_version(self):
+        source = ast.parse((ROOT/'tools/standalone/publish.py').read_text(encoding='utf-8'))
+        payloads = [node.args[1] for node in ast.walk(source)
+                    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                    and node.func.id == 'api' and len(node.args) >= 2
+                    and isinstance(node.args[1], ast.Dict)]
+        publishing = next(payload for payload in payloads
+                          if any(isinstance(key, ast.Constant) and key.value == 'make_latest'
+                                 for key in payload.keys))
+        payload = eval(compile(ast.Expression(publishing), 'publish.py', 'eval'),
+                       {'META': {'tag': 'v1.3.4'}})
+        self.assertEqual(payload, {'tag_name': 'v1.3.4', 'draft': False, 'make_latest': 'true'})
+
 if __name__ == '__main__':
     unittest.main()

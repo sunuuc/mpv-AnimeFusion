@@ -82,10 +82,11 @@ old=[r for r in api(f'repos/{REPO}/releases?per_page=100') if r['tag_name']==MET
 notes=(DIST/'RELEASE.md').read_text(encoding='utf-8')
 if old:
     assert len(old)==1 and old[0]['draft'] and {a['name'] for a in old[0]['assets']}=={LOCK['native_and_ui_resources']['name']},'Existing release is not the prepared build-input draft'
-    rel=api(f'repos/{REPO}/releases/{old[0]["id"]}',{'target_commitish':commit,'name':f'{META["name"]} {META["version"]}','body':notes},'PATCH')
+    rel=api(f'repos/{REPO}/releases/{old[0]["id"]}',{'tag_name':META['tag'],'target_commitish':commit,'name':f'{META["name"]} {META["version"]}','body':notes},'PATCH')
 else:
     rel=api(f'repos/{REPO}/releases',{'tag_name':META['tag'],'target_commitish':commit,
         'name':f'{META["name"]} {META["version"]}','body':notes,'draft':True,'prerelease':META['prerelease']})
+assert rel['tag_name']==META['tag'] and rel['draft'],'Draft release lost the requested version tag'
 uploads=[p for p in user_assets if p.name!=LOCK['native_and_ui_resources']['name']] if old else user_assets
 run('gh','release','upload',META['tag'],'-R',REPO,*uploads,sourcezip,checksums)
 uploaded=api(f'repos/{REPO}/releases/{rel["id"]}')
@@ -94,7 +95,7 @@ for p in user_assets+[sourcezip,checksums]:
     assert a.get('digest')=='sha256:'+sha(p) and a['state']=='uploaded'
 assert {a['name'] for a in uploaded['assets']}=={p.name for p in user_assets+[sourcezip,checksums]}
 api(f'repos/{REPO}/git/refs/heads/main',{'sha':commit,'force':False},'PATCH')
-api(f'repos/{REPO}/releases/{rel["id"]}',{'draft':False,'make_latest':'true'},'PATCH')
+api(f'repos/{REPO}/releases/{rel["id"]}',{'tag_name':META['tag'],'draft':False,'make_latest':'true'},'PATCH')
 published=api(f'repos/{REPO}/releases/tags/{META["tag"]}')
 assert published['id']==rel['id'] and not published['draft'] and published['prerelease']==META['prerelease']
 
