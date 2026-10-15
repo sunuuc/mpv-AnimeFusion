@@ -10,7 +10,7 @@ local function finish(ok,err)
  else
   msg.error(tostring(err))
   local x,y=mp.get_mouse_pos()
-  local state={ui=ui(),mouse={x=x,y=y},error=tostring(err)}
+  local state={ui=ui(),danmaku=mp.get_property_native('user-data/player_ui/danmaku',{}),mouse={x=x,y=y},error=tostring(err)}
   local f=io.open(out..'/failure-state.json','wb');if f then f:write(utils.format_json(state));f:close()end
  end
  mp.commandv('quit',ok and 0 or 1)
@@ -34,9 +34,10 @@ for _,property in ipairs({'fullscreen','osd-dimensions','display-hidpi-scale'})d
   input_ready_at=mp.get_time()+mp.get_property_number('input-doubleclick-time',300)/1000+.1
  end)
 end
-local function click(id,then_)
+local function click(id,then_,fraction)
  local u=ui();local b=assert(button(id),'missing UI control: '..id)
- local x=math.floor((b.x0+b.x1)*u.scale/2);local y=math.floor((b.y0+b.y1)*u.scale/2)
+ local x=math.floor((fraction and b.start+(b.finish-b.start)*fraction or (b.x0+b.x1)/2)*u.scale)
+ local y=math.floor((b.y0+b.y1)*u.scale/2)
  mp.commandv('mouse',x,y)
  local deadline=mp.get_time()+1.5
  local function ready()
@@ -48,7 +49,7 @@ local function click(id,then_)
    -- A resize temporarily removes mouse bindings. Move after the guard expires
    -- so the native mouse event reinstalls them before sending the click.
    local control=assert(button(id),'control disappeared before click: '..id)
-   x=math.floor((control.x0+control.x1)*current.scale/2)
+   x=math.floor((fraction and control.start+(control.finish-control.start)*fraction or (control.x0+control.x1)/2)*current.scale)
    y=math.floor((control.y0+control.y1)*current.scale/2)
    mp.commandv('mouse',x+1,y)
    after(.025,function()
@@ -80,11 +81,8 @@ local function set_slider(row_key,fraction,then_)
  local index
  for i,r in ipairs(ui().rows or {})do if r.key==row_key or r.text==row_key then index=i;break end end
  local id='slider-'..tostring(index)
- local slider=assert(index and button(id),'missing slider row '..row_key);local u=ui()
- local x=slider.start+(slider.finish-slider.start)*fraction
- local y=(slider.y0+slider.y1)/2
- mp.commandv('mouse',math.floor(x*u.scale),math.floor(y*u.scale))
- after(.06,function()mp.commandv('keypress','MBTN_LEFT');after(.15,then_)end)
+ assert(index and button(id),'missing slider row '..row_key)
+ click(id,then_,fraction)
 end
 local function scroll_menu_down(kind,wheels,then_)
  local bar=button('menu-scroll-'..kind);local u=ui()
