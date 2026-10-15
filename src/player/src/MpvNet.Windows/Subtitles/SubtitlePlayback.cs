@@ -2,6 +2,7 @@ using MpvNet.Windows.Trakt;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Text.Json;
 
 namespace MpvNet.Windows.Subtitles;
 
@@ -15,6 +16,9 @@ public sealed class SubtitlePlayback(SubtitleLibrary library)
     TraktMedia _media = TraktMedia.Parse("", "", new Dictionary<string, string>());
     CancellationTokenSource? _download;
     int _generation;
+    CancellationTokenSource _metadataLifetime = new();
+    readonly HashSet<string> _metadataRequested = [];
+    readonly Dictionary<string, Dictionary<string, Dictionary<int, EmbySubtitleMetadata.Track>>> _metadata = [];
     public string DownloadStatus { get; private set; } = "";
     sealed class DownloadProgress(SubtitlePlayback owner, int generation) : IProgress<string>
     { public void Report(string text) => owner.Notice(generation, text); }
@@ -27,11 +31,72 @@ public sealed class SubtitlePlayback(SubtitleLibrary library)
     public static void Initialize(SubtitleLibrary library)
     {
         Current = new(library);
-        Player.StartFile += () => { lock (Current._lock) { Current.CancelDownload(); Current._loaded = false; Current._title = ""; } };
-        Player.FileLoaded += () => { lock (Current._lock) Current._loaded = true; Current.Load(Player.GetPropertyString("media-title")); };
+        Player.StartFile += () => { lock (Current._lock) { Current.CancelDownload(); Current.ResetMetadata(); Current._loaded = false; Current._title = ""; } };
+        Player.FileLoaded += () => { lock (Current._lock) Current._loaded = true; Current.Load(Player.GetPropertyString("media-title")); Current.UpdateMetadata(); };
         Player.ObservePropertyString("media-title", Current.Load);
         Player.ObservePropertyString("sid", _ => Current.Remember());
-        Player.Shutdown += () => { lock (Current._lock) { Current.CancelDownload(); Current._loaded = false; } };
+        Player.ObservePropertyInt("track-list/count", _ => Current.UpdateMetadata());
+        Player.Shutdown += () => { lock (Current._lock) { Current.CancelDownload(); Current._metadataLifetime.Cancel(); Current._loaded = false; } };
+    }
+    void ResetMetadata()
+    {
+        _metadataLifetime.Cancel(); _metadataLifetime.Dispose(); _metadataLifetime = new();
+        _metadataRequested.Clear(); _metadata.Clear();
+        Player.SetPropertyString("user-data/player_ui/subtitles", "{}");
+    }
+    void UpdateMetadata()
+    {
+        lock (_lock)
+        {
+            if (!_loaded) return;
+            string video = Player.GetPropertyString("path"), agent = Player.GetPropertyString("user-agent");
+            var labels = new Dictionary<string, EmbySubtitleMetadata.Track>();
+            var requests = new List<EmbySubtitleMetadata.Source>();
+            for (int n = 0; n < Player.GetPropertyInt("track-list/count"); n++)
+            {
+                if (Player.GetPropertyString($"track-list/{n}/type") != "sub" || !Player.GetPropertyBool($"track-list/{n}/external")) continue;
+                string path = Player.GetPropertyString($"track-list/{n}/external-filename");
+                var source = EmbySubtitleMetadata.Identify(path, video, agent);
+                if (source == null) continue;
+                string key = source.Request.AbsoluteUri;
+                if (_metadata.TryGetValue(key, out var versions) && versions.TryGetValue(source.MediaSource, out var tracks)
+                    && tracks.TryGetValue(source.Index, out var track)) labels[Player.GetPropertyString($"track-list/{n}/id")] = track;
+                if (_metadataRequested.Add(key)) requests.Add(source);
+            }
+            Player.SetPropertyString("user-data/player_ui/subtitles", JsonSerializer.Serialize(new
+            {
+                tracks = labels.ToDictionary(pair => pair.Key, pair => new { title = pair.Value.Title, lang = pair.Value.Language })
+            }));
+            if (requests.Count > 0)
+            {
+                Task pending = ReadMetadataAsync(requests, _metadataLifetime.Token,
+                    Player.GetPropertyString("http-proxy"), Player.GetPropertyBool("tls-verify"));
+            }
+        }
+    }
+    async Task ReadMetadataAsync(IReadOnlyList<EmbySubtitleMetadata.Source> requests, CancellationToken token, string proxy, bool verifyTls)
+    {
+        using var http = EmbySubtitleMetadata.CreateClient(proxy, verifyTls);
+        foreach (var request in requests)
+        {
+            try
+            {
+                var metadata = await EmbySubtitleMetadata.ReadAsync(http, request, token).ConfigureAwait(false);
+                lock (_lock)
+                {
+                    if (token.IsCancellationRequested || !_loaded) return;
+                    _metadata[request.Request.AbsoluteUri] = metadata;
+                    UpdateMetadata();
+                }
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { return; }
+            catch (Exception error) when (error is HttpRequestException or JsonException or IOException or OperationCanceledException or SubtitleServiceException)
+            {
+                if (token.IsCancellationRequested) return;
+                string status = error is HttpRequestException { StatusCode: { } code } ? "：HTTP " + (int)code : "";
+                Terminal.WriteError("在线字幕资料读取失败" + status);
+            }
+        }
     }
     void Load(string title)
     {

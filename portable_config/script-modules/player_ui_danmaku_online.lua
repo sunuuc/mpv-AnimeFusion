@@ -801,7 +801,7 @@ local function movie_title(value)
     return identity(title)
 end
 
-function M.auto_candidates(shows,media_name)
+function M.auto_candidates(shows,media_name,known_title)
     local anime,episode,season=M.episode_query(media_name)
     local movie=not episode
     local info=M.show_info(anime or M.search_keyword(media_name))
@@ -809,6 +809,12 @@ function M.auto_candidates(shows,media_name)
     -- of a similarly named series or a season with incomplete metadata.
     if info.series=='' or movie and M.season_number(media_name) then return {} end
     local wanted=movie and movie_title(info.series) or identity(info.series)
+    local known=type(known_title)=='string' and M.show_info(known_title).series or nil
+    known=known and (movie and movie_title(known) or identity(known))
+    local function score_title(title)
+        local candidate=movie and movie_title(title) or identity(title)
+        return math.max(title_score(wanted,candidate),known and title_score(known,candidate) or 0)
+    end
     local version=movie_version(media_name) or 'original'
     local year=M.show_info(media_name).year
     local ranked={}
@@ -822,11 +828,11 @@ function M.auto_candidates(shows,media_name)
                 and (season_series_kind(kind) or special_title(media_name)))
             and (not movie or not movie_version(show.series) or movie_version(show.series)==version)
             and not not special_title(anime or info.series)==not not special_title(show.series) then
-            local score=title_score(wanted,movie and movie_title(show.series) or identity(show.series))
+            local score=score_title(show.series)
             if score<1 then
                 for _,alias in ipairs(show.aliases or {}) do
                     if not movie or not movie_version(alias) or movie_version(alias)==version then
-                        score=math.max(score,title_score(wanted,movie and movie_title(alias) or identity(alias)))
+                        score=math.max(score,score_title(alias))
                     end
                     if score==1 then break end
                 end

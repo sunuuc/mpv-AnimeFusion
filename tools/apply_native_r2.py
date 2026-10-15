@@ -159,3 +159,9 @@ print('Applied native counter and COM lifetime fix')
 
 from apply_secondary_sub_sync import apply
 apply(root)
+
+from apply_subtitle_track_cache import apply
+apply(root)
+
+from apply_stats_header import apply
+apply(root)

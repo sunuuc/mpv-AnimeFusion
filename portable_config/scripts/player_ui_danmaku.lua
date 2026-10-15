@@ -1048,7 +1048,7 @@ local function movie_title(value)
     return identity(title)
 end
 
-function M.auto_candidates(shows,media_name)
+function M.auto_candidates(shows,media_name,known_title)
     local anime,episode,season=M.episode_query(media_name)
     local movie=not episode
     local info=M.show_info(anime or M.search_keyword(media_name))
@@ -1056,6 +1056,12 @@ function M.auto_candidates(shows,media_name)
     -- of a similarly named series or a season with incomplete metadata.
     if info.series=='' or movie and M.season_number(media_name) then return {} end
     local wanted=movie and movie_title(info.series) or identity(info.series)
+    local known=type(known_title)=='string' and M.show_info(known_title).series or nil
+    known=known and (movie and movie_title(known) or identity(known))
+    local function score_title(title)
+        local candidate=movie and movie_title(title) or identity(title)
+        return math.max(title_score(wanted,candidate),known and title_score(known,candidate) or 0)
+    end
     local version=movie_version(media_name) or 'original'
     local year=M.show_info(media_name).year
     local ranked={}
@@ -1069,11 +1075,11 @@ function M.auto_candidates(shows,media_name)
                 and (season_series_kind(kind) or special_title(media_name)))
             and (not movie or not movie_version(show.series) or movie_version(show.series)==version)
             and not not special_title(anime or info.series)==not not special_title(show.series) then
-            local score=title_score(wanted,movie and movie_title(show.series) or identity(show.series))
+            local score=score_title(show.series)
             if score<1 then
                 for _,alias in ipairs(show.aliases or {}) do
                     if not movie or not movie_version(alias) or movie_version(alias)==version then
-                        score=math.max(score,title_score(wanted,movie and movie_title(alias) or identity(alias)))
+                        score=math.max(score,score_title(alias))
                     end
                     if score==1 then break end
                 end
@@ -1675,7 +1681,7 @@ end)()(mp,utils,function()
             if load_notice_pending then
                 load_notice_pending=false
                 if renderer.count>0 then
-                    renderer.notice(tostring(renderer.count)..'条弹幕大军正在袭来~~~')
+                    renderer.notice(tostring(renderer.count)..'条弹幕已装填完毕')
                 end
             end
         end
@@ -1780,7 +1786,8 @@ local function request(url,body,callback,shared_serial)
             timeout=o.danmaku_timeout,app_id=o.dandanplay_app_id,app_secret=o.dandanplay_app_secret})
         if not ok then callback(nil,tostring(spec));return end
         run_request(spec,function(response,err)
-            if err and number<=3 and not unsupported_api_error(err) then
+            local code=err and tonumber(err:match('returned error:%s*(%d%d%d)') or err:match('HTTP%s+(%d%d%d)'))
+            if err and number<=3 and (not code or code==429 or code>=500) and not unsupported_api_error(err) then
                 mp.add_timeout(.3*2^(number-1),function()
                     if serial==request_serial and file_generation==generation then attempt(number+1) end
                 end)
@@ -2207,10 +2214,16 @@ local function automatic_match_all_routes(attempt)
     local active,priority_fallback=false,false
     local advance
     local function finish()
+        local keyword=attempt.alternate_keyword
+        if not attempt.used_alternate_keyword and keyword and keyword~='' and keyword:lower()~=(attempt.keyword or ''):lower() then
+            attempt.used_alternate_keyword=true;attempt.keyword=keyword
+            automatic_match_all_routes(attempt)
+            return
+        end
         attempt.finished=true
         if not next(attempt.errors) then
             for _,index in ipairs(attempt.queue) do
-                local empty=states[index].empty
+                local empty=attempt.empty_candidates and attempt.empty_candidates[index]
                 if empty then
                     remember_source(attempt.name,index,empty.candidate,empty.episodes)
                     source=index;status='该集没有弹幕';autoload_state='empty';publish()
@@ -2252,7 +2265,8 @@ local function automatic_match_all_routes(attempt)
                         route_log(index,'弹幕读取','载入 '..#list..' 条弹幕')
                         return
                     elseif list then
-                        state.empty=state.empty or {candidate=candidate,episodes=available}
+                        attempt.empty_candidates=attempt.empty_candidates or {}
+                        attempt.empty_candidates[index]=attempt.empty_candidates[index] or {candidate=candidate,episodes=available}
                         route_log(index,'弹幕读取','该集返回 0 条弹幕，继续核验其他来源')
                         next_candidate(position+1)
                         return
@@ -2297,7 +2311,7 @@ local function automatic_match_all_routes(attempt)
             local found,why
             if not err then found,why=online.search_results(body or '',attempt.keyword or attempt.name,utils.parse_json,core.clean) end
             if found then
-                local candidates,reason=online.auto_candidates(found,attempt.name)
+                local candidates,reason=online.auto_candidates(found,attempt.name,attempt.known_title)
                 states[index].candidates=candidates
                 attempt.ambiguous=attempt.ambiguous or reason=='ambiguous'
                 route_log(index,'作品搜索','返回 '..#found..' 个作品，匹配候选 '..#candidates)
@@ -2309,11 +2323,16 @@ local function automatic_match_all_routes(attempt)
         end,attempt.serial)
     end
 end
-local function load_remembered_source(attempt,on_missing)
-    local key=online.series_source_key(attempt.name)
+local function remembered_source(name)
+    local key=online.series_source_key(name)
     local saved=key and series_sources[key]
     if type(saved)~='table' or not online.episode_id(saved.id)
-        or type(saved.label)~='string' or type(saved.episodes)~='table' then on_missing();return end
+        or type(saved.label)~='string' or type(saved.episodes)~='table' then return nil end
+    return saved
+end
+local function load_remembered_source(attempt,on_missing)
+    local saved=remembered_source(attempt.name)
+    if not saved then on_missing();return end
     local index
     for i,server in ipairs(servers) do if server.url==saved.server_url then index=i;break end end
     if not index then on_missing();return end
@@ -2369,6 +2388,14 @@ match_current=function(quiet,automatic,failed_episodes)
         local keyword=online.episode_query(name)
         if automatic or keyword then attempt.keyword=online.search_keyword(name) end
         if automatic then
+            local saved=remembered_source(name)
+            if saved then
+                attempt.known_title=saved.label
+                local known_keyword=online.search_keyword(saved.label)
+                if known_keyword~='' and known_keyword:lower()~=attempt.keyword:lower() then
+                    attempt.alternate_keyword=attempt.keyword;attempt.keyword=known_keyword
+                end
+            end
             attempt.failed_episodes=failed_episodes
             if failed_episodes then automatic_match_all_routes(attempt)
             else load_remembered_source(attempt,function()automatic_match_all_routes(attempt)end) end

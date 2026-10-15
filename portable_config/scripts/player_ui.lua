@@ -336,9 +336,10 @@ function M.read(now)
 end
 return M
 end)()
-local o={hide_timeout=1.6,network_speed=true,show_clock=true,auto_next=false,volume_step=5,ui_scale=1.00,text_outline=0,font='Microsoft YaHei',accent='9F74D0'}
+local o={hide_timeout=1.6,network_speed=true,show_clock=true,auto_next=false,skip_tls_verify=not mp.get_property_bool('tls-verify',true),ask_skip_tls_verify=true,volume_step=5,ui_scale=1.00,text_outline=0,font='Microsoft YaHei',accent='9F74D0'}
 options.read_options(o,'player_ui')
 mp.set_property('keep-open',o.auto_next and 'yes' or 'always')
+mp.set_property_bool('tls-verify',not o.skip_tls_verify)
 o.ui_scale=core.clamp(tonumber(o.ui_scale) or 1.00,.45,1.5)
 o.text_outline=core.clamp(tonumber(o.text_outline) or 0,0,4)
 o.hide_timeout=core.clamp(o.hide_timeout,1,20);o.volume_step=core.clamp(o.volume_step,1,20)
@@ -350,10 +351,13 @@ local state={visible=false,x=-1,y=-1,hover=nil,menu=nil,scroll=0,drag=nil,presse
     rate=nil,fps=nil,cpu=nil,memory=nil}
 local playback_ready=false
 local loading=false
+local tls_failure,tls_prompt_id
+local remember_tls_choice=true
 local layout,buttons,menu_box,menu_items,menus
 local bangumi_account={}
 local trakt_account={}
 local mal_account={}
+local subtitle_tracks={}
 local sync_services={bangumi=true,trakt=false,mal=false}
 local draw_cover,remove_cover,cover_seen
 local render_timer,hide_timer,pulse,network_timer,clock_timer,loading_timer,volume_osd_timer
@@ -535,6 +539,7 @@ return function(c)
     local function lang_label(value)
         if not value or value=='' then return nil end
         local key=value:lower():gsub('_','-')
+        if key=='und' or key=='zxx' then return nil end
         if key:match('^zh') then
             if key:match('hans') or key:match('^zh%-cn') or key:match('^zh%-sg') then return '中文（简体）' end
             if key:match('hant') or key:match('^zh%-tw') or key:match('^zh%-hk') or key:match('^zh%-mo') then return '中文（繁体）' end
@@ -555,13 +560,30 @@ return function(c)
             title=title:gsub('^%a[%w+.-]*://',''):gsub('^.*[/\\]','')
             title=title:gsub('%%(%x%x)',function(hex)return string.char(tonumber(hex,16))end)
         end
-        if title=='' or not literal and title:match('^[Ss]tream%.[%w]+$') then return nil end
+        if title=='' or not literal and title:lower():match('^stream%.[%w]+$') then return nil end
         return title
     end
     local function track_name(t)
         if t.type=='sub' then
-            return (t.external and title_label(t['external-filename'],true) or nil)
-                or title_label(t.title,true) or ('字幕 '..t.id)
+            local external=t['external-filename'] or ''
+            local remote=t.external and external:match('^%a[%w+.-]*://') and not external:match('^[Ff][Ii][Ll][Ee]://')
+            if remote then
+                local info=c.subtitle_tracks()[tostring(t.id)] or {}
+                local name=title_label(info.title) or title_label(t.title) or title_label(external)
+                local lang=lang_label(info.lang) or lang_label(t.lang)
+                if name then return lang and lang..' · '..name or name end
+                local codec=codec_label(t.codec)
+                return (lang and lang..' · ' or '')..(codec and codec..' · ' or '')..'字幕 '..t.id
+            end
+            local filename=t.external and title_label(t['external-filename'],true)
+            if filename then return filename end
+            local title=title_label(t.title,true)
+            if t.external and title then return title end
+            local lang=lang_label(t.lang)
+            if title then return lang and lang..' · '..title or title end
+            if lang then return lang end
+            local codec=codec_label(t.codec)
+            return (codec and codec..' · ' or '')..'字幕 '..t.id
         end
         local parts={}
         local function add(value) if value and value~='' then parts[#parts+1]=value end end
@@ -602,12 +624,17 @@ return function(c)
             toggle('显示时间',c.toggle_clock,c.clock())
         elseif kind=='playback-settings' then
             toggle('自动连播',c.toggle_auto_next,c.auto_next())
+            toggle('跳过 SSL 证书校验',c.toggle_skip_tls_verify,c.skip_tls_verify())
             toggle('镜像反转',c.toggle_mirror,c.mirror())
             toggle('定时暂停',c.toggle_timed_pause,c.timed_pause())
             if c.timed_pause() then
                 row('暂停时间',nil,false,{slider={value=c.pause_minutes(),min=1,max=180,step=1,format='%.0f 分钟',
                     set=c.set_pause_minutes}})
             end
+        elseif kind=='ssl-error' then
+            toggle('记住选择',c.toggle_remember_tls_choice,c.remember_tls_choice())
+            row('跳过校验并重试',c.retry_without_tls_verification)
+            row('取消',c.dismiss_tls_error)
         elseif kind=='sync-settings' then
             local services=c.sync_services()
             for _,item in ipairs({{'bangumi','Bangumi'},{'trakt','Trakt'},{'mal','MyAnimeList'}}) do local id,label=item[1],item[2]
@@ -800,7 +827,7 @@ return function(c)
         return title,a
     end
     M.allowed={settings='设置',speed='播放速度',sub='字幕',audio='音轨',danmaku='弹幕',ai='超分与补帧',scale='缩放模式',
-        ['playback-settings']='播放设置',['sub-settings']='字幕设置',['danmaku-settings']='弹幕设置',
+        ['playback-settings']='播放设置',['ssl-error']='SSL 证书校验失败',['sub-settings']='字幕设置',['danmaku-settings']='弹幕设置',
         ['audio-settings']='音频设置',stats='统计信息',chapters='章节',
         bangumi='Bangumi',trakt='Trakt',mal='MyAnimeList',['sync-settings']='同步设置',['bangumi-collection']='收藏',['bangumi-episode']='剧集',['trakt-episode']='剧集',['mal-episode']='剧集'}
     local function width(kind,l)
@@ -1034,6 +1061,7 @@ return function(c)
     end
     function M.hover(b,suppress_dismiss)
         if not s.menu then close_timer();dismiss_timer();return end
+        if s.menu=='ssl-error' then close_timer();dismiss_timer();return end
         if suppress_dismiss then close_timer();dismiss_timer();return end
         local id=b and b.id
         local menu_surface=b and b.menu and id~='menu-dismiss'
@@ -1079,6 +1107,7 @@ end
 end)()({
     state=state,core=core,theme=THEME,accent=ACCENT,prop=prop,num=num,bool=bool,command=cmd,
     account=function(provider)return provider=='mal' and mal_account or provider=='trakt' and trakt_account or bangumi_account end,
+    subtitle_tracks=function()return subtitle_tracks end,
     sync_services=function()return sync_services end,
     set=mp.set_property,set_number=mp.set_property_number,set_bool=mp.set_property_bool,
     read_presets=read_presets,presets=function()return presets end,current_slot=current_slot,select_slot=ai_select,
@@ -1092,6 +1121,41 @@ end)()({
             mp.set_property('keep-open',o.auto_next and 'yes' or 'always')
             menus.invalidate();request_render()
         end
+    end,
+    skip_tls_verify=function()return not bool('tls-verify',true) end,
+    toggle_skip_tls_verify=function()
+        local skip=bool('tls-verify',true)
+        if save_option('skip_tls_verify',skip) then
+            mp.set_property_bool('tls-verify',not skip)
+            save_option('ask_skip_tls_verify',true)
+            menus.invalidate();request_render()
+        end
+    end,
+    remember_tls_choice=function()return remember_tls_choice end,
+    toggle_remember_tls_choice=function()
+        remember_tls_choice=not remember_tls_choice
+        menus.invalidate();request_render()
+    end,
+    dismiss_tls_error=function()
+        if remember_tls_choice then
+            if not save_option('skip_tls_verify',false) then return end
+            if not save_option('ask_skip_tls_verify',false) then return end
+        end
+        menus.close();request_render()
+    end,
+    retry_without_tls_verification=function()
+        local failure=prop('user-data/player_ui/playback',{}) or {}
+        if not tls_failure or not failure.ssl_error or failure.failure_id~=tls_failure.failure_id then return end
+        local index
+        for i,entry in ipairs(prop('playlist',{}) or {}) do
+            if entry.id==failure.retry_entry_id then index=i-1;break end
+        end
+        if index==nil then menus.close();request_render();return end
+        if remember_tls_choice and not save_option('skip_tls_verify',true) then return end
+        if not mp.set_property_bool('tls-verify',false) then return end
+        menus.close();mp.osd_message('',0)
+        cmd('playlist-play-index',index,'yes')
+        request_render()
     end,
     mirror=mirror_enabled,
     toggle_mirror=function()
@@ -1120,7 +1184,7 @@ end)()({
     manager=function()cmd('run',mp.command_native({'expand-path','~~/../mpv-AnimeFusionManager.exe'}))end
 })
 open_menu=function(kind,parent)
-    if not playback_ready then return end
+    if not playback_ready and kind~='playback-settings' and kind~='ssl-error' then return end
     if kind=='more' then kind='settings' end
     samples:reset();state.fps=nil;state.cpu=nil;state.memory=nil;state.gpu=nil
     if metrics.reset then metrics.reset() end
@@ -1352,6 +1416,11 @@ local function account_changed(provider,value)
     account_snapshots[provider]=snapshot
     return true
 end
+mp.observe_property('user-data/player_ui/subtitles','native',function(_,value)
+    local snapshot=type(value)=='string' and utils.parse_json(value) or value
+    subtitle_tracks=type(snapshot)=='table' and type(snapshot.tracks)=='table' and snapshot.tracks or {}
+    menus.invalidate();request_render()
+end)
 mp.observe_property('user-data/player_ui/bangumi','native',function(_,value)
     if not account_changed('bangumi',value) then return end
     bangumi_account=type(value)=='table' and value or type(value)=='string' and utils.parse_json(value) or {}
@@ -1376,6 +1445,18 @@ mp.observe_property('user-data/player_ui/sync','native',function(_,value)
     if type(services)=='table' then sync_services=services end
     if state.menu and ((state.menu:match('^bangumi') and not sync_services.bangumi) or (state.menu:match('^trakt') and not sync_services.trakt) or (state.menu:match('^mal') and not sync_services.mal)) then menus.close() end
     menus.invalidate();sync_timers();request_render()
+end)
+mp.observe_property('user-data/player_ui/playback','native',function(_,value)
+    if type(value)~='table' or value.phase~='failed' or not value.ssl_error then
+        tls_failure=nil
+        if state.menu=='ssl-error' then menus.close();request_render() end
+        return
+    end
+    tls_failure=value
+    if value.failure_id~=tls_prompt_id and o.ask_skip_tls_verify and bool('tls-verify',true) then
+        tls_prompt_id=value.failure_id
+        open_menu('ssl-error')
+    end
 end)
 render=function()
     render_timer=nil
@@ -1472,10 +1553,10 @@ render=function()
             text(layout.margin,layout.detail_y,core.metrics.detail_font*u,detail,7,THEME.secondary,false,width,0,'Microsoft YaHei UI')
         end
     end
-    if playback_ready and state.menu then draw_menu() end
+    if state.menu then draw_menu() end
     if not cover_seen then remove_cover() end
     local b=hit(state.x,state.y);state.hover=b and b.id or nil
-    bind_mouse(state.visible and (b~=nil or state.drag~=nil or state.menu~=nil))
+    bind_mouse(state.menu~=nil or state.visible and (b~=nil or state.drag~=nil))
     ui.res_x=math.floor(layout.w+.5);ui.res_y=math.floor(layout.h+.5);ui.data=table.concat(output,'\n')
     if ui.data=='' then
         ui:remove();state.overlay_ok=false;state.overlay_error=nil
@@ -1560,14 +1641,14 @@ local function hide(force)
 end
 show=function()
     if not playback_ready then
-        state.visible=false;state.menu=nil;kill(hide_timer);hide_timer=nil
+        state.visible=false;kill(hide_timer);hide_timer=nil
         sync_timers();request_render();return
     end
     state.visible=true;kill(hide_timer);hide_timer=mp.add_timeout(o.hide_timeout,hide)
     sync_timers();request_render()
 end
 local function mouse_move()
-    if not playback_ready then return end
+    if not playback_ready and not state.menu then return end
     local x,y=mp.get_mouse_pos()
     if not layout_current() then cancel_pointer();buttons={};show();return end
     if not layout then local w,h=mp.get_osd_size();layout=core.layout(w,h,num('display-hidpi-scale',1),o.ui_scale,nil,sync_services) end
@@ -1580,7 +1661,7 @@ local function mouse_move()
 end
 mp.add_forced_key_binding('mouse_move','player_ui-move',mouse_move)
 mp.add_forced_key_binding('mouse_leave','player_ui-leave',function()
-    if not playback_ready then return end
+    if not playback_ready and not state.menu then return end
     if pointer_over_hud() then
         local x,y=mp.get_mouse_pos();state.x=x/layout.scale;state.y=y/layout.scale
         local b=hit(state.x,state.y);state.hover=b and b.id or nil;menus.hover(b);show()
@@ -1600,7 +1681,7 @@ mp.register_script_message('player_ui-hide',function()menus.close();state.hover=
 mp.add_key_binding(nil,'visibility',function()if state.visible then state.menu=nil;hide() else show() end end)
 local last_volume=num('volume',100)
 for _,p in ipairs({'pause','idle-active','paused-for-cache','demuxer-via-network','window-minimized','fullscreen',
-    'volume','mute','speed','sid','sub-visibility','sub-delay','sub-scale','sub-pos','audio-delay','display-hidpi-scale','keepaspect','panscan','video-unscaled','glsl-shaders','track-list','playlist','playlist-pos','media-title','duration','video-params','osd-dimensions',
+    'volume','mute','speed','sid','sub-visibility','sub-delay','sub-scale','sub-pos','audio-delay','tls-verify','display-hidpi-scale','keepaspect','panscan','video-unscaled','glsl-shaders','track-list','playlist','playlist-pos','media-title','duration','video-params','osd-dimensions',
     'user-data/player_ui/danmaku','user-data/animejanai/requested-slot'}) do
     mp.observe_property(p,'native',function(_,value)
         if p=='fullscreen' or p=='osd-dimensions' or p=='display-hidpi-scale' then

@@ -51,6 +51,7 @@ return function(c)
     local function lang_label(value)
         if not value or value=='' then return nil end
         local key=value:lower():gsub('_','-')
+        if key=='und' or key=='zxx' then return nil end
         if key:match('^zh') then
             if key:match('hans') or key:match('^zh%-cn') or key:match('^zh%-sg') then return '中文（简体）' end
             if key:match('hant') or key:match('^zh%-tw') or key:match('^zh%-hk') or key:match('^zh%-mo') then return '中文（繁体）' end
@@ -71,13 +72,30 @@ return function(c)
             title=title:gsub('^%a[%w+.-]*://',''):gsub('^.*[/\\]','')
             title=title:gsub('%%(%x%x)',function(hex)return string.char(tonumber(hex,16))end)
         end
-        if title=='' or not literal and title:match('^[Ss]tream%.[%w]+$') then return nil end
+        if title=='' or not literal and title:lower():match('^stream%.[%w]+$') then return nil end
         return title
     end
     local function track_name(t)
         if t.type=='sub' then
-            return (t.external and title_label(t['external-filename'],true) or nil)
-                or title_label(t.title,true) or ('字幕 '..t.id)
+            local external=t['external-filename'] or ''
+            local remote=t.external and external:match('^%a[%w+.-]*://') and not external:match('^[Ff][Ii][Ll][Ee]://')
+            if remote then
+                local info=c.subtitle_tracks()[tostring(t.id)] or {}
+                local name=title_label(info.title) or title_label(t.title) or title_label(external)
+                local lang=lang_label(info.lang) or lang_label(t.lang)
+                if name then return lang and lang..' · '..name or name end
+                local codec=codec_label(t.codec)
+                return (lang and lang..' · ' or '')..(codec and codec..' · ' or '')..'字幕 '..t.id
+            end
+            local filename=t.external and title_label(t['external-filename'],true)
+            if filename then return filename end
+            local title=title_label(t.title,true)
+            if t.external and title then return title end
+            local lang=lang_label(t.lang)
+            if title then return lang and lang..' · '..title or title end
+            if lang then return lang end
+            local codec=codec_label(t.codec)
+            return (codec and codec..' · ' or '')..'字幕 '..t.id
         end
         local parts={}
         local function add(value) if value and value~='' then parts[#parts+1]=value end end
@@ -118,12 +136,17 @@ return function(c)
             toggle('显示时间',c.toggle_clock,c.clock())
         elseif kind=='playback-settings' then
             toggle('自动连播',c.toggle_auto_next,c.auto_next())
+            toggle('跳过 SSL 证书校验',c.toggle_skip_tls_verify,c.skip_tls_verify())
             toggle('镜像反转',c.toggle_mirror,c.mirror())
             toggle('定时暂停',c.toggle_timed_pause,c.timed_pause())
             if c.timed_pause() then
                 row('暂停时间',nil,false,{slider={value=c.pause_minutes(),min=1,max=180,step=1,format='%.0f 分钟',
                     set=c.set_pause_minutes}})
             end
+        elseif kind=='ssl-error' then
+            toggle('记住选择',c.toggle_remember_tls_choice,c.remember_tls_choice())
+            row('跳过校验并重试',c.retry_without_tls_verification)
+            row('取消',c.dismiss_tls_error)
         elseif kind=='sync-settings' then
             local services=c.sync_services()
             for _,item in ipairs({{'bangumi','Bangumi'},{'trakt','Trakt'},{'mal','MyAnimeList'}}) do local id,label=item[1],item[2]
@@ -316,7 +339,7 @@ return function(c)
         return title,a
     end
     M.allowed={settings='设置',speed='播放速度',sub='字幕',audio='音轨',danmaku='弹幕',ai='超分与补帧',scale='缩放模式',
-        ['playback-settings']='播放设置',['sub-settings']='字幕设置',['danmaku-settings']='弹幕设置',
+        ['playback-settings']='播放设置',['ssl-error']='SSL 证书校验失败',['sub-settings']='字幕设置',['danmaku-settings']='弹幕设置',
         ['audio-settings']='音频设置',stats='统计信息',chapters='章节',
         bangumi='Bangumi',trakt='Trakt',mal='MyAnimeList',['sync-settings']='同步设置',['bangumi-collection']='收藏',['bangumi-episode']='剧集',['trakt-episode']='剧集',['mal-episode']='剧集'}
     local function width(kind,l)
@@ -550,6 +573,7 @@ return function(c)
     end
     function M.hover(b,suppress_dismiss)
         if not s.menu then close_timer();dismiss_timer();return end
+        if s.menu=='ssl-error' then close_timer();dismiss_timer();return end
         if suppress_dismiss then close_timer();dismiss_timer();return end
         local id=b and b.id
         local menu_surface=b and b.menu and id~='menu-dismiss'
