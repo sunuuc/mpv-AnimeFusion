@@ -5,7 +5,8 @@ ROOT=Path(__file__).resolve().parents[1]
 APP=Path(sys.argv[1]).resolve();OUT=Path(sys.argv[2]).resolve();OUT.mkdir(parents=True,exist_ok=True)
 CONFIG=OUT/'config';CONFIG.mkdir(parents=True,exist_ok=True)
 PRIVATE=OUT/'private';PRIVATE.mkdir(parents=True,exist_ok=True)
-PRIVATE.joinpath('mpv-AnimeFusion-danmaku.conf').write_text(
+SETTINGS=PRIVATE/'mpv-AnimeFusion'/'Danmaku'/'设置';SETTINGS.mkdir(parents=True,exist_ok=True)
+SETTINGS.joinpath('mpv-AnimeFusion-danmaku.conf').write_text(
     '# Isolated test-only source; .invalid can never resolve.\n'
     'api_servers=https://danmaku.example.invalid|Fixture\n',encoding='utf-8')
 production_input=(APP/'portable_config/input.conf').read_text(encoding='utf-8-sig')
