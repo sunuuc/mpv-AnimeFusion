@@ -29,12 +29,6 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
-          repository: the-database/libass
-          ref: 896614fa263f9f64944f7b8650ff6806d5328c4d
-          path: libass-source
-          persist-credentials: false
-      - uses: actions/checkout@v4
-        with:
           repository: haasn/libplacebo
           ref: cee9b076f2c63104ccfd497fa79c39a867293ec4
           path: libplacebo-source
@@ -43,7 +37,8 @@ jobs:
       - name: Apply reviewed patches
         shell: python
         run: |
-          import subprocess,sys
+          import shutil,subprocess,sys
+          shutil.copytree('project/third_party/libass','libass-source')
           subprocess.run([sys.executable,'project/tools/apply_native_r2.py','mpv-source'],check=True)
           subprocess.run([sys.executable,'project/tools/apply_libplacebo_fixes.py','libplacebo-source'],check=True)
       - name: Start Windows audio services
@@ -100,7 +95,8 @@ jobs:
           pacman -Q > native-output/build-info/msys2-packages.txt
           git -C mpv-source -c core.autocrlf=true diff --binary > native-output/build-info/native-r2.patch
           git -C mpv-source rev-parse HEAD > native-output/build-info/mpv-commit.txt
-          git -C libass-source rev-parse HEAD > native-output/build-info/libass-commit.txt
+          python -c "import json; print(json.load(open('project/third_party/libass/UPSTREAM.json'))['commit'])" > native-output/build-info/libass-commit.txt
+          cp project/third_party/libass/UPSTREAM.json native-output/build-info/libass-source.json
           git -C libplacebo-source rev-parse HEAD > native-output/build-info/libplacebo-commit.txt
           cp mpv-source/Copyright native-output/build-info/mpv-Copyright.txt
       - name: Test native FPS, repeated shutdown and short-lived client thread
