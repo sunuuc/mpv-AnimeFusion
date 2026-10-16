@@ -227,6 +227,81 @@
       "recommended": false,
       "title": "TensorRT kernels: H100 / H200 / GH200 (SM90)",
       "description": "Hopper data-center GPUs, compute capability 9.0. Requires the TensorRT runtime."
+    },
+    {
+      "name": "upscale-model-1",
+      "asset": "component-upscale-model-1.7z",
+      "url": "https://github.com/sunuuc/mpv-AnimeFusion/releases/download/standalone-v1.3.4/component-upscale-model-1.7z",
+      "sha256": "dbd3c932b8e27490f995916de0bb1856283a1fc94e8428b05de1a6f2d8e0870f",
+      "bytes": 1796335,
+      "installed_bytes": 1971970,
+      "files": [
+        "animejanai/onnx/2x_AnimeJaNai_HD_V3.1_Balanced_SPANF3_b8f64_unshuffle_fp16.onnx"
+      ],
+      "requires": [],
+      "recommended": false,
+      "title": "HD upscaling: balanced",
+      "description": "2x_AnimeJaNai_HD_V3.1_Balanced_SPANF3_b8f64_unshuffle_fp16"
+    },
+    {
+      "name": "upscale-model-2",
+      "asset": "component-upscale-model-2.7z",
+      "url": "https://github.com/sunuuc/mpv-AnimeFusion/releases/download/standalone-v1.3.4/component-upscale-model-2.7z",
+      "sha256": "1f4d3dee873beee145ef130962e0298abca2fa249b29ec2e8f8ffa1829c0a0c5",
+      "bytes": 669466,
+      "installed_bytes": 740318,
+      "files": [
+        "animejanai/onnx/2x_AnimeJaNai_HD_V3.1_Performance_SPANF3_b5f48_unshuffle_fp16.onnx"
+      ],
+      "requires": [],
+      "recommended": false,
+      "title": "HD upscaling: fast",
+      "description": "2x_AnimeJaNai_HD_V3.1_Performance_SPANF3_b5f48_unshuffle_fp16"
+    },
+    {
+      "name": "upscale-model-3",
+      "asset": "component-upscale-model-3.7z",
+      "url": "https://github.com/sunuuc/mpv-AnimeFusion/releases/download/standalone-v1.3.4/component-upscale-model-3.7z",
+      "sha256": "70e8a333c6be2b00eb50937177bdcaa14ce2dd10b68da5979fdb63c4bd8d1a20",
+      "bytes": 1796579,
+      "installed_bytes": 1971970,
+      "files": [
+        "animejanai/onnx/2x_AnimeJaNai_HD_V3.1Sharp1_Balanced_SPANF3_b8f64_unshuffle_fp16.onnx"
+      ],
+      "requires": [],
+      "recommended": false,
+      "title": "HD upscaling: balanced (sharp)",
+      "description": "2x_AnimeJaNai_HD_V3.1Sharp1_Balanced_SPANF3_b8f64_unshuffle_fp16"
+    },
+    {
+      "name": "upscale-model-4",
+      "asset": "component-upscale-model-4.7z",
+      "url": "https://github.com/sunuuc/mpv-AnimeFusion/releases/download/standalone-v1.3.4/component-upscale-model-4.7z",
+      "sha256": "947653ca1c4ac25cc886fad190b651e56105a83636db1ed7807567d5c4de0a1f",
+      "bytes": 668033,
+      "installed_bytes": 740318,
+      "files": [
+        "animejanai/onnx/2x_AnimeJaNai_HD_V3.1Sharp1_Performance_SPANF3_b5f48_unshuffle_fp16.onnx"
+      ],
+      "requires": [],
+      "recommended": false,
+      "title": "HD upscaling: fast (sharp)",
+      "description": "2x_AnimeJaNai_HD_V3.1Sharp1_Performance_SPANF3_b5f48_unshuffle_fp16"
+    },
+    {
+      "name": "upscale-model-5",
+      "asset": "component-upscale-model-5.7z",
+      "url": "https://github.com/sunuuc/mpv-AnimeFusion/releases/download/standalone-v1.3.4/component-upscale-model-5.7z",
+      "sha256": "621f068f17c55281e15b74ca8bd766c2df92ec9e34ea84a31ac9270bd5c7cd23",
+      "bytes": 1108242,
+      "installed_bytes": 1212903,
+      "files": [
+        "animejanai/onnx/2x_AnimeJaNai_SD_V1beta34_Compact_1x3xHxW_dyn-HW_strong_fp16_op21_dynamo.onnx"
+      ],
+      "requires": [],
+      "recommended": false,
+      "title": "SD upscaling model",
+      "description": "2x_AnimeJaNai_SD_V1beta34_Compact_1x3xHxW_dyn-HW_strong_fp16_op21_dynamo"
     }
   ]
 }

@@ -1,5 +1,5 @@
 {
-  "description": "Pinned upstream core and native resources. Optional GPU components use component-catalog.json; models are emitted as separate release assets.",
+  "description": "Pinned upstream core and native resources. Optional GPU components and model downloads use the fixed sources in component-catalog.json.",
   "bootstrap_core": {
     "repo": "the-database/mpv-AnimeJaNai",
     "tag": "3.6.0",

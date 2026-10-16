@@ -38,7 +38,8 @@ class BrandingTests(unittest.TestCase):
         self.assertIn('f\'{META["name"]} {META["version"]}', publisher)
         documentation = (ROOT / 'docs/standalone.md').read_text(encoding='utf-8')
         self.assertIn(PROJECT_NAME + '-' + META['version'] + '-win-x64.7z', documentation)
-        self.assertIn(PROJECT_NAME + '-' + META['version'] + '-sources.zip', documentation)
+        self.assertIn(PROJECT_NAME + '-' + META['version'] + '-setup-x64.exe', documentation)
+        self.assertIn('GitHub 发布页的源码下载入口', documentation)
         for filename in ('src/player/src/MpvNet.Windows/MpvNet.Windows.csproj',
                          'src/manager/AnimeJaNaiConfEditor/AnimeJaNaiConfEditor.csproj',
                          'tools/standalone/Updater.csproj'):

@@ -94,8 +94,45 @@ class ComponentContracts(unittest.TestCase):
                          'trt-sm89','trt-sm90','trt-sm100','trt-sm120'} <= names)
         for p in catalog['packs']:
             self.assertEqual(len(p['sha256']),64)
-            self.assertTrue(p['url'].startswith('https://github.com/the-database/mpv-AnimeJaNai/releases/download/3.6.0/'))
+            release = ('https://github.com/sunuuc/mpv-AnimeFusion/releases/download/standalone-v1.3.4/'
+                       if p['name'].startswith('upscale-model-') else
+                       'https://github.com/the-database/mpv-AnimeJaNai/releases/download/3.6.0/')
+            self.assertEqual(p['url'],release+p['asset'])
             self.assertGreater(p['bytes'],0)
+        self.assertEqual(sum(p['name'].startswith('upscale-model-') for p in catalog['packs']),5)
+
+    def test_prepare_reuses_published_models_without_creating_release_assets(self):
+        catalog=json.loads((ROOT/'tools/standalone/component-catalog.json').read_text())
+        models=[p for p in catalog['packs'] if p['name'].startswith('upscale-model-')]
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);app=root/'package';(app/'animejanai').mkdir(parents=True)
+            (app/'animejanai/animejanai.conf').write_text(
+                '[slot_1]\nchain_1_model_1_name='+Path(models[0]['files'][0]).stem+'\n',encoding='utf-8')
+            for pack in models:
+                model=app/pack['files'][0];model.parent.mkdir(parents=True,exist_ok=True)
+                model.write_bytes(b'x'*pack['installed_bytes'])
+            runtime=app/'animejanai/inference/nvinfer_11.dll';runtime.parent.mkdir()
+            runtime.write_bytes(b'optional runtime')
+            notice=app/'animejanai/inference/DirectML_LICENSE.txt';notice.write_text('core notice')
+            prepare(app)
+            prepared=json.loads((app/'app/build-info/standalone/components.json').read_text())
+            for original,current in zip(catalog['packs'],prepared['packs']):
+                self.assertEqual({k:v for k,v in original.items() if k!='recommended'},
+                                 {k:v for k,v in current.items() if k!='recommended'})
+            self.assertEqual([p['name'] for p in prepared['packs']
+                              if p['name'].startswith('upscale-model-') and p['recommended']],['upscale-model-1'])
+            self.assertFalse(list(app.rglob('*.onnx')))
+            self.assertFalse(list(root.rglob('*.7z')))
+            self.assertFalse(runtime.exists())
+            self.assertTrue(notice.exists())
+
+    def test_prepare_rejects_upstream_models_without_pinned_downloads(self):
+        with tempfile.TemporaryDirectory() as temp:
+            app=Path(temp);model=app/'animejanai/onnx/unpublished.onnx'
+            model.parent.mkdir(parents=True);model.write_bytes(b'unpublished model')
+            with self.assertRaisesRegex(RuntimeError,'Pinned model catalog does not match'):
+                prepare(app)
+            self.assertTrue(model.exists())
     def test_component_labels_identify_distinct_gpu_architectures(self):
         catalog=json.loads((ROOT/'tools/standalone/component-catalog.json').read_text())
         packs={p['name']:p for p in catalog['packs']}
@@ -110,7 +147,10 @@ class ComponentContracts(unittest.TestCase):
         translations=json.loads((ROOT/'src/manager/AnimeJaNaiConfEditor/LanguageStrings.json').read_text(encoding='utf-8'))['translations']
         for p in packs.values():
             self.assertIn(p['title'],translations)
-            self.assertIn(p['description'],translations)
+            if p['name'].startswith('upscale-model-'):
+                self.assertEqual(p['description'],Path(p['files'][0]).stem)
+            else:
+                self.assertIn(p['description'],translations)
     def test_runtime_size_counts_binary_payload_without_shared_notice(self):
         catalog=json.loads((ROOT/'tools/standalone/component-catalog.json').read_text())
         runtime=next(p for p in catalog['packs'] if p['name']=='trt-runtime')
@@ -130,7 +170,7 @@ class ComponentContracts(unittest.TestCase):
         self.assertIn('default_slot=0',conf)
     def test_builder_does_not_disable_components_or_include_models(self):
         text=(ROOT/'tools/standalone/build.py').read_text(encoding='utf-8')
-        self.assertIn('prepare_components(ST,DIST,META,SEVEN)',text)
+        self.assertIn('prepare_components(ST)',text)
         self.assertNotIn('records=prune(',text)
         self.assertNotIn('standaloneComponentsNote',text)
         self.assertNotIn('runtime_seed',text)
@@ -161,7 +201,7 @@ def verify_updater(updater, seven, live=False, model_assets=None, package=None):
             archive=root/(name+'.7z')
             subprocess.run([str(seven),'a','-t7z','-bd',str(archive),*files],cwd=root/'source',stdout=subprocess.DEVNULL,check=True)
             cache=app/'app/.component-downloads'/name;cache.mkdir(parents=True);shutil.copy2(archive,cache/'package.7z')
-            return {'name':name,'asset':archive.name,'url':'https://github.com/sunuuc/mpv-AnimeFusion/releases/latest/download/'+archive.name,
+            return {'name':name,'asset':archive.name,'url':'https://github.com/sunuuc/mpv-AnimeFusion/releases/download/standalone-v1.3.4/'+archive.name,
                     'sha256':digest(archive),'bytes':archive.stat().st_size,'installed_bytes':len(content),'files':files,
                     'requires':requires,'recommended':False}
         runtime=pack('fixture-runtime',b'test runtime')
@@ -202,6 +242,8 @@ def verify_updater(updater, seven, live=False, model_assets=None, package=None):
         write([{**noticed,'files':[notice]}]);call('--components','--json',ok=1)
         bad={**model,'files':['../escape.onnx']};write([runtime,bad]);call('--components','--json',ok=1)
         bad={**model,'url':'https://example.com/untrusted.7z'};write([runtime,bad]);call('--install','fixture-model',ok=1)
+        bad={**model,'url':'https://github.com/sunuuc/mpv-AnimeFusion/releases/latest/download/'+model['asset']}
+        write([runtime,bad]);call('--components','--json',ok=1)
         print('PASS traversal and untrusted source rejection')
         # A busy second file must roll the already-written first file back.
         first='animejanai/onnx/rollback-one.onnx';second='animejanai/onnx/rollback-two.onnx'
@@ -243,7 +285,7 @@ def verify_updater(updater, seven, live=False, model_assets=None, package=None):
             models=[p for p in catalog['packs'] if p['name'].startswith('upscale-model-')]
             write(catalog['packs'])
             for p in models:
-                assert p['url']=='https://github.com/sunuuc/mpv-AnimeFusion/releases/latest/download/'+p['asset']
+                assert p['url']=='https://github.com/sunuuc/mpv-AnimeFusion/releases/download/standalone-v1.3.4/'+p['asset']
                 archive=model_assets/p['asset'];assert digest(archive)==p['sha256']
                 cache=app/'app/.component-downloads'/p['name'];cache.mkdir(parents=True)
                 shutil.copy2(archive,cache/'package.7z')

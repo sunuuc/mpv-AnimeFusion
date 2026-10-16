@@ -1,10 +1,20 @@
 """Isolated CPU, Lua and real frontend/IPC regressions. No user media or network."""
 from pathlib import Path
 import ctypes as C
-import json, os, subprocess, sys, time, threading, uuid
-BUNDLE = Path(sys.argv[1]).resolve()
-OUT = Path(sys.argv[2]).resolve(); OUT.mkdir(parents=True, exist_ok=True)
+import argparse, json, os, subprocess, sys, time, threading, uuid
+CASES=['24fps','48fps','half-speed','slow-no-drop','slow-default','audio-thread','lua','frontend',
+       *['close-'+str(i) for i in range(6)]]
+parser=argparse.ArgumentParser(description=__doc__)
+parser.add_argument('bundle',type=Path)
+parser.add_argument('out',type=Path)
+parser.add_argument('case',nargs='?',choices=CASES)
+parser.add_argument('--headless',action='store_true',help='Run native/null-output checks and record the desktop frontend check as skipped')
+args=parser.parse_args()
+BUNDLE = args.bundle.resolve()
+OUT = args.out.resolve(); OUT.mkdir(parents=True, exist_ok=True)
 ROOT = Path(__file__).resolve().parents[1]
+private=OUT/'private';private.mkdir(exist_ok=True)
+os.environ['LOCALAPPDATA']=str(private)
 
 def fixture(name, value=100):
     path = OUT / name
@@ -27,7 +37,7 @@ class Player:
             f=getattr(self.lib,n);f.restype=ret;f.argtypes=args
         self.h=self.lib.mpv_create(); assert self.h
         for n,v in {'config':'no','vo':'null','ao':'null','hwdec':'no','idle':'yes','terminal':'no',
-                    'load-scripts':'no','osc':'no','pause':'yes'}.items():
+                    'load-scripts':'no','osc':'no','pause':'yes','force-window':'no'}.items():
             assert self.lib.mpv_set_option_string(self.h,n.encode(),v.encode())>=0,n
         assert self.lib.mpv_initialize(self.h)>=0
     def command(self,*args):
@@ -152,30 +162,41 @@ def frontend():
 def run(case):
     if case=='frontend':return frontend()
     if case=='lua':
-        args=[str(BUNDLE/'app/mpv.exe'),'--no-config','--vo=null','--ao=null','--idle=yes',
+        args=[str(BUNDLE/'app/mpv.exe'),'--no-config','--vo=null','--ao=null','--idle=yes','--force-window=no',
             '--scripts='+str(ROOT/'tests/test_stats.lua'),'--script-opts=r2root='+str(ROOT)]
         cp=subprocess.run(args,capture_output=True,timeout=20)
         (OUT/'lua-output.log').write_bytes(cp.stdout+cp.stderr)
         assert cp.returncode==0 and b'PASS native FPS Lua' in cp.stdout+cp.stderr,cp.stdout+cp.stderr
         return {'case':case}
     if case.startswith('close-'):
-        cp=subprocess.run([str(BUNDLE/'app/mpv.exe'),'--no-config','--vo=null','--ao=null','--frames=2',
+        cp=subprocess.run([str(BUNDLE/'app/mpv.exe'),'--no-config','--vo=null','--ao=null','--frames=2','--force-window=no',
                            str(fixture('close.y4m'))],capture_output=True,timeout=20)
         assert cp.returncode==0,cp.stderr
         return {'case':case}
     return measure(case)
 
-if len(sys.argv)>3:
-    result=run(sys.argv[3]);result['passed']=True;print(json.dumps(result,ensure_ascii=False));sys.exit(0)
+def skipped_frontend():
+    return {'case':'frontend','status':'skipped','reason':'Desktop interaction is excluded from headless validation'}
+
+if args.case:
+    if args.headless and args.case=='frontend':result=skipped_frontend()
+    else:result=run(args.case);result['passed']=True
+    print(json.dumps(result,ensure_ascii=False));sys.exit(0)
 results=[]
-for case in ['24fps','48fps','half-speed','slow-no-drop','slow-default','audio-thread','lua','frontend',
-             *['close-'+str(i) for i in range(6)]]:
+for case in CASES:
+    if args.headless and case=='frontend':
+        item=skipped_frontend();results.append(item);print(json.dumps(item),flush=True);continue
     try:
-        cp=subprocess.run([sys.executable,__file__,str(BUNDLE),str(OUT),case],capture_output=True,timeout=65)
+        command=[sys.executable,__file__,str(BUNDLE),str(OUT),case]
+        if args.headless:command.append('--headless')
+        cp=subprocess.run(command,capture_output=True,timeout=65)
         (OUT/(case+'.log')).write_bytes(cp.stdout+cp.stderr)
         item={'case':case,'passed':cp.returncode==0,'exit_code':cp.returncode}
         if cp.returncode==0:item.update(json.loads(cp.stdout.decode('utf-8').strip().splitlines()[-1]))
     except (subprocess.TimeoutExpired,ValueError) as e:item={'case':case,'passed':False,'error':str(e)}
     results.append(item);print(json.dumps(item),flush=True)
 (OUT/'results.json').write_text(json.dumps(results,ensure_ascii=False,indent=2),encoding='utf-8')
-if not all(r['passed'] for r in results):raise SystemExit(1)
+(OUT/'scope.json').write_text(json.dumps({'schema':1,'scope':'headless' if args.headless else 'desktop',
+    'desktop_interaction':not args.headless,'skipped_cases':[r['case'] for r in results if r.get('status')=='skipped']},indent=2),encoding='utf-8')
+if not all(r.get('passed') is True or (args.headless and r.get('status')=='skipped' and
+    r['case']=='frontend') for r in results):raise SystemExit(1)

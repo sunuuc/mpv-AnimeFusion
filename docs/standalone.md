@@ -4,9 +4,9 @@
 
 | 文件 | 用途 |
 | --- | --- |
-| `mpv-AnimeFusion-1.3.4-win-x64.7z` | 播放器便携包 |
-| `mpv-AnimeFusion-1.3.4-sources.zip` | 对应版本源码 |
-| `SHA256SUMS.txt` | 下载校验值 |
+| `mpv-AnimeFusion-1.3.5-setup-x64.exe` | 播放器安装包 |
+| `mpv-AnimeFusion-1.3.5-win-x64.7z` | 播放器便携包 |
+| GitHub 发布页的源码下载入口 | 对应版本源码 |
 | `mpv-AnimeFusion.exe` | 播放器 |
 | `mpv-AnimeFusionManager.exe` | 配置与组件管理器 |
 | `app/mpv-AnimeFusionUpdater.exe` | 组件管理命令行工具 |

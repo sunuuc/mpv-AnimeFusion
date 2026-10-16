@@ -50,7 +50,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: {node-version: '24'}
       - name: Prepare UI sources
-        run: python tools/standalone/build.py prepare
+        run: python tools/standalone/build.py prepare --validation-scope desktop
       - name: Verify Bangumi sync without browser or live account
         run: dotnet run --project tests/bangumi/BangumiChecks.csproj -c Release
       - name: Verify languages and external argument parser
@@ -77,7 +77,7 @@ jobs:
         with:
           path: downloads
           key: standalone-dependencies-${{ hashFiles('tools/standalone/dependencies.json', 'tools/standalone/libass-build-packages.json', 'tools/standalone/build_danmaku_factory.py') }}
-      - name: Assemble player core and optional model assets
+      - name: Assemble player core and component catalog
         env: {GH_TOKEN: '${{ github.token }}'}
         run: python tools/standalone/build.py stage
       - name: Save verified build dependencies
@@ -86,7 +86,7 @@ jobs:
           path: downloads
           key: standalone-dependencies-${{ hashFiles('tools/standalone/dependencies.json', 'tools/standalone/libass-build-packages.json', 'tools/standalone/build_danmaku_factory.py') }}
       - name: Verify optional components and model-free core
-        run: python tests/test_optional_components.py stage --updater stage/app/mpv-AnimeFusionUpdater.exe --seven stage/app/7za.exe --model-assets dist
+        run: python tests/test_optional_components.py stage --updater stage/app/mpv-AnimeFusionUpdater.exe --seven stage/app/7za.exe
       - name: FPS, external playlist and controller tests
         run: |
           Start-Service AudioEndpointBuilder
@@ -139,8 +139,6 @@ jobs:
           path: |
             dist/*.7z*
             dist/*-setup-x64.exe
-            dist/*-sources.zip
-            dist/SHA256SUMS.txt
           compression-level: 0
           if-no-files-found: error
           retention-days: 3

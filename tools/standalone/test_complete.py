@@ -2,10 +2,15 @@
 from pathlib import Path
 import ctypes as C
 from ctypes import wintypes as W
-import json, os, subprocess, sys, time, traceback, uuid
+import argparse, json, os, subprocess, sys, time, traceback, uuid
 from runtime_probe import verify_process
 
-APP=Path(sys.argv[1]).resolve();OUT=Path(sys.argv[2]).resolve();OUT.mkdir(parents=True,exist_ok=True)
+parser=argparse.ArgumentParser(description=__doc__)
+parser.add_argument('app',type=Path)
+parser.add_argument('out',type=Path)
+parser.add_argument('--headless',action='store_true',help='Run without desktop windows and record frontend checks as skipped')
+args=parser.parse_args()
+APP=args.app.resolve();OUT=args.out.resolve();OUT.mkdir(parents=True,exist_ok=True)
 ROOT=Path(__file__).resolve().parents[2]
 results=[]
 def record(name,fn):
@@ -14,9 +19,13 @@ def record(name,fn):
         (OUT/(name+'-failure.log')).write_text(traceback.format_exc(),encoding='utf-8')
         results.append({'case':name,'passed':False,'error':repr(e)})
     print(json.dumps(results[-1],ensure_ascii=False),flush=True)
+def skip(name):
+    results.append({'case':name,'status':'skipped','reason':'Desktop interaction is excluded from headless validation'})
+    print(json.dumps(results[-1],ensure_ascii=False),flush=True)
 ENV=os.environ.copy();empty=OUT/'no-dotnet';empty.mkdir(exist_ok=True)
+private=OUT/'private';private.mkdir(exist_ok=True)
 ENV.update({'DOTNET_ROOT':str(empty),'DOTNET_ROOT_X64':str(empty),'DOTNET_MULTILEVEL_LOOKUP':'0',
-    'DOTNET_BUNDLE_EXTRACT_BASE_DIR':str(OUT/'bundles')})
+    'DOTNET_BUNDLE_EXTRACT_BASE_DIR':str(OUT/'bundles'),'LOCALAPPDATA':str(private)})
 for key in ('ANIMEVE_HOME','MPV_HOME','ANIMEJANAI_ROOT','ANIMEJANAI_DATA_DIR'):ENV.pop(key,None)
 ENV['PATH']=str(APP)+os.pathsep+str(APP/'animejanai/inference')+os.pathsep+os.environ.get('SystemRoot',r'C:\Windows')+r'\System32'
 
@@ -56,7 +65,7 @@ def no_release_update_logic():
 sample=OUT/'blank.y4m';sample.write_bytes(b'YUV4MPEG2 W16 H16 F24:1 Ip A1:1 C420jpeg\n'+(b'FRAME\n'+bytes([100])*256+bytes([128])*128)*24*20)
 def production_scripts():
     cp=subprocess.run([str(APP/'app/mpv.exe'),'--config-dir='+str(APP/'portable_config'),
-        '--vo=null','--ao=null','--hwdec=no','--vf=','--idle=yes','--osc=no',
+        '--vo=null','--ao=null','--hwdec=no','--vf=','--idle=yes','--osc=no','--force-window=no',
         '--scripts='+str(ROOT/'tools/standalone/full_smoke.lua'),str(sample)],env=ENV,cwd=OUT,capture_output=True,timeout=30)
     log=cp.stdout+cp.stderr;(OUT/'production-scripts.log').write_bytes(log)
     assert cp.returncode==0 and b'PASS empty-directory full install:' in log,log[-7000:]
@@ -175,7 +184,11 @@ def manager():
 record('offline-included-components',components)
 record('no-release-update-logic',no_release_update_logic)
 record('all-production-scripts-on-local-video',production_scripts)
-record('self-contained-player',frontend)
-record('self-contained-manager',manager)
+for name,check in (('self-contained-player',frontend),('self-contained-manager',manager)):
+    if args.headless:skip(name)
+    else:record(name,check)
 (OUT/'results.json').write_text(json.dumps(results,ensure_ascii=False,indent=2),encoding='utf-8')
-if not all(r['passed'] for r in results):raise SystemExit(1)
+(OUT/'scope.json').write_text(json.dumps({'schema':1,'scope':'headless' if args.headless else 'desktop',
+    'desktop_interaction':not args.headless,'skipped_cases':[r['case'] for r in results if r.get('status')=='skipped']},indent=2),encoding='utf-8')
+if not all(r.get('passed') is True or (args.headless and r.get('status')=='skipped' and
+    r['case'] in ('self-contained-player','self-contained-manager')) for r in results):raise SystemExit(1)

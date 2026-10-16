@@ -1,15 +1,11 @@
 # mpv-AnimeFusion 构建
 
-## GitHub Actions
-
-在 Actions 中选择 **Standalone portable and installer release**，点击 **Run workflow**。`publish` 控制是否上传正式发行包；关闭时输出构建产物。
-
 ## 本地编译
 
 需要 Windows x64、Git、Python 3.14、.NET SDK 10、Node.js 24、7-Zip 和 GitHub CLI。在仓库根目录执行：
 
 ```powershell
-python tools/standalone/build.py prepare
+python tools/standalone/build.py prepare --validation-scope headless
 $version = (Get-Content release.json | ConvertFrom-Json).version
 dotnet publish player/src/MpvNet.Windows/MpvNet.Windows.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:InformationalVersion=$version -o publish-player
 dotnet publish manager/AnimeJaNaiConfEditor/AnimeJaNaiConfEditor.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:InformationalVersion=$version -o publish-manager
@@ -17,15 +13,21 @@ dotnet publish tools/standalone/Updater.csproj -c Release -o publish-updater
 python tools/standalone/build.py stage
 ```
 
-`stage` 目录为组装后的程序。构建脚本下载并校验固定版本的原生运行库，编译 DanmakuFactory，并生成可选组件目录及独立模型包。播放器前端发布不重新替换原生内核或 libass；其字节由 `dependencies.json` 中的运行库输入哈希固定。
+构建前先提交本次源码、版本和发布说明，使用该提交的干净检出目录。`prepare`、`stage`、`package` 和发布步骤均检查真实 Git 提交及跟踪文件状态；发布阶段不生成额外源码提交。`prepare` 会重新建立构建验证目录，旧报告不会沿用。
 
-完整发行还需运行工作流中的扫描、回归及空目录安装检查，然后执行 `build.py package` 和 `publish.py`。步骤顺序见[构建工作流](https://github.com/sunuuc/mpv-AnimeFusion/blob/main/.github/workflows/standalone.yml)。
+`stage` 目录为组装后的程序。构建脚本下载并校验固定版本的原生运行库，编译 DanmakuFactory，并生成引用固定下载来源的可选组件目录。播放器前端发布不重新替换原生内核或 libass；其字节由 `dependencies.json` 中的运行库输入哈希固定。
+
+本地发行保留源码检查、语言与解析器回归、原生无窗口播放、脚本状态机、弹幕包校验、安全扫描及空目录解包复测。默认使用 `headless` 验证范围；涉及真实播放器窗口、管理器窗口、截图和桌面输入的项目明确记录为未执行，不能据此宣称桌面验收通过。获得桌面交互授权后，可在 `prepare` 时明确选择 `--validation-scope desktop` 并执行对应完整检查。
+
+验证通过后执行 `python tools/standalone/build.py package`，再运行 `python tools/standalone/publish.py`。发布要求构建提交已经推送到 `main`，标签直接指向该提交；上传后核对 GitHub 附件摘要，并重新下载公开文件核对 SHA-256。正式发布只上传一个 EXE 安装包和一个 7z 解压包，源码使用 GitHub 随标签提供的 ZIP 和 TAR.GZ。校验清单和测试证据仅保留本地，模型及原生构建输入沿用固定来源，不作为本次发行附件。
+
+GitHub Actions 工作流保留手动触发入口；如需在 Actions 上执行桌面验证，应显式选择对应验证范围。本地构建来源记录为 `local`，不设置或伪造 Actions 工作流编号。
 
 ## EXE 安装包
 
 `build.py package` 同时生成解压版和 `mpv-AnimeFusion-版本-setup-x64.exe`。安装定义为 `src/player/src/Setup/Inno/inno-setup.iss`，通过 `tools/standalone/build_installer.py` 调用固定版本 Inno Setup 6.7.3。编译器和解包工具均下载后校验 SHA-256，仅解包到依赖缓存，不向系统安装构建工具。
 
-安装身份独立于原版 AnimeJaNai；默认按用户安装到 `%LOCALAPPDATA%\Programs\mpv-AnimeFusion`，升级沿用已选择的目录。程序、脚本和模块更新；`portable_config` 的根配置、`script-opts` 及 `animejanai.conf` 使用 Inno Setup 的 `onlyifdoesntexist uninsneveruninstall`，只补充缺失默认值，升级保留配置。卸载初始化时使用 Inno Setup 原生表单提供三项独立删除选项：个人数据、字幕与弹幕、模型与推理组件，默认全部不勾选。分类数据由卸载事件按本次选择清理，不使用安装阶段求值的 `Check` 条件；静默卸载保留个人数据。程序运行目录、程序资料、着色器缓存及诊断日志通过 `[UninstallDelete]` 正常清理，包括安装后更新或生成、未记入安装日志的程序文件，不递归清空安装根目录。安装包编译后单独执行发行安全扫描，并加入附件清单和校验文件。
+安装身份独立于原版 AnimeJaNai；默认按用户安装到 `%LOCALAPPDATA%\Programs\mpv-AnimeFusion`，升级沿用已选择的目录。程序、脚本和模块更新；`portable_config` 的根配置、`script-opts` 及 `animejanai.conf` 使用 Inno Setup 的 `onlyifdoesntexist uninsneveruninstall`，只补充缺失默认值，升级保留配置。卸载初始化时使用 Inno Setup 原生表单提供三项独立删除选项：个人数据、字幕与弹幕、模型与推理组件，默认全部不勾选。分类数据由卸载事件按本次选择清理，不使用安装阶段求值的 `Check` 条件；静默卸载保留个人数据。程序运行目录、程序资料、着色器缓存及诊断日志通过 `[UninstallDelete]` 正常清理，包括安装后更新或生成、未记入安装日志的程序文件，不递归清空安装根目录。安装包编译后单独执行发行安全扫描，并加入本地附件清单和校验文件。
 
 已有组装目录可单独编译安装包：
 
@@ -58,4 +60,4 @@ python tools/standalone/security_verify.py scan dist/installer complete-evidence
 
 固定输入、源提交、补丁和逐文件哈希在 `app/build-info/native` 中记录。需要主动更新原生内核时，先单独运行原生构建工作流；`MPV_NATIVE_OUTPUT` 可显式指定候选运行库，但普通前端发布默认使用已固定的输入。
 
-原生工作流通过后，将其产物与必需资源打包为固定输入，记录来源提交和工作流编号，并更新依赖哈希。正式发布前，输入文件可暂存在当前版本的草稿发行页；同仓库 Actions 通过 GitHub 授权接口下载并校验，不提前公开未完成的发行版。
+更新原生内核时，将通过验证的产物与必需资源作为独立固定输入保存，记录真实来源提交和构建信息，再更新依赖哈希。普通播放器发行不重复上传该输入。

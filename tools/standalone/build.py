@@ -1,9 +1,9 @@
-"""Portable core and optional component asset builder using pinned upstream inputs.
+"""Portable core and installer builder using pinned upstream inputs.
 Commands: prepare / stage / package. Publishing is implemented in publish.py.
 No command reads or modifies a user's installation.
 """
 from pathlib import Path, PurePosixPath
-import configparser, hashlib, json, os, re, shutil, subprocess, sys, time, urllib.request, zipfile
+import argparse, configparser, hashlib, json, os, re, shutil, subprocess, sys, time, urllib.request, zipfile
 R=Path.cwd(); H=R/'tools/standalone'; ST=R/'stage'; DIST=R/'dist'; E=R/'complete-evidence'
 META=json.loads((R/'release.json').read_text(encoding='utf-8'))
 LOCK=json.loads((H/'dependencies.json').read_text(encoding='utf-8'))
@@ -85,7 +85,38 @@ def replace_once(p,old,new):
     if s.count(old)!=1:raise RuntimeError('Source patch context mismatch: '+str(p)+' '+old[:70])
     p.write_text(s.replace(old,new),encoding='utf-8')
 
-def prepare():
+def committed_source():
+    commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=R,text=True).strip()
+    if subprocess.check_output(['git','status','--porcelain','--untracked-files=no'],cwd=R,text=True).strip():
+        raise RuntimeError('Commit all tracked source changes before building or publishing')
+    source={'input_commit':commit,'build_environment':'local'}
+    if os.environ.get('GITHUB_ACTIONS')=='true':
+        if os.environ.get('GITHUB_SHA')!=commit or not os.environ.get('GITHUB_RUN_ID'):
+            raise RuntimeError('GitHub Actions provenance does not match the checked-out commit')
+        source.update(build_environment='github-actions',run_id=os.environ['GITHUB_RUN_ID'])
+    return source
+
+def require_build_source():
+    source=json.loads((E/'source-inputs.json').read_text(encoding='utf-8'))
+    current=committed_source()
+    if source['input_commit']!=current['input_commit']:
+        raise RuntimeError('Source commit changed after prepare; rebuild from the committed sources')
+    if source['validation_scope'] not in ('headless','desktop'):
+        raise RuntimeError('Unknown build validation scope')
+    for relative,digest in source['source_files'].items():
+        original=R/'src'/relative
+        if sha(original)!=digest or (relative.split('/',1)[0] in ('player','manager') and sha(R/relative)!=digest):
+            raise RuntimeError('Prepared source changed after prepare: '+relative)
+    return {key:source[key] for key in ('input_commit','build_environment','run_id','validation_scope') if key in source}
+
+def prepare(validation_scope='headless'):
+    source=committed_source()
+    if validation_scope not in ('headless','desktop'):raise ValueError('Unknown validation scope')
+    source['validation_scope']=validation_scope
+    for directory in (E,R/'language-evidence'):
+        directory.resolve().relative_to(R.resolve())
+        if directory.is_symlink():raise RuntimeError('Build evidence must not be a symlink')
+        shutil.rmtree(directory,ignore_errors=True)
     E.mkdir(exist_ok=True)
     if not (R/'src/player').exists():
         raise RuntimeError('Player and manager sources must be present in the source checkout')
@@ -93,15 +124,22 @@ def prepare():
     retired_renderer=(R/'player/src/MpvNet.Windows/Danmaku').resolve()
     retired_renderer.relative_to(R.resolve())
     shutil.rmtree(retired_renderer,ignore_errors=True)
-    for name in ('player','manager'):cp(R/'src'/name,R/name)
+    for name in ('player','manager'):
+        destination=R/name
+        destination.resolve().relative_to(R.resolve())
+        if destination.is_symlink():raise RuntimeError('Build source directory must not be a symlink')
+        shutil.rmtree(destination,ignore_errors=True)
+        for path in source_release_files(('src/'+name,)):
+            cp(path,destination/path.relative_to(R/'src'/name))
     for name in ('Manager','Player'):
         dest=R/'tests-generated'/(name.lower()+'-tests');dest.mkdir(parents=True,exist_ok=True)
         for ext in ('cs','csproj'):cp(R/f'tools/language-r3/{name}Tests.{ext}',dest/f'{name}Tests.{ext}')
     (R/'language-evidence').mkdir(exist_ok=True)
-    dump(E/'source-inputs.json',{'workflow_commit':os.environ.get('GITHUB_SHA'),
-       'source_files':{p.relative_to(R/'src').as_posix():sha(p) for p in (R/'src').rglob('*') if p.is_file()}})
+    dump(E/'source-inputs.json',{**source,
+       'source_files':{p.relative_to(R/'src').as_posix():sha(p) for p in source_release_files(('src',))}})
 
 def stage():
+    require_build_source()
     if ST.exists():shutil.rmtree(ST)
     base=download(LOCK['bootstrap_core']);extract(base,R/'base-unpack')
     cp(app_root(R/'base-unpack'),ST);shutil.rmtree(R/'base-unpack')
@@ -116,11 +154,9 @@ def stage():
         for path in native_output.rglob('*'):
             if path.is_file() and (path.suffix.lower() in ('.dll','.exe') or 'build-info' in path.relative_to(native_output).parts):
                 cp(path,ST/path.relative_to(native_output))
-    shutil.rmtree(ST/'portable_config/watch_later',ignore_errors=True)
-    shutil.rmtree(ST/'portable_config/scripts',ignore_errors=True)
-    shutil.copytree(R/'portable_config',ST/'portable_config',dirs_exist_ok=True,
-        ignore=shutil.ignore_patterns('cache','watch_later','settings.xml','saved-props.json',
-            '*history*.json','*diagnostic*.json*','bangumi*.json','*.bak','*.backup','hills*'))
+    shutil.rmtree(ST/'portable_config',ignore_errors=True)
+    for path in source_release_files(('portable_config',)):
+        cp(path,ST/path.relative_to(R))
     cp(R/'animejanai/animejanai.conf',ST/'animejanai/animejanai.conf')
     cp(R/'THIRD_PARTY_LICENSES',ST/'THIRD_PARTY_LICENSES');cp(R/'LICENSE',ST/'LICENSE')
     cp(R/'THIRD_PARTY_LICENSES/DirectML.txt',ST/'animejanai/inference/DirectML_LICENSE.txt')
@@ -161,8 +197,7 @@ def stage():
         p=ST/'portable_config'/n;s=p.read_text(encoding='utf-8')
         s=s.replace('apply-profile upscale-on; script-message aji-slot','script-message aji-slot')
         p.write_text(s,encoding='utf-8')
-    component_assets=prepare_components(ST,DIST,META,SEVEN)
-    dump(E/'component-assets.json',component_assets)
+    prepare_components(ST)
 
     dump(ST/'manifest.json',{'name':META['name'],'version':META['version'],'distribution':'portable','repository':REPO,'component_version':'3.6.0','platform':'win-x64'})
     cp(R/'docs/standalone.md',ST/'使用说明.md')
@@ -249,31 +284,53 @@ def release_notes():
     if not text:raise RuntimeError('Missing release feature descriptions')
     return text+'\n'
 
+RUNTIME_CASES=('24fps','48fps','half-speed','slow-no-drop','slow-default','audio-thread','lua','frontend',
+               *('close-'+str(i) for i in range(6)))
+SCRIPT_CASES=('control-tests','script-smoke')
+DANMAKU_CASES=('test_danmaku_canvas','test_mpv_danmaku_viewport','test_danmaku_native','test_danmaku_flow')
+COMPLETE_CASES=('offline-included-components','no-release-update-logic','all-production-scripts-on-local-video',
+                'self-contained-player','self-contained-manager')
+
+def require_results(path,cases,skipped=()):
+    results=json.loads(path.read_text(encoding='utf-8'))
+    if len(results)!=len(cases) or {r['case'] for r in results}!=set(cases):
+        raise RuntimeError('Incomplete regression results: '+str(path))
+    for result in results:
+        if result['case'] in skipped:
+            if result.get('status')!='skipped' or result.get('passed') is not None:
+                raise RuntimeError('Skipped desktop check must not claim a passing result: '+str(path))
+        elif result.get('passed') is not True or result.get('status')=='skipped':
+            raise RuntimeError('Regression failed: '+str(path)+' '+result['case'])
+    return results
+
 def package():
+    source=require_build_source()
+    desktop=source['validation_scope']=='desktop'
     require_security_result(ST,E/'security/results.json')
     run(sys.executable,H/'verify_player_sources.py')
-    for name,marker in [('manager-tests.txt','PASS Manager language suite'),('player-tests.txt','PASS Player language suite'),('parser-tests.txt','PASS')]:
+    language_checks=[('manager-tests.txt','PASS Manager language suite'),('parser-tests.txt','PASS')]
+    if desktop:language_checks.append(('player-tests.txt','PASS Player language suite'))
+    for name,marker in language_checks:
         if marker not in (R/'language-evidence'/name).read_text(encoding='utf-8-sig'):raise RuntimeError('UI regression failed: '+name)
-    for n in ('results.json','scripts-results.json'):
-        results=json.loads((E/'runtime'/n).read_text(encoding='utf-8'))
-        if not results or not all(r['passed'] for r in results):raise RuntimeError('Runtime tests failed')
-    danmaku=json.loads((E/'danmaku/results.json').read_text(encoding='utf-8'))
-    if not danmaku or not all(r['passed'] for r in danmaku):raise RuntimeError('Upstream danmaku package verification failed')
+    require_results(E/'runtime/results.json',RUNTIME_CASES,() if desktop else ('frontend',))
+    require_results(E/'runtime/scripts-results.json',SCRIPT_CASES)
+    require_results(E/'danmaku/results.json',DANMAKU_CASES)
     shutil.rmtree(ST/'portable_config/watch_later',ignore_errors=True)
     inspect_payload();DIST.mkdir(exist_ok=True)
     info=ST/'app/build-info/standalone'
     shutil.rmtree(info/'validation',ignore_errors=True)
     shutil.rmtree(info/'ui-validation',ignore_errors=True)
-    copy_validation_reports(E,info/'validation')
-    copy_validation_reports(R/'language-evidence',info/'ui-validation')
-    # Adding reports must leave the scanned executable/script inventory exactly
-    # unchanged. The release check rejects new files, changed bytes, stale scans
-    # and changed policy rather than treating earlier evidence as sufficient.
+    # Verification reports stay on the build machine. Only source provenance
+    # and file hashes are part of the distribution.
     require_security_result(ST,E/'security/results.json')
-    cp(E/'security',info/'validation/security')
-    dump(info/'provenance.json',{'version':META['version'],'input_commit':os.environ['GITHUB_SHA'],
-      'run_id':os.environ['GITHUB_RUN_ID'],'dependencies':LOCK,'self_contained_dotnet':True,
-      'gpu_inference_tested':False,'player_ui_server_tested':False})
+    skipped=[] if desktop else ['player-language-ui','frontend-runtime','player-ui-windows',
+        'network-frontend','startup-frontend','player-ui-handoff','self-contained-player','self-contained-manager']
+    dump(E/'validation-scope.json',{'scope':source['validation_scope'],
+        'desktop_interaction':desktop,'desktop_ui_verified':False,
+        'not_run':[{'case':name,'reason':'Desktop interaction was not authorized for this build'} for name in skipped]})
+    dump(info/'provenance.json',{'version':META['version'],**source,
+      'dependencies':LOCK,'self_contained_dotnet':True,
+      'gpu_inference_tested':False,'player_ui_server_tested':False,'desktop_ui_verified':False})
     dump(info/'SHA256.json',{p.relative_to(ST).as_posix():sha(p) for p in ST.rglob('*') if p.is_file() and p!=info/'SHA256.json'})
     installer=build_installer(ST,DIST/'installer',E/'installer')
     run(sys.executable,H/'security_verify.py','scan',DIST/'installer',E/'installer/security')
@@ -281,45 +338,36 @@ def package():
     cp(installer,DIST/installer.name)
     installer=DIST/installer.name
     archive=DIST/f'{META["name"]}-{META["version"]}-win-x64.7z'
+    archive.unlink(missing_ok=True)
     run(SEVEN,'a','-t7z','-mx=3','-mmt=2','-bd',archive,'.',cwd=ST,stdout=subprocess.DEVNULL)
     run(SEVEN,'t',archive,stdout=subprocess.DEVNULL)
-    archives=[archive]
     if archive.stat().st_size>=2*1024**3:
-        archives=[]
-        with archive.open('rb') as f:
-            index=1
-            while f.tell()<archive.stat().st_size:
-                part=Path(str(archive)+f'.{index:03}')
-                with part.open('wb') as out:
-                    remaining=1900*1024**2
-                    while remaining:
-                        data=f.read(min(remaining,1024*1024))
-                        if not data:break
-                        out.write(data);remaining-=len(data)
-                archives.append(part);index+=1
-        archive.unlink()
-    native=LOCK['native_and_ui_resources'];cp(download(native),DIST/native['name'])
-    user_packages=archives+[installer]
-    dump(DIST/'artifacts.json',json.loads((E/'component-assets.json').read_text())+[native]+[{'repo':REPO,'tag':META['tag'],'name':p.name,'sha256':sha(p),'bytes':p.stat().st_size} for p in user_packages])
-    shutil.rmtree(ST);extract(archives[0],R/'clean-install')
+        raise RuntimeError('Portable archive exceeds the single-asset size limit')
+    user_packages=[archive,installer]
+    dump(DIST/'artifacts.json',[{'repo':REPO,'tag':META['tag'],'name':p.name,'sha256':sha(p),'bytes':p.stat().st_size} for p in user_packages])
+    shutil.rmtree(ST)
+    shutil.rmtree(R/'clean-install',ignore_errors=True)
+    extract(archive,R/'clean-install')
     require_security_result(R/'clean-install',E/'security/results.json')
     run(sys.executable,R/'tests/test_optional_components.py',R/'clean-install')
-    run(sys.executable,H/'test_complete.py',R/'clean-install',E/'fresh-install')
-    run(sys.executable,R/'tests/test_player_ui_windows.py',R/'clean-install',E/'fresh-install/player_ui')
-    run(sys.executable,R/'tests/test_network_playback.py',R/'clean-install',E/'fresh-install/network')
-    run(sys.executable,R/'tests/test_startup_playback.py',R/'clean-install',E/'fresh-install/startup')
-    run(sys.executable,R/'tests/test_player_ui_empty_scope.py',R/'clean-install',E/'fresh-install/player_ui-handoff')
+    run(sys.executable,H/'test_complete.py',R/'clean-install',E/'fresh-install',*(['--headless'] if not desktop else []))
+    run(sys.executable,R/'tests/test_script_suite.py',R/'clean-install',E/'fresh-install/runtime')
+    run(sys.executable,R/'tests/test_windows_r2.py',R/'clean-install',E/'fresh-install/runtime',*(['--headless'] if not desktop else []))
+    if desktop:
+        run(sys.executable,R/'tests/test_player_ui_windows.py',R/'clean-install',E/'fresh-install/player_ui')
+        run(sys.executable,R/'tests/test_network_playback.py',R/'clean-install',E/'fresh-install/network')
+        run(sys.executable,R/'tests/test_startup_playback.py',R/'clean-install',E/'fresh-install/startup')
+        run(sys.executable,R/'tests/test_player_ui_empty_scope.py',R/'clean-install',E/'fresh-install/player_ui-handoff')
     run(sys.executable,H/'test_danmaku_package.py',R/'clean-install',E/'fresh-install/danmaku')
+    require_results(E/'fresh-install/results.json',COMPLETE_CASES,() if desktop else COMPLETE_CASES[-2:])
+    require_results(E/'fresh-install/runtime/results.json',RUNTIME_CASES,() if desktop else ('frontend',))
+    require_results(E/'fresh-install/runtime/scripts-results.json',SCRIPT_CASES)
+    require_results(E/'fresh-install/danmaku/results.json',DANMAKU_CASES)
     cp(E/'fresh-install',DIST/'fresh-install-evidence')
-    sourcezip=DIST/f'{META["name"]}-{META["version"]}-sources.zip'
-    with zipfile.ZipFile(sourcezip,'w',zipfile.ZIP_DEFLATED) as z:
-        for p in source_release_files(('src','tools','tests','portable_config','animejanai','THIRD_PARTY_LICENSES','third_party','docs')):
-            if p.suffix.lower() not in FONTS:z.write(p,p.relative_to(R).as_posix())
-        for n in ('LICENSE','release.json','README.md','README.en.md','CHANGELOG.md'):z.write(R/n,n)
-    (DIST/'SHA256SUMS.txt').write_text(''.join(sha(p)+'  '+p.name+'\n' for p in user_packages+[DIST/native['name']]+[DIST/a['name'] for a in json.loads((E/'component-assets.json').read_text())]+[sourcezip]),encoding='utf-8')
+    (DIST/'SHA256SUMS.txt').write_text(''.join(sha(p)+'  '+p.name+'\n' for p in user_packages),encoding='utf-8')
     (DIST/'RELEASE.md').write_text(release_notes(),encoding='utf-8')
     cp(E/'payload.json',DIST/'payload-verification.json')
-    print('FULL PACKAGE VERIFIED',[(p.name,p.stat().st_size) for p in archives],flush=True)
+    print('FULL PACKAGE VERIFIED',[(p.name,p.stat().st_size) for p in user_packages],flush=True)
 
 def api(endpoint,payload=None,method=None):
     cmd=['gh','api',endpoint]
@@ -327,4 +375,12 @@ def api(endpoint,payload=None,method=None):
     else:result=subprocess.check_output(cmd+(['--method',method] if method else []))
     return json.loads(result) if result else None
 
-if __name__=='__main__':{'prepare':prepare,'stage':stage,'package':package}[sys.argv[1]]()
+if __name__=='__main__':
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('command',choices=('prepare','stage','package'))
+    parser.add_argument('--validation-scope',choices=('headless','desktop'))
+    args=parser.parse_args()
+    if args.command=='prepare':prepare(args.validation_scope or 'headless')
+    else:
+        if args.validation_scope:parser.error('Validation scope is selected during prepare')
+        {'stage':stage,'package':package}[args.command]()

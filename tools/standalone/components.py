@@ -1,46 +1,28 @@
-"""Build the offline catalog and optional model assets using upstream component packs."""
+"""Prepare the model-free core with the pinned optional component catalog."""
 from pathlib import Path
 import configparser
-import hashlib
 import json
 import shutil
-import subprocess
 
-ROOT = Path(__file__).resolve().parents[2]
 CATALOG = Path(__file__).with_name('component-catalog.json')
 
-def sha(path):
-    with path.open('rb') as f:
-        return hashlib.file_digest(f, 'sha256').hexdigest()
-
-def prepare(app, dist, meta, seven):
+def prepare(app):
     catalog = json.loads(CATALOG.read_text(encoding='utf-8'))
     defaults = configparser.ConfigParser(interpolation=None)
     defaults.read(app/'animejanai/animejanai.conf', encoding='utf-8-sig')
     configured_models = {value for section in defaults.values() for key, value in section.items()
                          if key.startswith('chain_') and '_model_' in key and key.endswith('_name') and value}
-    dist.mkdir(parents=True, exist_ok=True)
-    assets = []
-    # The upstream core ships its small upscaling models. Split each one so the
-    # user can choose a model rather than downloading the whole collection.
-    for number, model in enumerate(sorted((app/'animejanai/onnx').glob('*.onnx')), 1):
-        name = f'upscale-model-{number}'
-        archive = dist/f'component-{name}.7z'
-        archive.unlink(missing_ok=True)
-        relative = model.relative_to(app).as_posix()
-        subprocess.run([str(seven), 'a', '-t7z', '-mx=3', '-bd', str(archive.resolve()), relative],
-                       cwd=app, stdout=subprocess.DEVNULL, check=True)
-        entry = {'name': name, 'asset': archive.name,
-                 'url': f'https://github.com/sunuuc/mpv-AnimeFusion/releases/latest/download/{archive.name}',
-                 'sha256': sha(archive), 'bytes': archive.stat().st_size,
-                 'installed_bytes': model.stat().st_size, 'files': [relative],
-                 'requires': [], 'recommended': model.stem in configured_models, 'title': model_title(model.stem),
-                 'description': model.stem}
-        catalog['packs'].append(entry)
-        assets.append({'repo': 'sunuuc/mpv-AnimeFusion', 'tag': meta['tag'],
-                       'name': archive.name, 'sha256': entry['sha256'], 'bytes': entry['bytes']})
-    if not assets:
-        raise RuntimeError('No upscaling models found in the pinned upstream core')
+    # Reuse the published, hash-pinned packs instead of recreating the same
+    # optional downloads for every player release.
+    models = {model.relative_to(app).as_posix(): model
+              for model in (app/'animejanai/onnx').glob('*.onnx')}
+    model_packs = [pack for pack in catalog['packs'] if pack['name'].startswith('upscale-model-')]
+    if not model_packs or set(models) != {name for pack in model_packs for name in pack['files']}:
+        raise RuntimeError('Pinned model catalog does not match the upstream core')
+    for pack in model_packs:
+        if sum(models[name].stat().st_size for name in pack['files']) != pack['installed_bytes']:
+            raise RuntimeError('Pinned model size does not match the upstream core: '+pack['name'])
+        pack['recommended'] = any(models[name].stem in configured_models for name in pack['files'])
     # Recommendations never install a model without the user's Apply action.
     for folder in ('onnx', 'rife'):
         shutil.rmtree(app/'animejanai'/folder, ignore_errors=True)
@@ -55,17 +37,6 @@ def prepare(app, dist, meta, seven):
     target = app/'app/build-info/standalone/components.json'
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(catalog, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
-    return assets
-
-def model_title(name):
-    if '_SD_' in name:
-        return 'SD upscaling model'
-    sharp = 'Sharp' in name
-    if '_Performance_' in name:
-        return 'HD upscaling: fast (sharp)' if sharp else 'HD upscaling: fast'
-    if '_Balanced_' in name:
-        return 'HD upscaling: balanced (sharp)' if sharp else 'HD upscaling: balanced'
-    return name
 
 def validate(app):
     if list(app.rglob('*.onnx')) or list(app.rglob('*.engine')):

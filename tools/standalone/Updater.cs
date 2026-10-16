@@ -117,7 +117,7 @@ void ValidateIndex(PackIndex index)
             throw new InvalidDataException("Invalid component: " + p.name);
         if (!Uri.TryCreate(p.url, UriKind.Absolute, out var uri) || uri.Scheme != "https" || uri.Host != "github.com" ||
             !uri.AbsolutePath.StartsWith("/the-database/mpv-AnimeJaNai/releases/download/3.6.0/", StringComparison.Ordinal) &&
-            !uri.AbsolutePath.StartsWith("/sunuuc/mpv-AnimeFusion/releases/latest/download/", StringComparison.Ordinal))
+            !uri.AbsolutePath.StartsWith("/sunuuc/mpv-AnimeFusion/releases/download/standalone-v1.3.4/", StringComparison.Ordinal))
             throw new InvalidDataException("Untrusted component source.");
         foreach (var f in p.files)
         {
