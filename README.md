@@ -18,6 +18,8 @@
 <img width="2560" height="1494" alt="image" src="https://github.com/user-attachments/assets/6bdd6d74-6248-450c-b015-12f309820c14" />
 
 - **在线字幕**：通过 ASSRT 搜索、下载并加载字幕。
+- <img width="840" height="930" alt="image" src="https://github.com/user-attachments/assets/687ef695-9207-452d-9e21-ae67b645aa93" />
+
 
 - **观看同步**：支持 Bangumi、Trakt 与 MyAnimeList 观看进度同步。
 <img width="1213" height="1121" alt="image" src="https://github.com/user-attachments/assets/be033a4f-dfde-47be-8f05-7758bec43b91" />
