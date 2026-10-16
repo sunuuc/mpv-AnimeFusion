@@ -17,8 +17,8 @@
 - **弹幕**：支持在线弹幕及本地 XML、JSON、ASS 弹幕文件。在线弹幕兼容弹弹play API v2 接口，不内置或提供任何弹幕线路，用户需自行添加兼容的第三方弹幕 API。
 <img width="2560" height="1494" alt="image" src="https://github.com/user-attachments/assets/6bdd6d74-6248-450c-b015-12f309820c14" />
 
-- **在线字幕**：通过 ASSRT 搜索、下载并加载字幕。
-- <img width="840" height="930" alt="image" src="https://github.com/user-attachments/assets/687ef695-9207-452d-9e21-ae67b645aa93" />
+- **在线字幕**：通过 ASSRT 搜索、下载字幕。
+<img width="1609" height="999" alt="image" src="https://github.com/user-attachments/assets/53eadfc1-a568-4876-ab94-8baf9748acac" />
 
 
 - **观看同步**：支持 Bangumi、Trakt 与 MyAnimeList 观看进度同步。
