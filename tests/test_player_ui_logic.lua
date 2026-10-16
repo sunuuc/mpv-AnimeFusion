@@ -91,6 +91,8 @@ local function suite()
    'uncapped subtitle wrapping preserves every character and the variant suffix at width '..width)
  end
  local now,timers,bindings,messages,observers=0,{},{},{},{}
+ local binding_keys={}
+ local osd_width,osd_height=1280,720
  local clock_config=os.tmpname();local f=assert(io.open(clock_config,'wb'));f:write('show_clock=yes\nnetwork_speed=yes\n');f:close()
  local pos={x=0,y=0};local commands={};local player_overlay_data,volume_overlay_data;local renderer_arguments
  local props={pause=false,['mouse-pos/hover']=true,['core-idle']=false,['idle-active']=false,['window-minimized']=false,['playlist-count']=1,['playlist-pos']=0,
@@ -138,7 +140,7 @@ local function suite()
       if self.z==20 then player_overlay_data=nil elseif self.z==25 then volume_overlay_data=nil end
      end}
    end,
-  get_osd_size=function()return 1280,720 end,get_mouse_pos=function()return pos.x,pos.y end,
+  get_osd_size=function()return osd_width,osd_height end,get_mouse_pos=function()return pos.x,pos.y end,
   command_native=function(a)if a[1]=='overlay-add' then commands[#commands+1]=a;return true end;if a[1]=='expand-path'then if a[2]=='~~/script-opts/player_ui.conf' then return clock_config end;return a[2]:gsub('^~~/%.%./',root..'/'):gsub('^~~/',root..'/portable_config/')end end,
   command_native_async=function(spec,callback)
    if spec.args and spec.args[1]:match('DanmakuFactory%.exe$') then
@@ -168,8 +170,9 @@ local function suite()
    return true
   end,
   osd_message=function()end,add_timeout=function(d,f)return timer(d,f,false)end,add_periodic_timer=function(d,f)return timer(d,f,true)end,
-  add_key_binding=function(_,n,f)bindings[n]=f end,add_forced_key_binding=function(_,n,f)bindings[n]=f end,
-  remove_key_binding=function(n)bindings[n]=nil end,register_script_message=function(n,f)messages[n]=f end,
+  add_key_binding=function(key,n,f)bindings[n]=f;binding_keys[n]=key end,
+  add_forced_key_binding=function(key,n,f)bindings[n]=f;binding_keys[n]=key end,
+  remove_key_binding=function(n)bindings[n]=nil;binding_keys[n]=nil end,register_script_message=function(n,f)messages[n]=f end,
   observe_property=function(n,_,f)observers[n]=f end,
   register_event=function(n,f)event_handlers[n]=event_handlers[n] or {};event_handlers[n][#event_handlers[n]+1]=f end}
  local saved={mp=package.loaded.mp,opts=package.loaded['mp.options'],utils=package.loaded['mp.utils']}
@@ -302,6 +305,59 @@ local function suite()
   and player_overlay_data:find('\\fnSegoe UI',1,true),
   'HUD renders the bold series title and smaller episode row with Windows UI fonts')
  props['media-title']='Title';observers['media-title']();advance(.1)
+ do
+  local native_doubleclicks=0
+  local function dispatch(key,event)
+   for name,bound_key in pairs(binding_keys)do
+    if bound_key==key then bindings[name]({event=event or 'press'});return end
+   end
+   -- input.conf owns video-area double-clicks when no forced UI binding exists.
+   if key=='MBTN_LEFT_DBL' then
+    native_doubleclicks=native_doubleclicks+1;fake.commandv('cycle','fullscreen')
+    observers.fullscreen('fullscreen',props.fullscreen)
+   end
+  end
+  props.pause=true;observers.pause();advance(.1)
+  local full=button('fullscreen')
+  pos.x=(full.x0+full.x1)*ui().scale/2;pos.y=(full.y0+full.y1)*ui().scale/2
+  bindings['player_ui-move']();advance(.04)
+  props.fullscreen=false
+  dispatch('MBTN_LEFT','down');dispatch('MBTN_LEFT','up')
+  check(props.fullscreen,'the first fullscreen button click uses the native fullscreen command')
+  observers.fullscreen('fullscreen',true);advance(.02)
+  dispatch('MBTN_LEFT_DBL')
+  check(props.fullscreen and native_doubleclicks==0,
+   'a rapid second fullscreen click cannot leak into the video double-click binding during relayout')
+  advance(.5)
+  dispatch('MBTN_LEFT','down');dispatch('MBTN_LEFT','up')
+  check(not props.fullscreen,
+   'paused controls remain clickable after fullscreen relayout without another mouse movement')
+  observers.fullscreen('fullscreen',false);advance(.04)
+  dispatch('MBTN_LEFT','down');dispatch('MBTN_LEFT','up')
+  check(props.fullscreen,'a current layout accepts a fresh click without a double-click-time delay')
+  observers.fullscreen('fullscreen',true);advance(.04)
+  dispatch('MBTN_LEFT','down');osd_width,osd_height=960,540;observers['osd-dimensions']();advance(.04)
+  full=button('fullscreen')
+  pos.x=(full.x0+full.x1)*ui().scale/2;pos.y=(full.y0+full.y1)*ui().scale/2
+  dispatch('MBTN_LEFT','up')
+  check(props.fullscreen,'a size change cancels a button press from the previous layout')
+  osd_width,osd_height=1280,720;observers['osd-dimensions']();advance(.04)
+  local seek=button('seek')
+  pos.x=(seek.x0+seek.x1)*ui().scale/2;pos.y=(seek.y0+seek.y1)*ui().scale/2
+  bindings['player_ui-move']();advance(.04)
+  local seek_count=0
+  for _,command in ipairs(commands)do if command[1]=='seek' then seek_count=seek_count+1 end end
+  dispatch('MBTN_LEFT','down');observers['osd-dimensions']();advance(.04)
+  dispatch('MBTN_LEFT','up')
+  local final_seek_count=0
+  for _,command in ipairs(commands)do if command[1]=='seek' then final_seek_count=final_seek_count+1 end end
+  check(final_seek_count==seek_count,'a size change cancels the old timeline drag without seeking')
+  advance(.5);pos.x=640;pos.y=200;bindings['player_ui-move']();advance(.04)
+  dispatch('MBTN_LEFT_DBL')
+  check(not props.fullscreen and native_doubleclicks==1,
+   'video-area double-click returns to the native binding after the UI gesture finishes')
+  props.pause=false;observers.pause();advance(.5)
+ end
  if focus=='hud' then
   os.remove(clock_config)
   package.loaded.mp=saved.mp;package.loaded['mp.options']=saved.opts;package.loaded['mp.utils']=saved.utils
@@ -964,6 +1020,42 @@ check(next_async>before_link_title,
  observers['media-title']('media-title','string',props['media-title'])
  advance(.3)
  check(next_async==after_end,'title notifications after end-file cannot start another search')
+ do
+  local doubleclick_time=props['input-doubleclick-time']
+  local previous_x,previous_y=pos.x,pos.y
+  local previous_width,previous_height=osd_width,osd_height
+  local native_doubleclicks=0
+  local function doubleclick()
+   for name,key in pairs(binding_keys)do
+    if key=='MBTN_LEFT_DBL' then bindings[name]({event='press'});return end
+   end
+   native_doubleclicks=native_doubleclicks+1;fake.commandv('cycle','fullscreen')
+   observers.fullscreen('fullscreen',props.fullscreen)
+  end
+  messages['player_ui-hide']()
+  props.pause=true;props.fullscreen=false;props['mouse-pos/hover']=true
+  props['input-doubleclick-time']=500
+  osd_width,osd_height=1280,720;observers['osd-dimensions']();observers.pause();advance(.1)
+  local full=button('fullscreen')
+  pos.x=(full.x0+full.x1)*ui().scale/2;pos.y=(full.y0+full.y1)*ui().scale/2
+  bindings['player_ui-move']();advance(.04)
+  bindings['player_ui-click']({event='down'});bindings['player_ui-click']({event='up'})
+  check(props.fullscreen,'the Windows double-click interval case starts with one fullscreen button click')
+  observers.fullscreen('fullscreen',true)
+  osd_width,osd_height=1920,1080;observers['osd-dimensions']();advance(.4)
+  check(ui().hover==nil,'the stationary pointer lands on video when the fullscreen layout grows')
+  -- WinForms forwards Windows double-clicks through mpv's artificial mouse input.
+  -- They must use the Windows interval, even after the pointer leaves the old HUD.
+  bindings['player_ui-move']();doubleclick()
+  check(props.fullscreen and native_doubleclicks==0,
+   'a Windows double-click at 400ms stays consumed when the native interval is 500ms')
+  advance(.14);bindings['player_ui-move']();doubleclick()
+  check(not props.fullscreen and native_doubleclicks==1,
+   'video-area double-click returns to native input at 540ms after the 500ms interval')
+  props['input-doubleclick-time']=doubleclick_time
+  osd_width,osd_height=previous_width,previous_height;observers['osd-dimensions']();advance(.04)
+  pos.x,pos.y=previous_x,previous_y;bindings['player_ui-move']()
+ end
   os.getenv,io.open,os.remove,os.rename=old_getenv,old_open,old_remove,old_rename
  package.loaded.mp=saved.mp;package.loaded['mp.options']=saved.opts;package.loaded['mp.utils']=saved.utils
 end

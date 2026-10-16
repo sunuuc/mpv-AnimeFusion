@@ -123,6 +123,10 @@ public class MainPlayer : MpvClient
         SetPropertyString("osc", "no");
         SetPropertyString("config-dir", ConfigFolder);
         SetPropertyString("config", "yes");
+        SetPropertyBool("save-watch-history", true);
+        SetPropertyString("watch-history-path", System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "mpv-AnimeFusion", "watch_history.jsonl"));
         
         UsedInputConfContent = App.InputConf.GetContent();
 

@@ -134,6 +134,7 @@ namespace AnimeJaNaiConfEditor.ViewModels
         }
 
         public ComponentManagerViewModel ComponentManager { get; } = new();
+        public PlaybackHistoryViewModel PlaybackHistory { get; } = new();
         public string ProductVersion => "mpv-AnimeFusion " +
             (typeof(MainWindowViewModel).Assembly.GetName().Version?.ToString(3) ?? "");
 
@@ -141,7 +142,12 @@ namespace AnimeJaNaiConfEditor.ViewModels
         public int SelectedTabIndex
         {
             get => _selectedTabIndex;
-            set => this.RaiseAndSetIfChanged(ref _selectedTabIndex, value);
+            set
+            {
+                if (_selectedTabIndex == value) return;
+                this.RaiseAndSetIfChanged(ref _selectedTabIndex, value);
+                if (value == 2) _ = PlaybackHistory.RefreshAsync();
+            }
         }
 
         // Missing hardware components open the picker. Installation is always

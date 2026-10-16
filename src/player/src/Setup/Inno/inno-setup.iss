@@ -156,6 +156,7 @@ begin
     DeleteDataPath('{localappdata}\mpv-AnimeFusion\MyAnimeList', True);
     DeleteDataPath('{app}\portable_config\watch_later', True);
     DeleteDataPath('{app}\portable_config\saved-props.json', False);
+    DeleteDataPath('{localappdata}\mpv-AnimeFusion\watch_history.jsonl', False);
   end;
   if DeleteUserData[1] then begin
     DeleteDataPath('{localappdata}\mpv-AnimeFusion\Subtitles', True);

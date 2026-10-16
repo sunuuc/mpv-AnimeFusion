@@ -76,7 +76,7 @@ def source_release_files(folders):
         for path in (R/folder).rglob('*'):
             if path.is_symlink() or not path.is_file() or path.suffix.lower() in FONTS or any(x in ('bin','obj','__pycache__','.git') for x in path.relative_to(R/folder).parts):continue
             relative=path.relative_to(R).as_posix()
-            if relative in ('portable_config/bangumi.json','portable_config/bangumi-app.json','portable_config/trakt.json','portable_config/mal.json','portable_config/sync.json'):continue
+            if relative in ('portable_config/bangumi.json','portable_config/bangumi-app.json','portable_config/trakt.json','portable_config/mal.json','portable_config/sync.json','portable_config/watch_history.jsonl'):continue
             if relative in tracked:files.append(path)
     return sorted(files,key=lambda path:path.relative_to(R).as_posix())
 def replace_once(p,old,new):
@@ -242,7 +242,7 @@ def organize_payload():
 def clean_session_files(app):
     for folder in ('cache','watch_later'):
         shutil.rmtree(app/'portable_config'/folder,ignore_errors=True)
-    for name in ('settings.xml','saved-props.json','startup-diagnostic.json','startup-diagnostic.json.tmp','playback-diagnostic.json','playback-error.json','playback-error.json.tmp','bangumi.json','bangumi-app.json','trakt.json','mal.json','sync.json'):
+    for name in ('settings.xml','saved-props.json','watch_history.jsonl','startup-diagnostic.json','startup-diagnostic.json.tmp','playback-diagnostic.json','playback-error.json','playback-error.json.tmp','bangumi.json','bangumi-app.json','trakt.json','mal.json','sync.json'):
         (app/'portable_config'/name).unlink(missing_ok=True)
 
 def inspect_payload():
@@ -315,6 +315,10 @@ def package():
     require_results(E/'runtime/results.json',RUNTIME_CASES,() if desktop else ('frontend',))
     require_results(E/'runtime/scripts-results.json',SCRIPT_CASES)
     require_results(E/'danmaku/results.json',DANMAKU_CASES)
+    # The manager requires completed-session positions from the native runtime.
+    # Exercise the staged DLL so a stale native input cannot silently ship.
+    run(sys.executable,R/'tests/test_native_watch_history.py',ST/'app',
+        E/'watch-history'/str(time.time_ns()))
     shutil.rmtree(ST/'portable_config/watch_later',ignore_errors=True)
     inspect_payload();DIST.mkdir(exist_ok=True)
     info=ST/'app/build-info/standalone'

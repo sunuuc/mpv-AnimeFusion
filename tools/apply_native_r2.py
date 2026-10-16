@@ -165,3 +165,6 @@ apply(root)
 
 from apply_stats_header import apply
 apply(root)
+
+from apply_watch_history import apply
+apply(root)

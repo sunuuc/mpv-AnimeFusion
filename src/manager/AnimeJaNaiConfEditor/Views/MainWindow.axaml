@@ -518,6 +518,108 @@
       </StackPanel>
     </ScrollViewer>
   </TabItem>
+  <TabItem Header="{local:Text Key=playbackHistory}">
+    <Grid RowDefinitions="Auto,*,Auto">
+      <TextBlock Text="{Binding PlaybackHistory.ErrorText}" IsVisible="{Binding PlaybackHistory.ShowErrorAboveItems}"
+                 TextWrapping="Wrap" Opacity="0.7" Margin="24,24,24,0" />
+      <TextBlock Grid.Row="1" Text="{Binding PlaybackHistory.EmptyText}"
+                 IsVisible="{Binding !PlaybackHistory.HasItems}" HorizontalAlignment="Center"
+                 VerticalAlignment="Center" Opacity="0.7" />
+      <ListBox x:Name="PlaybackHistoryList" Grid.Row="1" ItemsSource="{Binding PlaybackHistory.Items}" IsVisible="{Binding PlaybackHistory.HasItems}"
+               Background="Transparent" BorderThickness="0" Padding="24"
+               ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+        <ListBox.ItemsPanel>
+          <ItemsPanelTemplate>
+            <StackPanel />
+          </ItemsPanelTemplate>
+        </ListBox.ItemsPanel>
+        <ListBox.Styles>
+          <Style Selector="ListBoxItem">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0,0,0,12" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+          </Style>
+          <Style Selector="Expander.history-entry /template/ ToggleButton#ExpanderHeader">
+            <Setter Property="Padding" Value="16" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="#33888888" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="5" />
+          </Style>
+          <Style Selector="Expander.history-entry /template/ ToggleButton#ExpanderHeader /template/ Border#ExpandCollapseChevronBorder">
+            <Setter Property="IsVisible" Value="False" />
+          </Style>
+        </ListBox.Styles>
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="vm:PlaybackHistoryItem">
+            <Expander x:Name="PlaybackHistoryEntry" Classes="history-entry" IsExpanded="{Binding IsExpanded}" HorizontalAlignment="Stretch"
+                      HorizontalContentAlignment="Stretch" Padding="0" Background="Transparent"
+                      BorderBrush="#33888888" BorderThickness="1" CornerRadius="5">
+              <Expander.Header>
+              <StackPanel Spacing="10">
+                <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" />
+                <Border Height="6" CornerRadius="3" Background="#33888888" ClipToBounds="True">
+                  <Grid x:Name="PlaybackTimeline">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="{Binding BeforeRange}" />
+                      <ColumnDefinition Width="{Binding WatchedRange}" />
+                      <ColumnDefinition Width="{Binding AfterRange}" />
+                    </Grid.ColumnDefinitions>
+                    <Border x:Name="PlaybackRangeFill" Grid.Column="1" Background="{DynamicResource SystemAccentColor}" />
+                  </Grid>
+                </Border>
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock Text="{Binding ProgressText}" FontSize="12" Opacity="0.7" />
+                  <TextBlock Grid.Column="1" Text="{Binding WatchedAtText}" FontSize="12" Opacity="0.7" Margin="16,0,0,0" />
+                </Grid>
+              </StackPanel>
+              </Expander.Header>
+              <StackPanel Margin="16" Spacing="12">
+                <Grid ColumnDefinitions="110,*">
+                  <TextBlock Text="{local:Text Key=historySource}" Opacity="0.7" VerticalAlignment="Top" />
+                  <SelectableTextBlock Grid.Column="1" Text="{Binding Source}" TextWrapping="Wrap" />
+                </Grid>
+                <TextBlock Text="{local:Text Key=mediaInfo}" FontWeight="SemiBold" />
+                <TextBlock Text="{Binding MediaInfoEmptyText}" IsVisible="{Binding !HasMediaInfo}" Opacity="0.7" />
+                <ItemsControl x:Name="PlaybackMediaInfoSections" ItemsSource="{Binding MediaInfoSections}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <WrapPanel ItemWidth="300" ItemSpacing="16" LineSpacing="16" />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:PlaybackMediaInfoSection">
+                      <StackPanel Spacing="6" VerticalAlignment="Top">
+                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                        <ItemsControl ItemsSource="{Binding Values}">
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:PlaybackMediaInfoValue">
+                              <Grid ColumnDefinitions="88,*" ColumnSpacing="8" Margin="0,1">
+                                <TextBlock Text="{Binding Label}" FontSize="13" Opacity="0.7" VerticalAlignment="Top" TextWrapping="Wrap" />
+                                <TextBlock Grid.Column="1" Text="{Binding Value}" FontSize="13" TextWrapping="Wrap" />
+                              </Grid>
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                      </StackPanel>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </Expander>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+      <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="16" HorizontalAlignment="Center"
+                  Margin="24,12,24,24" IsVisible="{Binding PlaybackHistory.HasPages}">
+        <Button Content="{local:Text Key=previousHistoryPage}"
+                IsEnabled="{Binding PlaybackHistory.CanPreviousPage}" Click="PreviousHistoryPage" />
+        <TextBlock Text="{Binding PlaybackHistory.PageText}" VerticalAlignment="Center" />
+        <Button Content="{local:Text Key=nextHistoryPage}"
+                IsEnabled="{Binding PlaybackHistory.CanNextPage}" Click="NextHistoryPage" />
+      </StackPanel>
+    </Grid>
+  </TabItem>
   <TabItem Header="{local:Text Key=about}">
     <ScrollViewer HorizontalScrollBarVisibility="Disabled">
       <StackPanel Margin="24" Spacing="16" MaxWidth="920" HorizontalAlignment="Left">

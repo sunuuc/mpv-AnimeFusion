@@ -26,7 +26,7 @@ var names=vm.AnimeJaNaiConf.UpscaleSlots.Select(s=>s.ProfileName).ToArray();
 var window=new MainWindow {DataContext=vm};
 window.Measure(new Size(1100,800));window.Arrange(new Rect(0,0,1100,800));
 Check(typeof(MainWindow).BaseType==typeof(Window) && !window.ExtendClientAreaToDecorationsHint && window.WindowDecorations==WindowDecorations.Full,"manager uses the native movable and resizable window frame");
-Check(window.GetLogicalDescendants().OfType<TabItem>().Count()==3,"About is the third manager tab");
+Check(window.GetLogicalDescendants().OfType<TabItem>().Count()==4,"Playback history is followed by About in the manager");
 using(var catalog=JsonDocument.Parse(File.ReadAllText("tools/standalone/component-catalog.json")))
 {
     InterfaceLanguage.SettingsPath=Path.Combine(fixture,"interface-language.json");

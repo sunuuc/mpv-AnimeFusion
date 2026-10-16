@@ -32,12 +32,37 @@ namespace AnimeJaNaiConfEditor.Views
             LanguagePanel.Attach(this);
             Closing += MainWindow_Closing;
             Opened += MainWindow_Opened;
+            Activated += (_, _) =>
+            {
+                if (DataContext is MainWindowViewModel { SelectedTabIndex: 2 } vm)
+                    _ = vm.PlaybackHistory.RefreshAsync();
+            };
         }
 
         private async void OpenAboutLink(object? sender, RoutedEventArgs e)
         {
             if (sender is Button { Tag: string url } && Uri.TryCreate(url, UriKind.Absolute, out var uri))
                 await Launcher.LaunchUriAsync(uri);
+        }
+
+        private async void PreviousHistoryPage(object? sender, RoutedEventArgs e)
+        {
+            if (DataContext is not MainWindowViewModel vm) return;
+            await vm.PlaybackHistory.PreviousPageAsync();
+            ScrollHistoryPageToTop();
+        }
+
+        private async void NextHistoryPage(object? sender, RoutedEventArgs e)
+        {
+            if (DataContext is not MainWindowViewModel vm) return;
+            await vm.PlaybackHistory.NextPageAsync();
+            ScrollHistoryPageToTop();
+        }
+
+        private void ScrollHistoryPageToTop()
+        {
+            var list = this.FindControl<ListBox>("PlaybackHistoryList");
+            if (list?.Items.Count > 0 && list.Items[0] is { } first) list.ScrollIntoView(first);
         }
 
         private async void OpenAboutFile(object? sender, RoutedEventArgs e)

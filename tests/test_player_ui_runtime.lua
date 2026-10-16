@@ -28,41 +28,32 @@ local function wait_for(predicate,message,then_)
  after(.025,poll)
 end
 local function button(id)for _,b in ipairs(ui().controls or {})do if b.id==id then return b end end end
-local input_ready_at,last_click_time=0,-1
-for _,property in ipairs({'fullscreen','osd-dimensions','display-hidpi-scale'})do
- mp.observe_property(property,'native',function()
-  input_ready_at=mp.get_time()+mp.get_property_number('input-doubleclick-time',300)/1000+.1
- end)
-end
-local function click(id,then_,fraction)
- local u=ui();local b=assert(button(id),'missing UI control: '..id)
- local x=math.floor((fraction and b.start+(b.finish-b.start)*fraction or (b.x0+b.x1)/2)*u.scale)
- local y=math.floor((b.y0+b.y1)*u.scale/2)
- mp.commandv('mouse',x,y)
+-- These commands exercise mpv input dispatch, not the WinForms mouse path.
+local function point(id,then_,fraction)
  local deadline=mp.get_time()+1.5
+ local x,y
  local function ready()
   local current=ui()
-  assert(current.overlay_ok,'overlay was not accepted: '..tostring(current.overlay_error))
-  local now=mp.get_time()
-  local click_interval=mp.get_property_number('input-doubleclick-time',300)/1000+.05
-  if current.hover==id and now>=input_ready_at and now-last_click_time>=click_interval then
-   -- A resize temporarily removes mouse bindings. Move after the guard expires
-   -- so the native mouse event reinstalls them before sending the click.
-   local control=assert(button(id),'control disappeared before click: '..id)
-   x=math.floor((fraction and control.start+(control.finish-control.start)*fraction or (control.x0+control.x1)/2)*current.scale)
-   y=math.floor((control.y0+control.y1)*current.scale/2)
-   mp.commandv('mouse',x+1,y)
-   after(.025,function()
-    mp.commandv('mouse',x,y)
-    after(.04,function()
-     last_click_time=mp.get_time();mp.commandv('keydown','MBTN_LEFT')
-     after(.04,function()mp.commandv('keyup','MBTN_LEFT');after(.15,then_)end)
-    end)
-   end)
-  elseif mp.get_time()<deadline then after(.025,ready)
+  assert(not current.overlay_error,'overlay was not accepted: '..tostring(current.overlay_error))
+  local w,h=mp.get_osd_size();local control=button(id)
+  if current.overlay_ok and current.width==w and current.height==h and control then
+   local px=math.floor((fraction and control.start+(control.finish-control.start)*fraction or (control.x0+control.x1)/2)*current.scale)
+   local py=math.floor((control.y0+control.y1)*current.scale/2)
+   if px~=x or py~=y then
+    x,y=px,py;mp.commandv('mouse',x,y)
+   elseif current.hover==id then then_();return end
+  end
+  if mp.get_time()<deadline then after(.025,ready)
   else error('mouse did not reach '..id..': '..utils.format_json(current))end
  end
- after(.04,ready)
+ ready()
+end
+local function press(then_,settle)
+ mp.commandv('keydown','MBTN_LEFT')
+ after(.04,function()mp.commandv('keyup','MBTN_LEFT');after(settle or .15,then_)end)
+end
+local function click(id,then_,fraction)
+ point(id,function()press(then_)end,fraction)
 end
 local function row(key)
  for i,r in ipairs(ui().rows or {})do if r.key==key or r.target==key or r.text==key then return 'row-'..i end end
@@ -203,6 +194,49 @@ steps[#steps+1]=function(next_)
    end)
    end)
  end
+steps[#steps+1]=function(next_)
+ local paused=mp.get_property_bool('pause',false)
+ local was_fullscreen=mp.get_property_bool('fullscreen',false)
+ local doubleclick_time=mp.get_property_number('input-doubleclick-time',300)/1000
+ mp.set_property_bool('pause',true)
+ point('fullscreen',function()
+  local clicked_at=mp.get_time()
+  press(function()
+   check(mp.get_property_bool('fullscreen',false)~=was_fullscreen,'rapid fullscreen button click toggles once')
+   check(mp.get_time()-clicked_at<doubleclick_time,'second fullscreen event arrives within the native double-click interval')
+   -- Do not move or wait for relayout before the rest of this click sequence.
+   mp.commandv('keypress','MBTN_LEFT_DBL')
+   after(.025,function()
+    check(mp.get_property_bool('fullscreen',false)~=was_fullscreen,'pending control double-click cannot toggle native video fullscreen')
+    point('fullscreen',function()
+     -- Position once on the new layout, then remain stationary through expiry.
+     -- The click below must work while paused without a mouse-move workaround.
+     after(doubleclick_time+.05,function()
+      press(function()
+       check(mp.get_property_bool('fullscreen',false)==was_fullscreen,'paused fullscreen control responds without another mouse move')
+       mp.set_property_bool('pause',paused);next_()
+      end)
+     end)
+    end)
+   end)
+  end,.025)
+ end)
+end
+steps[#steps+1]=function(next_)
+ local muted=mp.get_property_bool('mute',false)
+ point('volume',function()
+  local clicked_at=mp.get_time()
+  press(function()
+   check(mp.get_property_bool('mute',false)~=muted,'rapid first volume click toggles mute')
+   press(function()
+    check(mp.get_time()-clicked_at<mp.get_property_number('input-doubleclick-time',300)/1000,
+     'consecutive control clicks finish within the native double-click interval')
+    check(mp.get_property_bool('mute',false)==muted,'rapid second volume click restores mute without pointer movement')
+    next_()
+   end,.025)
+  end,.025)
+ end)
+end
 steps[#steps+1]=function(next_)
  mp.set_property_bool('pause',true);mp.set_property_number('time-pos',0)
  wait_for(function()return mp.get_property_number('time-pos',0)<.05 end,'volume-key baseline seek settles',function()
@@ -442,9 +476,8 @@ steps[#steps+1]=function(next_)
   local u=ui();return u.width>0 and u.height>0 and u.overlay_ok
  end,'compact window did not settle',function()
   check(ui().width>0 and ui().height>0,'compact window resized')
-  -- Physical mouse movement during a Win32 resize is nondeterministic on WARP.
-  -- All real mouse paths were exercised above; use the public menu messages here
-  -- to validate only the compact geometry after the resize has settled.
+  -- This step checks compact geometry through the public menu messages.
+  -- The mouse commands above cover mpv dispatch, not WinForms desktop input.
   menu('settings',function()
    menu('ai',function()
     for _,b in ipairs(ui().menu_boxes)do

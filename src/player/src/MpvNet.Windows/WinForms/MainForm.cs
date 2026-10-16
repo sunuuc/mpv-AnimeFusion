@@ -37,7 +37,6 @@ public partial class MainForm : Form
     List<Binding>? _confBindings;
 
     int _lastCursorChanged;
-    int _lastCycleFullscreen;
     int _taskbarButtonCreatedMessage;
     int _cursorAutohide = 1000;
     double _playbackPosition;
@@ -83,8 +82,8 @@ public partial class MainForm : Form
         MyAnimeList.MalPlayback.Initialize();
         Subtitles.SubtitlePlayback.Initialize();
 
-            Player.ObservePropertyBool("window-maximized", PropChangeWindowMaximized);
-            Player.ObservePropertyBool("window-minimized", PropChangeWindowMinimized);
+            Player.ObserveProperty("window-maximized", PropChangeWindowMaximized);
+            Player.ObserveProperty("window-minimized", PropChangeWindowMinimized);
             Player.ObservePropertyDouble("time-pos", value => Volatile.Write(ref _playbackPosition, value));
             Player.ObservePropertyString("geometry", value => Volatile.Write(ref _geometry, value));
             Player.ObserveProperty("cursor-autohide", PropChangeCursorAutohide);
@@ -108,6 +107,8 @@ public partial class MainForm : Form
             Player.ObservePropertyDouble("window-scale", PropChangeWindowScale);
 
             CommandLine.ProcessCommandLineArgsPostInit();
+            // Windows supplies WM_LBUTTONDBLCLK; scripts must use the same interval.
+            Player.SetPropertyInt("input-doubleclick-time", Math.Min(SystemInformation.DoubleClickTime, 1000));
             CommandLine.ProcessCommandLineFiles();
 
             _taskbarButtonCreatedMessage = RegisterWindowMessage("TaskbarButtonCreated");
@@ -808,7 +809,6 @@ public partial class MainForm : Form
         if (_shutdownStarted)
             return;
 
-        _lastCycleFullscreen = Environment.TickCount;
         Player.Fullscreen = enabled;
 
         if (enabled)
@@ -1104,6 +1104,8 @@ public partial class MainForm : Form
                 break;
             case 0x001A: // WM_SETTINGCHANGE
                 UpdateDarkMode();
+                Player.CommandVAsync("set", "input-doubleclick-time",
+                    Math.Min(SystemInformation.DoubleClickTime, 1000).ToString(CultureInfo.InvariantCulture));
                 break;
             case 0x51: // WM_INPUTLANGCHANGE
                 ActivateKeyboardLayout(m.LParam, 0x00000100u /*KLF_SETFORPROCESS*/);
@@ -1123,7 +1125,6 @@ public partial class MainForm : Form
                 GlobalHotkey.Execute(m.WParam.ToInt32());
                 break;
             case 0x200: // WM_MOUSEMOVE
-                if (Environment.TickCount - _lastCycleFullscreen > 500)
                 {
                     Point pos = PointToClient(Cursor.Position);
                     Player.CommandVAsync("mouse", pos.X.ToString(CultureInfo.InvariantCulture),
@@ -1343,7 +1344,7 @@ public partial class MainForm : Form
     
     void PropChangeEdition(int value) => Player.Edition = value;
     
-    void PropChangeWindowMaximized(bool value)
+    void PropChangeWindowMaximized()
     {
         if (!WasShown)
             return;
@@ -1353,7 +1354,7 @@ public partial class MainForm : Form
             if (_shutdownStarted)
                 return;
 
-            Player.WindowMaximized = value;
+            Player.WindowMaximized = Player.GetPropertyBool("window-maximized");
 
             if (Player.WindowMaximized && WindowState != FormWindowState.Maximized)
                 WindowState = FormWindowState.Maximized;
@@ -1362,7 +1363,7 @@ public partial class MainForm : Form
         });
     }
 
-    void PropChangeWindowMinimized(bool value)
+    void PropChangeWindowMinimized()
     {
         if (!WasShown)
             return;
@@ -1372,7 +1373,7 @@ public partial class MainForm : Form
             if (_shutdownStarted)
                 return;
 
-            Player.WindowMinimized = value;
+            Player.WindowMinimized = Player.GetPropertyBool("window-minimized");
 
             if (Player.WindowMinimized && WindowState != FormWindowState.Minimized)
                 WindowState = FormWindowState.Minimized;
@@ -1437,7 +1438,6 @@ public partial class MainForm : Form
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
-        _lastCycleFullscreen = Environment.TickCount;
         SetFormPosAndSize(false, true, true);
     }
 
@@ -1452,7 +1452,7 @@ public partial class MainForm : Form
         base.OnShown(e);
 
         if (WindowState == FormWindowState.Maximized)
-            Player.CommandVAsync("set", "window-maximized", "yes");
+            Player.SetPropertyBool("window-maximized", true);
 
         WpfApplication.Init();
         Theme.UpdateWpfColors();
@@ -1484,14 +1484,14 @@ public partial class MainForm : Form
         if (WasShown && !_shutdownStarted)
         {
             if (WindowState == FormWindowState.Minimized)
-                Player.CommandVAsync("set", "window-minimized", "yes");
+                Player.SetPropertyBool("window-minimized", true);
             else if (WindowState == FormWindowState.Normal)
             {
-                Player.CommandVAsync("set", "window-maximized", "no");
-                Player.CommandVAsync("set", "window-minimized", "no");
+                Player.SetPropertyBool("window-maximized", false);
+                Player.SetPropertyBool("window-minimized", false);
             }
             else if (WindowState == FormWindowState.Maximized)
-                Player.CommandVAsync("set", "window-maximized", "yes");
+                Player.SetPropertyBool("window-maximized", true);
         }
     }
 

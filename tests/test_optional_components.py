@@ -32,13 +32,26 @@ class ComponentContracts(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp)
             config=root/'portable_config';config.mkdir()
-            for name in ('bangumi.json','bangumi-app.json','playback-error.json','playback-error.json.tmp'):
+            for name in ('bangumi.json','bangumi-app.json','playback-error.json','playback-error.json.tmp',
+                         'watch_history.jsonl'):
                 (config/name).write_text('private-fixture',encoding='utf-8')
+            (config/'mpv.conf').write_text('save-watch-history=yes\n',encoding='utf-8')
             clean_session_files(root)
             self.assertFalse((config/'bangumi.json').exists())
             self.assertFalse((config/'bangumi-app.json').exists())
             self.assertFalse((config/'playback-error.json').exists())
             self.assertFalse((config/'playback-error.json.tmp').exists())
+            self.assertFalse((config/'watch_history.jsonl').exists())
+            self.assertEqual((config/'mpv.conf').read_text(encoding='utf-8'),'save-watch-history=yes\n')
+
+    def test_source_package_excludes_playback_sessions_even_if_tracked(self):
+        with tempfile.TemporaryDirectory() as temp,patch('build.R',Path(temp)):
+            config=Path(temp)/'portable_config';config.mkdir()
+            for name in ('mpv.conf','watch_history.jsonl'):
+                (config/name).write_text('fixture',encoding='utf-8')
+            tracked=b'portable_config/mpv.conf\0portable_config/watch_history.jsonl\0'
+            with patch('build.subprocess.check_output',return_value=tracked):
+                self.assertEqual(source_release_files(('portable_config',)),[config/'mpv.conf'])
 
     def test_release_page_contains_only_current_version_changes(self):
         import re

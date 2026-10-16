@@ -1394,7 +1394,10 @@ local function hit(x,y)
     return menus.hit_override(found,x,y)
 end
 local mouse_bound=false
-local input_blocked_until=0
+local mouse_guard_until,mouse_guard_timer=0,nil
+local function clear_mouse_guard()
+    kill(mouse_guard_timer);mouse_guard_timer=nil;mouse_guard_until=0
+end
 local function cancel_pointer()
     state.drag=nil;state.menu_drag=nil;state.pressed=nil;state.pressed_key=nil;state.hover=nil
 end
@@ -1404,7 +1407,7 @@ local function layout_current()
 end
 local function mouse_button(event)
     if event and event.canceled then cancel_pointer();request_render();return end
-    if mp.get_time()<input_blocked_until or not layout_current() then cancel_pointer();request_render();return end
+    if not layout_current() then cancel_pointer();request_render();return end
     local e=event and event.event or 'press'
     local px,py=mp.get_mouse_pos()
     if layout and core.finite(px) and core.finite(py) then
@@ -1442,7 +1445,10 @@ local function wheel(delta)
     request_render()
 end
 local function bind_mouse(enabled)
-    enabled=enabled and mp.get_time()>=input_blocked_until
+    -- Keep a control's pending double-click in the UI while the window changes.
+    -- Valid controls remain clickable as soon as their new layout is drawn.
+    enabled=enabled or mouse_bound and (state.visible or state.menu~=nil)
+        and bool('mouse-pos/hover') and not bool('window-minimized') and mp.get_time()<mouse_guard_until
     if mouse_bound==enabled then return end
     mouse_bound=enabled
     if enabled then
@@ -1774,8 +1780,15 @@ for _,p in ipairs({'pause','idle-active','paused-for-cache','demuxer-via-network
     'user-data/player_ui/danmaku','user-data/animejanai/requested-slot'}) do
     mp.observe_property(p,'native',function(_,value)
         if p=='fullscreen' or p=='osd-dimensions' or p=='display-hidpi-scale' then
-            input_blocked_until=mp.get_time()+num('input-doubleclick-time',300)/1000
-            cancel_pointer();buttons={};bind_mouse(false)
+            clear_mouse_guard()
+            if mouse_bound then
+                local delay=num('input-doubleclick-time',300)/1000
+                mouse_guard_until=mp.get_time()+delay
+                mouse_guard_timer=mp.add_timeout(delay,function()
+                    mouse_guard_timer=nil;mouse_guard_until=0;request_render()
+                end)
+            end
+            cancel_pointer();buttons={}
         end
         -- Property changes can update the title or the open menu.
         if state.menu then menus.invalidate() end
@@ -1788,6 +1801,7 @@ for _,p in ipairs({'pause','idle-active','paused-for-cache','demuxer-via-network
     end)
 end
 mp.register_event('start-file',function()
+    clear_mouse_guard()
     remove_avatar();playback_ready=false;volume_osd:remove();kill(volume_osd_timer);loading=true;state.visible=false;state.rate=nil;state.menu=nil
     menus.close();state.drag=nil;state.pressed=nil;state.fps=nil
     samples:reset();sync_timers();request_render()
@@ -1808,10 +1822,12 @@ mp.register_event('playback-restart',function()
 end)
 mp.register_event('seek',function()samples:reset()end)
 mp.register_event('end-file',function()
+    clear_mouse_guard()
     remove_avatar();playback_ready=false;loading=false;state.visible=false;state.menu=nil;state.rate=nil
     sync_timers();request_render()
 end)
 mp.register_event('shutdown',function()
+    clear_mouse_guard()
     if metrics.reset then metrics.reset() end
     remove_avatar();menus.shutdown();kill(timed_pause_timer);kill(render_timer);kill(hide_timer);kill(pulse);kill(network_timer);kill(clock_timer);kill(loading_timer);kill(volume_osd_timer);ui:remove();volume_osd:remove();width_overlay:remove();bind_mouse(false)
 end)
