@@ -58,6 +58,8 @@ public class GuiCommand
         ["show-danmaku-sources"] = ShowDanmakuSources,
         ["show-danmaku-search"] = ShowDanmakuSearch,
         ["show-subtitle-search"] = ShowSubtitleSearch,
+        ["pin-subtitle"] = PinSubtitle,
+        ["delete-subtitle"] = DeleteSubtitle,
         ["show-danmaku-blocklist"] = ShowDanmakuBlocklist,
         ["show-bangumi-match"] = ShowBangumiMatch,
         ["bangumi-action"] = BangumiAction,
@@ -331,6 +333,32 @@ public class GuiCommand
         if (dialog.ShowDialog() == DialogResult.OK)
             foreach (string filename in dialog.FileNames)
                 Player.CommandV("sub-add", filename);
+    }
+
+    void PinSubtitle(IList<string> args)
+    {
+        if (args.Count != 1) return;
+        try { MpvNet.Windows.Subtitles.SubtitlePlayback.Current.TogglePinned(args[0]); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
+        { Terminal.WriteError(error); Msg.ShowError("强制使用字幕的设置无法保存。"); }
+    }
+
+    void DeleteSubtitle(IList<string> args)
+    {
+        if (args.Count != 1) return;
+        var playback = MpvNet.Windows.Subtitles.SubtitlePlayback.Current;
+        var removal = playback.PrepareRemoval(args[0]);
+        if (removal == null) return;
+        var window = new SubtitleDeleteWindow(removal.FileName);
+        new WindowInteropHelper(window).Owner = MainForm.Instance!.Handle;
+        if (window.ShowDialog() != true) return;
+        try
+        {
+            if (!playback.Remove(removal, window.DeleteLocal)) Msg.ShowInfo("当前视频已切换，请重新选择字幕。");
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException
+            or MpvNet.Windows.Subtitles.SubtitleServiceException)
+        { Terminal.WriteError(error); Msg.ShowError(error is MpvNet.Windows.Subtitles.SubtitleServiceException ? error.Message : "字幕删除失败，请检查文件是否被占用。"); }
     }
 
     void OpenFiles(IList<string> args)

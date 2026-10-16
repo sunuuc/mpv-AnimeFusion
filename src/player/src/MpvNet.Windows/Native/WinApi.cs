@@ -8,6 +8,12 @@ namespace MpvNet.Windows.Native;
 
 public static class WinApi
 {
+    public const uint CP_SUPPORTED = 2;
+    public delegate bool CodePageEnumProc([MarshalAs(UnmanagedType.LPWStr)] string codePage);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    public static extern bool EnumSystemCodePages(CodePageEnumProc callback, uint flags);
+
     [DllImport("kernel32.dll")]
     public static extern bool AttachConsole(int dwProcessId);
 

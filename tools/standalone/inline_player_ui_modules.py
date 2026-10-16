@@ -41,6 +41,11 @@ def inline_module(path: Path, module_name: str, loader: str) -> None:
 
 player_ui = SCRIPTS / "player_ui.lua"
 inline_module(
+    SCRIPTS / "animejanai_slot.lua",
+    "player_ui_core.lua",
+    "dofile(mp.command_native({'expand-path','~~/script-modules/player_ui_core.lua'}))",
+)
+inline_module(
     SCRIPTS / "animejanaistats.lua",
     "player_ui_metrics.lua",
     "dofile(mp.command_native({'expand-path','~~/script-modules/player_ui_metrics.lua'}))",

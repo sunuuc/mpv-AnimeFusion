@@ -3,7 +3,7 @@
 return function(mp, utils, on_change, storage_context)
     local M={ready=false,busy=false,count=0,track=nil,error=nil}
     local defaults={resolution={1920,1080},fps=60,displayArea=1,scrollArea=1,
-        scrolltime=12,fixtime=5,density=0,lineSpacing=0,topMargin=0,bottomMargin=0,
+        scrolltime=12,fixtime=5,density=-1,lineSpacing=0,topMargin=0,bottomMargin=0,
         fontsize=38,fontname='Microsoft YaHei',opacity=180,outline=0,shadow=1,bold=false,
         outlineBlur=0,outlineOpacity=255,saveBlocked=true,showUsernames=false,showMsgbox=true,
         msgboxSize={500,1080},msgboxPos={20,0},msgboxFontsize=38,msgboxDuration=0,giftMinPrice=0,
@@ -214,16 +214,14 @@ return function(mp, utils, on_change, storage_context)
                 style,'[Events]','Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text'},'\n')
         end
         local width=M.settings.resolution[1]
-        local height=M.settings.resolution[2]
         local size=M.settings.fontsize
         local chars=0
         for _ in text:gmatch('[%z\1-\127\194-\244][\128-\191]*') do chars=chars+1 end
         local half=math.ceil(chars*size/2)
-        -- Keep the notice just below the configured comment area when possible.
-        local y=math.min(height-size,math.floor(height*M.settings.displayArea))
+        local y=size
         local escaped=text:gsub('\\','\\\\'):gsub('{','\\{'):gsub('}','\\}')
             :gsub('[\r\n]+',' ')
-        local line=string.format('\nDialogue: 0,%s,%s,R2L,,0000,0000,0000,,{\\move(%d,%d,%d,%d)}%s\n',
+        local line=string.format('\nDialogue: 0,%s,%s,R2L,,0000,0000,0000,,{\\an8\\move(%d,%d,%d,%d)}%s\n',
             ass_time(time),ass_time(time+M.settings.scrolltime*playback_speed),
             width+half,y,-half,y,escaped)
         -- Add the event before attach opens the completed ASS file. mpv owns

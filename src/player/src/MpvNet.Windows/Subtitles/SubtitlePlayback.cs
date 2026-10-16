@@ -11,8 +11,10 @@ public sealed class SubtitlePlayback(SubtitleLibrary library)
     public static SubtitlePlayback Current { get; private set; } = null!;
     public SubtitleLibrary Library { get; } = library;
     readonly object _lock = new();
+    readonly HashSet<string> _knownTracks = [];
     bool _loaded, _applying;
     string _title = "";
+    string _path = "";
     TraktMedia _media = TraktMedia.Parse("", "", new Dictionary<string, string>());
     CancellationTokenSource? _download;
     int _generation;
@@ -31,12 +33,89 @@ public sealed class SubtitlePlayback(SubtitleLibrary library)
     public static void Initialize(SubtitleLibrary library)
     {
         Current = new(library);
-        Player.StartFile += () => { lock (Current._lock) { Current.CancelDownload(); Current.ResetMetadata(); Current._loaded = false; Current._title = ""; } };
-        Player.FileLoaded += () => { lock (Current._lock) Current._loaded = true; Current.Load(Player.GetPropertyString("media-title")); Current.UpdateMetadata(); };
+        Player.StartFile += () => { lock (Current._lock) { Current.CancelDownload(); Current.ResetMetadata(); Current._loaded = false; Current._title = ""; Current._knownTracks.Clear(); } };
+        Player.FileLoaded += () =>
+        {
+            lock (Current._lock)
+            {
+                Current.KnowTracks();
+                Current._loaded = true;
+                Current.Load(Player.GetPropertyString("media-title"));
+                Current.UpdateMetadata();
+            }
+        };
         Player.ObservePropertyString("media-title", Current.Load);
         Player.ObservePropertyString("sid", _ => Current.Remember());
-        Player.ObservePropertyInt("track-list/count", _ => Current.UpdateMetadata());
+        Player.ObserveProperty("track-list", Current.TracksChanged);
         Player.Shutdown += () => { lock (Current._lock) { Current.CancelDownload(); Current._metadataLifetime.Cancel(); Current._loaded = false; } };
+    }
+    sealed record PlaybackTrack(string Id, string Path, string Language);
+    IReadOnlyList<PlaybackTrack> LocalTracks()
+    {
+        using var document = JsonDocument.Parse(Player.GetPropertyString("track-list"));
+        return document.RootElement.EnumerateArray()
+            .Where(track => track.GetProperty("type").GetString() == "sub" && track.GetProperty("external").GetBoolean())
+            .Select(track => new PlaybackTrack(track.GetProperty("id").ToString(), track.GetProperty("external-filename").GetString() ?? "",
+                track.TryGetProperty("lang", out var language) ? language.GetString() ?? "" : "")).ToArray();
+    }
+    static string TrackKey(PlaybackTrack track) => track.Id + "\n" + track.Path;
+    void KnowTracks()
+    {
+        _knownTracks.Clear();
+        foreach (var track in LocalTracks()) _knownTracks.Add(TrackKey(track));
+    }
+    void TracksChanged()
+    {
+        lock (_lock)
+        {
+            if (!_loaded || _applying || Player.GetPropertyString("path") != _path) return;
+            var tracks = LocalTracks();
+            var added = tracks.Where(track => !_knownTracks.Contains(TrackKey(track))).ToArray();
+            _knownTracks.Clear();
+            foreach (var track in tracks) _knownTracks.Add(TrackKey(track));
+            _applying = true;
+            try
+            {
+                var managed = Library.Tracks(_media).Select(track => track.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                string secondary = Player.GetPropertyString("secondary-sid");
+                foreach (var track in added)
+                {
+                    try
+                    {
+                        if (Player.GetPropertyString("path") != _path) return;
+                        if (track.Id == secondary || track.Language == "danmaku" || managed.Contains(track.Path)
+                            || !FileTypes.Subtitle.Contains(Path.GetExtension(track.Path).TrimStart('.').ToLowerInvariant()) || !File.Exists(track.Path)) continue;
+                        string path = Library.Import(_media, track.Path);
+                        if (Player.GetPropertyString("path") != _path) return;
+                        if (track.Id == Player.GetPropertyString("secondary-sid")) continue;
+                        if (!LocalTracks().Any(item => item.Id == track.Id && item.Path == track.Path)) continue;
+                        bool wasSelected = Player.GetPropertyString("sid") == track.Id;
+                        if (!path.Equals(track.Path, StringComparison.OrdinalIgnoreCase))
+                            Player.CommandV("sub-add", path, wasSelected ? "cached" : "auto", Path.GetFileName(path));
+                        bool available = LocalTracks().Any(item => item.Path.Equals(path, StringComparison.OrdinalIgnoreCase));
+                        bool selected = Player.GetPropertyString("current-tracks/sub/external-filename").Equals(path, StringComparison.OrdinalIgnoreCase);
+                        foreach (var imported in LocalTracks().Where(item => item.Path.Equals(path, StringComparison.OrdinalIgnoreCase)))
+                            _knownTracks.Add(TrackKey(imported));
+                        if (available && (!wasSelected || selected))
+                        {
+                            if (selected)
+                            {
+                                CancelDownload();
+                                Library.Remember(_media.Title, _media.Kind == "show" ? _media.Season : null, path);
+                            }
+                            if (!path.Equals(track.Path, StringComparison.OrdinalIgnoreCase)) Player.CommandV("sub-remove", track.Id);
+                        }
+                    }
+                    catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or SubtitleServiceException)
+                    {
+                        Terminal.WriteError(error);
+                        Notice(_generation, error is SubtitleServiceException ? error.Message : "本地字幕保存失败", true);
+                    }
+                }
+            }
+            finally { _applying = false; }
+            UpdateMetadata();
+        }
     }
     void ResetMetadata()
     {
@@ -50,22 +129,25 @@ public sealed class SubtitlePlayback(SubtitleLibrary library)
         {
             if (!_loaded) return;
             string video = Player.GetPropertyString("path"), agent = Player.GetPropertyString("user-agent");
-            var labels = new Dictionary<string, EmbySubtitleMetadata.Track>();
+            var labels = new Dictionary<string, object>();
+            var local = Library.Tracks(_media).DistinctBy(track => track.Path, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(track => track.Path, StringComparer.OrdinalIgnoreCase);
             var requests = new List<EmbySubtitleMetadata.Source>();
-            for (int n = 0; n < Player.GetPropertyInt("track-list/count"); n++)
+            foreach (var playbackTrack in LocalTracks())
             {
-                if (Player.GetPropertyString($"track-list/{n}/type") != "sub" || !Player.GetPropertyBool($"track-list/{n}/external")) continue;
-                string path = Player.GetPropertyString($"track-list/{n}/external-filename");
+                string path = playbackTrack.Path, id = playbackTrack.Id;
+                if (id != Player.GetPropertyString("secondary-sid") && local.TryGetValue(path, out var saved))
+                    labels[id] = new { managed = true, pinned = saved.Pinned };
                 var source = EmbySubtitleMetadata.Identify(path, video, agent);
                 if (source == null) continue;
                 string key = source.Request.AbsoluteUri;
                 if (_metadata.TryGetValue(key, out var versions) && versions.TryGetValue(source.MediaSource, out var tracks)
-                    && tracks.TryGetValue(source.Index, out var track)) labels[Player.GetPropertyString($"track-list/{n}/id")] = track;
+                    && tracks.TryGetValue(source.Index, out var track)) labels[id] = new { title = track.Title, lang = track.Language };
                 if (_metadataRequested.Add(key)) requests.Add(source);
             }
             Player.SetPropertyString("user-data/player_ui/subtitles", JsonSerializer.Serialize(new
             {
-                tracks = labels.ToDictionary(pair => pair.Key, pair => new { title = pair.Value.Title, lang = pair.Value.Language })
+                tracks = labels
             }));
             if (requests.Count > 0)
             {
@@ -105,7 +187,8 @@ public sealed class SubtitlePlayback(SubtitleLibrary library)
             if (!_loaded || title.Length == 0 || title == _title) return;
             CancelDownload();
             _title = title;
-            _media = TraktMedia.Parse(title, Player.GetPropertyString("path"), new Dictionary<string, string>());
+            _path = Player.GetPropertyString("path");
+            _media = TraktMedia.Parse(title, _path, new Dictionary<string, string>());
             Apply(null);
         }
     }
@@ -150,6 +233,7 @@ public sealed class SubtitlePlayback(SubtitleLibrary library)
                 throw new SubtitleServiceException("没有当前集的字幕。");
             var progress = new DownloadProgress(this, generation);
             string? path = await new SubtitleDownload(filesClient, Library)
+                { ChooseArchiveNamesAsync = WPF.SubtitleArchiveNamesWindow.ChooseAsync }
                 .DownloadAsync(query, result, selected, result.Files, progress, request.Token).ConfigureAwait(false);
             request.Token.ThrowIfCancellationRequested();
             lock (_lock)
@@ -181,27 +265,66 @@ public sealed class SubtitlePlayback(SubtitleLibrary library)
             Apply(path);
         }
     }
+    public sealed record Removal(string Title, string Path, int Generation)
+    { public string FileName => System.IO.Path.GetFileName(Path); }
+    public Removal? PrepareRemoval(string id)
+    {
+        lock (_lock)
+        {
+            if (!_loaded || Player.GetPropertyString("path") != _path || id == Player.GetPropertyString("secondary-sid")) return null;
+            var track = LocalTracks().FirstOrDefault(track => track.Id == id);
+            return track != null && Library.Tracks(_media).Any(saved => saved.Path.Equals(track.Path, StringComparison.OrdinalIgnoreCase))
+                ? new(_media.Title, track.Path, _generation) : null;
+        }
+    }
+    public bool Remove(Removal removal, bool deleteLocal)
+    {
+        lock (_lock)
+        {
+            if (!_loaded || Player.GetPropertyString("path") != _path || removal.Generation != _generation || removal.Title != _media.Title) return false;
+            var paths = Library.Remove(removal.Title, removal.Path, deleteLocal).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            _applying = true;
+            try
+            {
+                foreach (var track in LocalTracks())
+                    if (paths.Contains(track.Path) && track.Id != Player.GetPropertyString("secondary-sid")) Player.CommandV("sub-remove", track.Id);
+            }
+            finally { KnowTracks(); _applying = false; }
+            UpdateMetadata();
+            return true;
+        }
+    }
+    public void TogglePinned(string id)
+    {
+        lock (_lock)
+        {
+            var removal = PrepareRemoval(id);
+            if (removal == null) return;
+            var track = Library.Tracks(_media).First(item => item.Path.Equals(removal.Path, StringComparison.OrdinalIgnoreCase));
+            Library.SetPinned(_media.Title, track.Path, !track.Pinned);
+            if (!track.Pinned) { CancelDownload(); Apply(track.Path); }
+            UpdateMetadata();
+        }
+    }
     void Apply(string? selected)
     {
         _applying = true;
         try
         {
             var tracks = Library.Tracks(_media);
-            int sid = Player.GetPropertyInt("sid");
             string selection = Player.GetPropertyString("sid");
             string external = Player.GetPropertyString("current-tracks/sub/external-filename");
-            // mpv already processes per-file sub-files and external subtitle streams.
-            // Preserve that selection while registering our downloaded alternatives.
+            // Preserve explicit playback options. A same-name subtitle discovered
+            // by mpv's sub-auto must not override the remembered library choice.
             bool supplied = Player.GetPropertyString("options/sub-files").Length > 0
-                || (Player.GetPropertyBool("option-info/sid/set-locally") || Player.GetPropertyBool("option-info/sid/set-from-commandline"))
-                    && !external.StartsWith(Library.Root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
-                || external.Length > 0 && !external.StartsWith(Library.Root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
-                    && sid != Player.GetPropertyInt("secondary-sid");
-            var existing = Enumerable.Range(0, Player.GetPropertyInt("track-list/count"))
-                .Select(index => Player.GetPropertyString($"track-list/{index}/external-filename")).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                || external.Length > 0 && Player.GetPropertyStringArray("options/external-files").Contains(external, StringComparer.OrdinalIgnoreCase)
+                || (CommandLine.Contains("sid") || Player.GetPropertyBool("option-info/sid/set-locally") || Player.GetPropertyBool("option-info/sid/set-from-commandline"))
+                    && !external.StartsWith(Library.Root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+            var existing = LocalTracks().Select(track => track.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
             foreach (var track in tracks)
                 if (!existing.Contains(track.Path)) Player.CommandV("sub-add", track.Path, "auto", track.Title, track.Language);
-            string? preferred = selected ?? (supplied ? null : tracks.FirstOrDefault(track => track.Preferred)?.Path);
+            string? preferred = selected ?? tracks.FirstOrDefault(track => track.Pinned)?.Path
+                ?? (supplied ? null : tracks.FirstOrDefault(track => track.Preferred)?.Path);
             if (preferred != null)
             {
                 Player.CommandV("sub-add", preferred, "cached");
@@ -211,7 +334,7 @@ public sealed class SubtitlePlayback(SubtitleLibrary library)
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
         { Terminal.WriteError(error); }
-        finally { _applying = false; }
+        finally { KnowTracks(); _applying = false; UpdateMetadata(); }
     }
     void Remember()
     {

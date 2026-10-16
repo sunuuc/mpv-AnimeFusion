@@ -85,5 +85,7 @@ public sealed record SubtitleResult(SubtitleSource Source, string Id, string Tit
 }
 public sealed record SubtitlePage(IReadOnlyList<SubtitleResult> Results, bool HasMore);
 public sealed record SubtitleCredentials(string AssrtToken);
+public sealed record SubtitleArchiveNameOption(string Encoding, string Name);
+public sealed record SubtitleArchiveName(string Key, IReadOnlyList<SubtitleArchiveNameOption> Options);
 
 public class SubtitleServiceException(string message) : Exception(message);

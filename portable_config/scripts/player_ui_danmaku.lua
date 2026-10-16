@@ -191,9 +191,32 @@ function M.layout(pw,ph,dpi,ui_scale,time_width,sync_services)
         seek={x0=0,x1=w,y0=h-90,y1=h-70,y=h-80},title_y=h-140,detail_y=h-104,
         margin=18,compact=true,small=false}
 end
-function M.wrap(value,width,size,maxlines)
+function M.wrap(value,width,size,maxlines,measure)
     local chars=M.chars(value);local out,line,used={},'',0
     maxlines=maxlines or 2
+    if measure then
+        local function fit(first,last,suffix)
+            local low,high,best=first,last,first-1
+            while low<=high do
+                local middle=math.floor((low+high)/2)
+                if measure(table.concat(chars,'',first,middle)..(suffix or ''),size)<=width then
+                    best=middle;low=middle+1
+                else high=middle-1 end
+            end
+            return best
+        end
+        local first=1
+        while first<=#chars do
+            local last=math.max(first,fit(first,#chars))
+            if maxlines>0 and #out==maxlines-1 and last<#chars then
+                out[#out+1]=table.concat(chars,'',first,fit(first,last,'…'))..'…'
+                return out
+            end
+            out[#out+1]=table.concat(chars,'',first,last);first=last+1
+        end
+        if #out==0 then out[1]='' end
+        return out
+    end
     for i,c in ipairs(chars) do
         local cw=(#c>1 and 1 or (c:match('[ilI.,! :;|]') and .3 or .6))*size
         if used+cw>width and line~='' then
@@ -215,6 +238,19 @@ function M.parse_presets(text)
         if id and name and tonumber(id)>=1 and tonumber(id)<=9 then out[tonumber(id)]=name end
     end
     return out
+end
+function M.read_presets(mp)
+    local path='~~/../animejanai/animejanai.conf'
+    for _,filter in ipairs(mp.get_property_native('vf',{}) or {}) do
+        if filter.name=='animejanai' and filter.params and filter.params.conf then
+            path=filter.params.conf;break
+        end
+    end
+    local file=io.open(mp.command_native({'expand-path',path}),'rb')
+    if not file then return {} end
+    local presets=M.parse_presets(file:read(1024*1024))
+    file:close()
+    return presets
 end
 function M.fps_sampler()
     local self={samples={}}
@@ -1343,7 +1379,7 @@ renderer=(function()
 return function(mp, utils, on_change, storage_context)
     local M={ready=false,busy=false,count=0,track=nil,error=nil}
     local defaults={resolution={1920,1080},fps=60,displayArea=1,scrollArea=1,
-        scrolltime=12,fixtime=5,density=0,lineSpacing=0,topMargin=0,bottomMargin=0,
+        scrolltime=12,fixtime=5,density=-1,lineSpacing=0,topMargin=0,bottomMargin=0,
         fontsize=38,fontname='Microsoft YaHei',opacity=180,outline=0,shadow=1,bold=false,
         outlineBlur=0,outlineOpacity=255,saveBlocked=true,showUsernames=false,showMsgbox=true,
         msgboxSize={500,1080},msgboxPos={20,0},msgboxFontsize=38,msgboxDuration=0,giftMinPrice=0,
@@ -1554,16 +1590,14 @@ return function(mp, utils, on_change, storage_context)
                 style,'[Events]','Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text'},'\n')
         end
         local width=M.settings.resolution[1]
-        local height=M.settings.resolution[2]
         local size=M.settings.fontsize
         local chars=0
         for _ in text:gmatch('[%z\1-\127\194-\244][\128-\191]*') do chars=chars+1 end
         local half=math.ceil(chars*size/2)
-        -- Keep the notice just below the configured comment area when possible.
-        local y=math.min(height-size,math.floor(height*M.settings.displayArea))
+        local y=size
         local escaped=text:gsub('\\','\\\\'):gsub('{','\\{'):gsub('}','\\}')
             :gsub('[\r\n]+',' ')
-        local line=string.format('\nDialogue: 0,%s,%s,R2L,,0000,0000,0000,,{\\move(%d,%d,%d,%d)}%s\n',
+        local line=string.format('\nDialogue: 0,%s,%s,R2L,,0000,0000,0000,,{\\an8\\move(%d,%d,%d,%d)}%s\n',
             ass_time(time),ass_time(time+M.settings.scrolltime*playback_speed),
             width+half,y,-half,y,escaped)
         -- Add the event before attach opens the completed ASS file. mpv owns
@@ -1969,11 +2003,24 @@ local function server_queue()
     for index=1,#servers do queue[#queue+1]=index end
     return queue
 end
+local function require_servers(quiet)
+    if #servers>0 then return true end
+    cancel_preparation()
+    status='请先添加弹幕线路';autoload_state='unconfigured'
+    search_health={pending=0,failed=0,responded=0,total=0}
+    publish()
+    if not quiet then mp.osd_message(status,4) end
+    return false
+end
 local function search_shows(keyword,server_index,quiet,on_complete,season,force)
     search_source=tonumber(server_index) or 0
     if search_source<0 or search_source>#servers then search_source=0 end
-    if type(keyword)~='string' or keyword=='' or #servers==0 then
-        status='没有可用的搜索关键词或弹幕线路';publish()
+    if not require_servers(quiet) then
+        if on_complete then on_complete(false,status) end
+        return
+    end
+    if type(keyword)~='string' or keyword=='' then
+        status='请先输入作品名';publish()
         if on_complete then on_complete(false,status) end
         return
     end
@@ -2367,14 +2414,9 @@ local function load_remembered_source(attempt,on_missing)
 end
 match_current=function(quiet,automatic,failed_episodes)
     cancel_request();results={}
+    if not require_servers(quiet) then return end
     autoload_state=automatic and 'loading' or 'idle'
     publish()
-    if #servers==0 then
-        status='还没有配置弹幕线路';publish()
-        if automatic then autoload_state='error';publish() end
-        if not quiet then mp.osd_message('在「设置 → 弹幕设置 → 配置弹幕线路」里添加线路',5) end
-        return
-    end
     local name=online.limit_text(query_name(),512,core.clean)
     if name=='' then
         status='无法取得片名';autoload_state=automatic and 'error' or 'idle';publish()
@@ -2421,6 +2463,9 @@ match_current=function(quiet,automatic,failed_episodes)
     if automatic then start(nil) else hash_file(mp.get_property('path',''),start) end
 end
 mp.register_script_message('player_ui-danmaku-retry-match',function()
+    if #servers==0 then
+        mp.commandv('script-message','player_ui-danmaku-manage');return
+    end
     if autoload_state=='loading' then return end
     match_current(true,true)
 end)
@@ -2465,7 +2510,7 @@ end
 local function do_search(keyword,server_index,season,force)
 
     autoload_state='idle'
-    if #servers==0 then status='还没有配置弹幕线路';publish();mp.osd_message(status,4);return end
+    if not require_servers(false) then return end
     keyword=online.limit_text(keyword,120,core.clean)
     if core.char_count(keyword)<2 then
         status='搜索关键词至少需要 2 个字符';publish();mp.osd_message(status,4);return
@@ -2487,8 +2532,16 @@ local function commit_servers(message)
     status='';results={};autoload_state='idle'
     if not save_servers() then message=message..'（配置文件写入失败）' end
     refresh_servers(true);mp.osd_message(message,4)
+    if #servers==0 then
+        require_servers(true)
+    elseif o.autoload_danmaku and autoload_file_active and not renderer.ready then
+        match_current(true,true)
+    end
 end
 mp.register_script_message('player_ui-danmaku-search',function()
+    if #servers==0 then
+        mp.commandv('script-message','player_ui-danmaku-manage');return
+    end
     local title=query_name();local anime,_,season=online.episode_query(title)
     mp.commandv('script-message-to','mpvnet','show-danmaku-search',anime or title,tostring(season or ''))
 end)

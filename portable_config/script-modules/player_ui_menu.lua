@@ -240,14 +240,32 @@ return function(c)
             local p=kind=='audio' and 'aid' or 'sid'
             local selected=tostring(c.prop(p,'no'))
             row('关闭',function()c.set(p,'no')end,selected=='no',{stay=true,key=p..':no'})
+            local tracks={};local metadata=typ=='sub' and c.subtitle_tracks() or {}
+            local danmaku=c.prop('user-data/player_ui/danmaku',{}) or {}
             for _,t in ipairs(c.prop('track-list',{}) or {}) do
-                local danmaku=c.prop('user-data/player_ui/danmaku',{}) or {}
-                if t.type==typ and not (typ=='sub' and t.id==danmaku.track) then local id=t.id
-                    row(track_name(t),function()
-                        c.set_number(p,id)
-                        if p=='sid' then c.set_bool('sub-visibility',true) end
-                    end,selected==tostring(id),{stay=true,key=p..':'..id,wrap=typ=='sub' and 0 or nil})
+                if t.type==typ and not (typ=='sub' and t.id==danmaku.track) then
+                    tracks[#tracks+1]={track=t,info=metadata[tostring(t.id)] or {},order=#tracks+1}
                 end
+            end
+            table.sort(tracks,function(a,b)
+                local ap,bp=a.info.managed and a.info.pinned or false,b.info.managed and b.info.pinned or false
+                if ap~=bp then return ap end
+                return a.order<b.order
+            end)
+            for _,entry in ipairs(tracks) do
+                local t,info=entry.track,entry.info;local id=t.id
+                local extra={stay=true,key=p..':'..id,wrap=typ=='sub' and 0 or nil}
+                if info.managed then
+                    extra.actions={
+                        {id='pin',text='F',selected=info.pinned,stay=true,
+                            fn=function()c.command('script-message-to','mpvnet','pin-subtitle',tostring(id))end},
+                        {id='delete',icon='delete',fn=function()c.command('script-message-to','mpvnet','delete-subtitle',tostring(id))end},
+                    }
+                end
+                row(track_name(t),function()
+                    c.set_number(p,id)
+                    if p=='sid' then c.set_bool('sub-visibility',true) end
+                end,selected==tostring(id),extra)
             end
             separator()
             if kind=='sub' then row('搜索字幕',function()c.command('script-message-to','mpvnet','show-subtitle-search')end) end
@@ -255,7 +273,10 @@ return function(c)
         elseif kind=='danmaku' then
             local d=c.prop('user-data/player_ui/danmaku',{}) or {}
             row('关闭',function()if d.enabled then c.command('script-message','player_ui-danmaku-toggle')end end,not d.loaded or not d.enabled,{stay=true})
-            if d.autoload_state=='loading' then
+            if not d.loaded and d.autoload_state=='unconfigured' then
+                row('请先添加弹幕线路',nil,false,{status=true})
+                row('配置弹幕线路',function()c.command('script-message','player_ui-danmaku-manage')end)
+            elseif d.autoload_state=='loading' then
                 row('自动加载中…',nil,false,{status=true,spinner=true})
             elseif not d.loaded and d.autoload_state=='error' then
                 row('自动加载失败',nil,false,{status=true})
@@ -343,19 +364,27 @@ return function(c)
         ['audio-settings']='音频设置',stats='统计信息',chapters='章节',
         bangumi='Bangumi',trakt='Trakt',mal='MyAnimeList',['sync-settings']='同步设置',['bangumi-collection']='收藏',['bangumi-episode']='剧集',['trakt-episode']='剧集',['mal-episode']='剧集'}
     local function width(kind,l)
-        local widths={speed=216,settings=200,sub=344,audio=344,danmaku=312,ai=256,scale=280,stats=440,chapters=368,bangumi=440,trakt=440,mal=440}
+        local widths={speed=216,settings=200,sub=440,audio=344,danmaku=312,ai=256,scale=280,stats=440,chapters=368,bangumi=440,trakt=440,mal=440}
         local u=l.ui or 1
         return math.min((widths[kind] or 344)*u,math.max(1,l.w-2*metrics.menu_margin*u))
     end
-    local function measure(items,w,kind,u)
-        local key=string.format('%s:%.2f:%.3f',kind,w,u)
+    local function action_width(action,u) return 34*u end
+    local function actions_width(actions,u)
+        local width=0
+        for _,action in ipairs(actions or {}) do width=width+action_width(action,u)+6*u end
+        return math.max(0,width-6*u)
+    end
+    local function measure(items,w,kind,u,l)
+        local key=string.format('%s:%.2f:%.3f:%d:%d',kind,w,u,l.w,l.h)
         local cached=measure_cache[key]
         if cached and cached.items==items then return cached.total,cached.rows end
+        local text_width=kind=='sub' and function(value,size)return c.measure_text(value,size,l.w,l.h)end or nil
         local y,rows=0,{}
         for _,r in ipairs(items) do
             local indent=r.icon and metrics.icon_column*u or metrics.row_padding*u+8*u
-            local available=w-indent-30*u-(r.toggle and (metrics.switch_width+16)*u or r.value and core.ass_text_width(r.value,metrics.row_text*u)+16*u or r.hint and 52*u or 0)-(r.target and 28*u or 0)
-            local lines=core.wrap(r.text or '',available,metrics.row_text*u,r.wrap or 2)
+            local right=r.actions and 26*u+actions_width(r.actions,u) or 30*u
+            local available=w-indent-right-(r.toggle and (metrics.switch_width+16)*u or r.value and core.ass_text_width(r.value,metrics.row_text*u)+16*u or r.hint and 52*u or 0)-(r.target and 28*u or 0)
+            local lines=core.wrap(r.text or '',available,metrics.row_text*u,r.wrap or 2,text_width)
             local height=r.h and r.h*u or r.separator and metrics.separator*u or r.slider and metrics.slider*u
                 or math.max(kind=='ai' and 48*u or metrics.row_min*u,
                     #lines*metrics.row_line*u+(r.detail and metrics.row_detail_line*u+5*u or 0)+metrics.row_padding*u)
@@ -373,7 +402,7 @@ return function(c)
     local function makebox(l,kind)
         local u=l.ui or 1
         local title,items=M.data(kind);local w=width(kind,l);local hh=header_height(kind,title,u)
-        local total,rows=measure(items,w,kind,u);local bottom=l.h-(kind=='speed' and metrics.menu_speed_bottom or metrics.menu_bottom)*u
+        local total,rows=measure(items,w,kind,u,l);local bottom=l.h-(kind=='speed' and metrics.menu_speed_bottom or metrics.menu_bottom)*u
         local pad=metrics.menu_padding*u
         local margin=math.min(metrics.menu_margin*u,math.max(0,(l.w-w)/2))
         local max_height=math.max(1,l.h-2*margin)
@@ -418,7 +447,7 @@ return function(c)
                     -- that boundary after DPI scaling even when the anchor is inset.
                     d.clip(0,b.content,l.w,bottom,function()
                         if r.separator then d.rect(b.x0+12*u,yy+entry.height/2,b.x1-12*u,yy+entry.height/2+u,theme.divider,18);return end
-                        local box={id='row-'..index,index=index,x0=b.x0+6*u,x1=b.x1-6*u,y0=math.max(yy,b.content),y1=math.min(y1,bottom),key=r.key or r.text}
+                        local box={id='row-'..index,index=index,x0=b.x0+6*u,x1=b.x1-(r.actions and actions_width(r.actions,u)+22*u or 6*u),y0=math.max(yy,b.content),y1=math.min(y1,bottom),key=r.key or r.text}
                         if r.card then
                             local left=b.x0+120*u;local available=w-140*u
                             d.round(b.x0+20*u,yy+8*u,b.x0+106*u,yy+137*u,5*u,surface,0)
@@ -448,10 +477,10 @@ return function(c)
                             end
                             return
                         end
-                        local hovered=core.inside(box,s.x,s.y)
+                        local hovered=s.x>=box.x0 and s.x<=b.x1-6*u and s.y>=box.y0 and s.y<=box.y1
                         local picked=(not r.toggle and r.selected) or (r.target and r.target==s.menu)
                         if hovered or picked then
-                            d.round(box.x0+2*u,yy+3*u,box.x1-2*u,y1-3*u,6*u,theme.hover,5)
+                            d.round(box.x0+2*u,yy+3*u,b.x1-8*u,y1-3*u,6*u,theme.hover,5)
                         end
                         if picked then d.round(b.x0+8*u,yy+entry.height/2-12*u,b.x0+11*u,yy+entry.height/2+12*u,1.5*u,accent,0) end
                         if not r.disabled then add(box) end
@@ -489,6 +518,20 @@ return function(c)
                             elseif r.target then d.text(b.x1-25*u,yy+entry.height/2,27*u,'›',6,theme.secondary,false,nil,.8)
                             elseif r.value then d.text(b.x1-19*u,yy+entry.height/2,metrics.row_text*u,r.value,6,muted,false,nil,.8)
                             elseif r.hint then d.text(b.x1-19*u,yy+entry.height/2,13*u,r.hint,6,muted,false,nil,.8) end
+                            local right=b.x1-18*u
+                            for action_index=#(r.actions or {}),1,-1 do
+                                local action=r.actions[action_index];local width=action_width(action,u)
+                                local cy=yy+entry.height/2;local top,finish=cy-17*u,cy+17*u
+                                local actionbox={id='row-action-'..index..'-'..action.id,index=index,action=action_index,
+                                    key=(r.key or r.text)..':'..action.id,x0=right-width,x1=right,
+                                    y0=math.max(top,b.content),y1=math.min(finish,bottom)}
+                                local hover=core.inside(actionbox,s.x,s.y)
+                                if hover then d.round(right-width,top,right,finish,6*u,theme.hover,0) end
+                                if action.icon then d.icon(action.icon,right-width/2,cy,action.selected or hover,false)
+                                else d.text(right-width/2,cy,28*u,action.text,5,(action.selected or hover) and accent or white,true,nil,.8) end
+                                if actionbox.y1>actionbox.y0 then add(actionbox) end
+                                right=right-width-6*u
+                            end
                         end
                     end)
                 end
@@ -539,7 +582,10 @@ return function(c)
             c.command('script-message-to','mpvnet',b.id:gsub('%-logout$','-action'),'logout');M.close()
         elseif b.index then
             local r=M.rows[b.index]
-            if r and r.target then
+            local action=r and b.action and r.actions and r.actions[b.action]
+            if action and action.fn then
+                action.fn();if not action.stay then M.close() end
+            elseif r and r.target then
                 local parent=s.parent or s.menu
                 s.parent_scroll=s.parent and s.parent_scroll or s.scroll
                 c.open(r.target,parent)

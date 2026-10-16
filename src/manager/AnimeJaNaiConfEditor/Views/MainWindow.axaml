@@ -117,7 +117,7 @@
 
     <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
       <StackPanel Margin="20">
-      
+
         <!-- Global Settings -->
         <Grid IsVisible="{Binding ShowGlobalSettings}" RowDefinitions="Auto,*">
           <StackPanel Grid.Row="1">
@@ -411,8 +411,10 @@
                                 </Grid>
 
                                 <Grid ColumnDefinitions="Auto,*" Margin="10,10,0,10" IsVisible="{Binding EnableRife}">
-                                  <CheckBox Grid.Column="0" IsChecked="{Binding RifeEnsemble}" Content="{local:Text Key=s9943c33a024c9949}" />
-                                  <TextBlock Grid.Column="1" Classes="help" Foreground="Gray" Margin="20,0,0,0" Text="{local:Text Key=sec5f26d297709831}" />
+                                  <CheckBox Grid.Column="0" IsChecked="{Binding RifeEnsemble}" IsVisible="{Binding RifeEnsembleAvailable}"
+                                            IsEnabled="{Binding RifeStandardAvailable}" Content="{local:Text Key=s9943c33a024c9949}" />
+                                  <TextBlock Grid.Column="1" Classes="help" Foreground="Gray" Margin="20,0,0,0"
+                                             IsVisible="{Binding RifeEnsembleAvailable}" Text="{local:Text Key=sec5f26d297709831}" />
                                 </Grid>
 
                                 <Grid ColumnDefinitions="Auto,*" Margin="10,10,0,10" IsVisible="{Binding EnableRife}">

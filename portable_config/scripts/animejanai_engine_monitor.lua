@@ -33,6 +33,50 @@ local we_paused = false
 local started_at = 0
 local build_name = "?"
 local build_res = "?"
+local loaded_path
+local configured = false
+local timer
+
+local function has_filter()
+    for _, filter in ipairs(mp.get_property_native("vf", {})) do
+        if filter.name == "animejanai" and filter.label == "aji" and
+           filter.enabled ~= false then
+            return true
+        end
+    end
+    return false
+end
+
+local function has_video()
+    local params = mp.get_property_native("video-out-params")
+    return loaded_path ~= nil and
+           loaded_path == mp.get_property("path") and
+           not mp.get_property_bool("idle-active", true) and
+           params ~= nil and (params.w or 0) > 0 and (params.h or 0) > 0 and
+           has_filter()
+end
+
+local function release_pause()
+    if we_paused then
+        we_paused = false
+        mp.set_property_bool("pause", false)
+    end
+end
+
+local function stop_monitor()
+    timer:kill()
+    if building then
+        mp.osd_message("")
+    end
+    building = false
+    release_pause()
+end
+
+local function reset()
+    loaded_path = nil
+    configured = false
+    stop_monitor()
+end
 
 local function read_stats()
     local f = io.open(stats_path, "r")
@@ -42,7 +86,12 @@ local function read_stats()
     return s
 end
 
-mp.add_periodic_timer(o.poll_interval, function()
+timer = mp.add_periodic_timer(o.poll_interval, function()
+    if not configured or not has_video() then
+        configured = false
+        stop_monitor()
+        return
+    end
     local s = read_stats()
     local b = s ~= nil and s:find("Building TensorRT engine", 1, true) ~= nil
 
@@ -67,10 +116,7 @@ mp.add_periodic_timer(o.poll_interval, function()
         msg.info(string.format("engine build finished after %ds%s",
             math.floor(mp.get_time() - started_at),
             we_paused and "; resuming playback" or ""))
-        if we_paused then
-            mp.set_property_bool("pause", false)
-            we_paused = false
-        end
+        release_pause()
         if failed then
             local log_path = s and s:match("%(see ([^%)]+)%)") or
                              "the .build.log file next to the model"
@@ -105,4 +151,47 @@ mp.add_periodic_timer(o.poll_interval, function()
         -- finished build; this no-op command wakes it so it polls
         mp.commandv("vf-command", "aji", "poll", "1")
     end
+end)
+timer:kill()
+
+-- The log survives filter destruction and player restarts. Only inspect it
+-- after this file's video output has passed through the configured filter;
+-- file-loaded alone is too early, while the decoder is still starting.
+local function video_ready()
+    if has_video() then
+        configured = true
+        timer:resume()
+    else
+        configured = false
+        stop_monitor()
+    end
+end
+
+mp.register_event("start-file", reset)
+mp.register_event("end-file", reset)
+mp.register_event("file-loaded", function()
+    loaded_path = mp.get_property("path")
+end)
+mp.register_event("playback-restart", video_ready)
+mp.register_event("video-reconfig", video_ready)
+mp.observe_property("idle-active", "bool", function(_, idle)
+    if idle then reset() end
+end)
+mp.observe_property("path", "string", function(_, path)
+    if loaded_path and path ~= loaded_path then reset() end
+end)
+mp.observe_property("vf", "native", function()
+    if not has_filter() then
+        configured = false
+        stop_monitor()
+    end
+end)
+mp.observe_property("video-out-params", "native", function(_, params)
+    if not params then
+        configured = false
+        stop_monitor()
+    end
+end)
+mp.observe_property("pause", "bool", function(_, paused)
+    if not paused then we_paused = false end
 end)

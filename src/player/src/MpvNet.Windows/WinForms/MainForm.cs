@@ -927,9 +927,9 @@ public partial class MainForm : Form
     
     void Player_FileLoaded()
     {
-        BeginInvoke(() => {
-            SetTitleInternal();
+        SetTitle();
 
+        BeginInvoke(() => {
             int interval = (int)(Player.Duration.TotalMilliseconds / 100);
 
             if (interval < 100)
@@ -966,9 +966,7 @@ public partial class MainForm : Form
         }
     }
 
-    void SetTitle() => BeginInvoke(SetTitleInternal);
-
-    void SetTitleInternal()
+    void SetTitle()
     {
         if (_shutdownStarted || !Player.IsQuitNeeded)
             return;
@@ -983,7 +981,12 @@ public partial class MainForm : Form
         if (text == "(unavailable)" || Player.PlaylistPos == -1)
             text = "mpv-AnimeFusion";
 
-        Text = text;
+        // Expand on the player event thread. Blocking the window thread here
+        // can deadlock Vulkan swapchain recreation, which needs its messages.
+        BeginInvoke(() => {
+            if (!_shutdownStarted)
+                Text = text;
+        });
     }
 
     void SaveWindowProperties()

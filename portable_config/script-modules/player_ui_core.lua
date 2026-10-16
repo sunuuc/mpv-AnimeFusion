@@ -186,9 +186,32 @@ function M.layout(pw,ph,dpi,ui_scale,time_width,sync_services)
         seek={x0=0,x1=w,y0=h-90,y1=h-70,y=h-80},title_y=h-140,detail_y=h-104,
         margin=18,compact=true,small=false}
 end
-function M.wrap(value,width,size,maxlines)
+function M.wrap(value,width,size,maxlines,measure)
     local chars=M.chars(value);local out,line,used={},'',0
     maxlines=maxlines or 2
+    if measure then
+        local function fit(first,last,suffix)
+            local low,high,best=first,last,first-1
+            while low<=high do
+                local middle=math.floor((low+high)/2)
+                if measure(table.concat(chars,'',first,middle)..(suffix or ''),size)<=width then
+                    best=middle;low=middle+1
+                else high=middle-1 end
+            end
+            return best
+        end
+        local first=1
+        while first<=#chars do
+            local last=math.max(first,fit(first,#chars))
+            if maxlines>0 and #out==maxlines-1 and last<#chars then
+                out[#out+1]=table.concat(chars,'',first,fit(first,last,'…'))..'…'
+                return out
+            end
+            out[#out+1]=table.concat(chars,'',first,last);first=last+1
+        end
+        if #out==0 then out[1]='' end
+        return out
+    end
     for i,c in ipairs(chars) do
         local cw=(#c>1 and 1 or (c:match('[ilI.,! :;|]') and .3 or .6))*size
         if used+cw>width and line~='' then
@@ -210,6 +233,19 @@ function M.parse_presets(text)
         if id and name and tonumber(id)>=1 and tonumber(id)<=9 then out[tonumber(id)]=name end
     end
     return out
+end
+function M.read_presets(mp)
+    local path='~~/../animejanai/animejanai.conf'
+    for _,filter in ipairs(mp.get_property_native('vf',{}) or {}) do
+        if filter.name=='animejanai' and filter.params and filter.params.conf then
+            path=filter.params.conf;break
+        end
+    end
+    local file=io.open(mp.command_native({'expand-path',path}),'rb')
+    if not file then return {} end
+    local presets=M.parse_presets(file:read(1024*1024))
+    file:close()
+    return presets
 end
 function M.fps_sampler()
     local self={samples={}}

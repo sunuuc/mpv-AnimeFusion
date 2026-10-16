@@ -97,9 +97,9 @@ mp.add_hook('on_load',-1000,function()
             -- therefore about 1.5x the worst case, while the 2 GiB this used to
             -- ask for pushed committed memory past 3.9 GB because mpv counts the
             -- packet budget against the process commit even when the packets are
-            -- never all resident. The backward half is a further slice of that
-            -- same total, so it is kept well under it (768M total, 384M back =
-            -- 384M of already-played data plus 384M of readahead).
+            -- never all resident. The backward cache has a separate 384 MiB
+            -- budget and may borrow unused forward space. The combined packet
+            -- cache budget is therefore 1152 MiB, not 768 MiB.
             ['demuxer-readahead-secs']='180',['cache-secs']='180',
             ['demuxer-cache-unselected-subs']='yes',
             ['demuxer-max-bytes']='768M',['demuxer-max-back-bytes']='384M',

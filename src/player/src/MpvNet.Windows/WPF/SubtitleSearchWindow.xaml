@@ -87,9 +87,12 @@
                 <TextBlock x:Name="Status" Style="{StaticResource MatchStatusText}" />
             </StackPanel>
             <Grid Grid.Row="7" Margin="0,12,0,0">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                <Button Content="字幕目录" HorizontalAlignment="Left" Click="Folder_Click" />
-                <Button Grid.Column="1" Content="关闭" IsCancel="True" Click="Close_Click" />
+                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <Button Content="字幕目录" VerticalAlignment="Center" Click="Folder_Click" />
+                <TextBlock Grid.Column="1" Margin="10,0" VerticalAlignment="Center" FontSize="12"
+                           Foreground="{Binding Theme.Foreground2}" TextWrapping="Wrap"
+                           Text="下载后如果未被自动识别，前往字幕目录将对应字幕文件拖动或粘贴到视频里。" />
+                <Button Grid.Column="2" Content="关闭" VerticalAlignment="Center" IsCancel="True" Click="Close_Click" />
             </Grid>
         </Grid>
     </Border>

@@ -9,7 +9,7 @@ def run(name,args,marker):
     log=cp.stdout+cp.stderr;(out/(name+'.log')).write_bytes(log)
     passed=cp.returncode==0 and marker in log and b'stack traceback' not in log.lower()
     results.append({'case':name,'passed':passed,'exit_code':cp.returncode})
-run('control-tests',['--idle=yes','--scripts='+str(ROOT/'tests/test_controls.lua'),'--script-opts=r2root='+str(bundle)],b'PASS controls r4:')
+run('control-tests',['--idle=yes','--scripts='+str(ROOT/'tests/test_controls.lua'),'--script-opts=r2root='+str(bundle)],b'PASS controls r5:')
 sample=out/'script-smoke.y4m';sample.write_bytes(b'YUV4MPEG2 W16 H16 F24:1 Ip A1:1 C420jpeg\n'+(b'FRAME\n'+bytes([100])*256+bytes([128])*128)*72)
 script_dir=bundle/'portable_config/scripts'
 assert not (script_dir/'animejanai_update.lua').exists(), 'obsolete release-page script was packaged'

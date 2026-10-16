@@ -8,6 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="NativePlaybackChecks.cs" />
+    <Compile Remove="SubtitleMenuLayoutChecks.cs" />
     <ProjectReference Include="../../src/player/src/MpvNet.Windows/MpvNet.Windows.csproj" />
   </ItemGroup>
 </Project>

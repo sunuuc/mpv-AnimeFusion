@@ -25,7 +25,7 @@ python tools/standalone/build.py stage
 
 `build.py package` 同时生成解压版和 `mpv-AnimeFusion-版本-setup-x64.exe`。安装定义为 `src/player/src/Setup/Inno/inno-setup.iss`，通过 `tools/standalone/build_installer.py` 调用固定版本 Inno Setup 6.7.3。编译器和解包工具均下载后校验 SHA-256，仅解包到依赖缓存，不向系统安装构建工具。
 
-安装身份独立于原版 AnimeJaNai；默认按用户安装到 `%LOCALAPPDATA%\Programs\mpv-AnimeFusion`，升级沿用已选择的目录。程序、脚本和模块更新；`portable_config` 的根配置、`script-opts` 及 `animejanai.conf` 使用 Inno Setup 的 `onlyifdoesntexist uninsneveruninstall`，只补充缺失默认值，升级和卸载均保留配置。未随包提供的账号、来源记录、模型和个人文件不会被清理。安装包编译后单独执行发行安全扫描，并加入附件清单和校验文件。
+安装身份独立于原版 AnimeJaNai；默认按用户安装到 `%LOCALAPPDATA%\Programs\mpv-AnimeFusion`，升级沿用已选择的目录。程序、脚本和模块更新；`portable_config` 的根配置、`script-opts` 及 `animejanai.conf` 使用 Inno Setup 的 `onlyifdoesntexist uninsneveruninstall`，只补充缺失默认值，升级保留配置。卸载初始化时使用 Inno Setup 原生表单提供三项独立删除选项：个人数据、字幕与弹幕、模型与推理组件，默认全部不勾选。分类数据由卸载事件按本次选择清理，不使用安装阶段求值的 `Check` 条件；静默卸载保留个人数据。程序运行目录、程序资料、着色器缓存及诊断日志通过 `[UninstallDelete]` 正常清理，包括安装后更新或生成、未记入安装日志的程序文件，不递归清空安装根目录。安装包编译后单独执行发行安全扫描，并加入附件清单和校验文件。
 
 已有组装目录可单独编译安装包：
 

@@ -97,6 +97,7 @@ local visible = false
 local timer
 local samples = {}
 local status, status_time = nil, -math.huge
+local filter_errors = {}
 local WINDOW, INTERVAL = 2.0, 0.25
 
 local function reset()
@@ -121,17 +122,25 @@ end
 local function ai_status(now)
     if status and now - status_time < 2 then return status end
     status_time = now
-    local active = false
+    local active
     for _, f in ipairs(mp.get_property_native('vf', {}) or {}) do
-        if f.name == 'animejanai' or f.name == 'vapoursynth' then active = true end
+        if f.name == 'animejanai' or f.name == 'vapoursynth' then active = f;break end
     end
     if not active then status = 'AI 已关闭'; return status end
-    local path = mp.get_property_native('user-data/animejanai/stats-path')
-        or mp.command_native({'expand-path', '~~/../animejanai/currentanimejanai.log'})
+    local path = active.params and active.params.stats
+    path = mp.command_native({'expand-path', path or '~~/../animejanai/currentanimejanai.log'})
     local file = path and io.open(path, 'r')
     status = file and file:read(65536) or nil
     if file then file:close() end
-    if not status or status == '' then status = 'mpv-AnimeFusion 状态暂不可用' end
+    if active.enabled == false or not status or status == '' then
+        if #filter_errors > 0 then
+            status = '超分与补帧失败：\n' .. table.concat(filter_errors, '\n')
+        else
+            status = active.enabled == false and '超分与补帧已停用' or '未读取到超分与补帧状态'
+        end
+    else
+        filter_errors = {}
+    end
     return status
 end
 
@@ -171,6 +180,17 @@ end
 for _, event in ipairs({'start-file', 'file-loaded', 'seek', 'playback-restart', 'end-file'}) do
     mp.register_event(event, reset)
 end
+mp.enable_messages('error')
+mp.register_event('log-message', function(event)
+    if event.prefix ~= 'animejanai' then return end
+    local text = (event.text or ''):gsub('[\r\n]+$', '')
+    if text == '' then return end
+    for _, existing in ipairs(filter_errors) do if existing == text then return end end
+    if #filter_errors >= 3 then table.remove(filter_errors, 1) end
+    filter_errors[#filter_errors + 1] = text
+    status, status_time = nil, -math.huge
+end)
+mp.register_event('start-file', function() filter_errors = {} end)
 mp.observe_property('pause', 'bool', function() reset(); if visible then render() end end)
 mp.observe_property('speed', 'number', reset)
 mp.observe_property('vf', 'native', reset)

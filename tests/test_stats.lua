@@ -23,6 +23,7 @@ local fake = {
         timers[#timers+1]=t; return t
     end,
     register_event=function(n,f) events[n]=f end,
+    enable_messages=function() end,
     observe_property=function(n,_,f) props[n]=f end,
     add_key_binding=function(_,n,f) callbacks[n]=f end,
 }

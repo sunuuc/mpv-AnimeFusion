@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net10.0-windows7.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings><EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <OutputPath>bin/SubtitleMenuLayout/$(Configuration)/</OutputPath>
+    <IntermediateOutputPath>obj/SubtitleMenuLayout/$(Configuration)/</IntermediateOutputPath>
+  </PropertyGroup>
+  <ItemGroup><Compile Include="SubtitleMenuLayoutChecks.cs" /></ItemGroup>
+</Project>

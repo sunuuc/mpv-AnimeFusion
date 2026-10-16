@@ -480,6 +480,16 @@ namespace AnimeJaNaiConfEditor.ViewModels
             throw new ArgumentException(rifeLabel);
         }
 
+        public static bool RifeModelExists(string label, bool ensemble)
+        {
+            var match = Regex.Match(label, @"^RIFE (\d+)\.(\d+)( Lite)?$");
+            if (!match.Success) return false;
+            string filename = $"rife_v{match.Groups[1].Value}.{match.Groups[2].Value}"
+                + (match.Groups[3].Success ? "_lite" : "")
+                + (ensemble ? "_ensemble" : "") + ".onnx";
+            return File.Exists(Path.Combine(DataDir, "rife", filename));
+        }
+
         public static string RifeValueToLabel(string rifeValue)
         {
             string dec;
@@ -1518,6 +1528,7 @@ namespace AnimeJaNaiConfEditor.ViewModels
                 if (!string.IsNullOrEmpty(_rifeModel) && !value.Contains(_rifeModel))
                     value.Add(_rifeModel);
                 this.RaiseAndSetIfChanged(ref _rifeModelList, value);
+                RefreshRifeVariants();
             }
         }
 
@@ -1532,14 +1543,25 @@ namespace AnimeJaNaiConfEditor.ViewModels
                 if (value.Length > 0 && !_rifeModelList.Contains(value))
                     _rifeModelList.Add(value);
                 this.RaiseAndSetIfChanged(ref _rifeModel, value);
+                RefreshRifeVariants();
             }
+        }
+
+        public bool RifeEnsembleAvailable => MainWindowViewModel.RifeModelExists(RifeModel, true);
+        public bool RifeStandardAvailable => MainWindowViewModel.RifeModelExists(RifeModel, false);
+
+        private void RefreshRifeVariants()
+        {
+            this.RaisePropertyChanged(nameof(RifeEnsembleAvailable));
+            this.RaisePropertyChanged(nameof(RifeStandardAvailable));
+            this.RaisePropertyChanged(nameof(RifeEnsemble));
         }
 
         private bool _rifeEnsemble = false;
         [DataMember]
         public bool RifeEnsemble
         {
-            get => _rifeEnsemble;
+            get => RifeEnsembleAvailable && (_rifeEnsemble || !RifeStandardAvailable);
             set => this.RaiseAndSetIfChanged(ref _rifeEnsemble, value);
         }
 

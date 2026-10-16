@@ -192,9 +192,32 @@ function M.layout(pw,ph,dpi,ui_scale,time_width,sync_services)
         seek={x0=0,x1=w,y0=h-90,y1=h-70,y=h-80},title_y=h-140,detail_y=h-104,
         margin=18,compact=true,small=false}
 end
-function M.wrap(value,width,size,maxlines)
+function M.wrap(value,width,size,maxlines,measure)
     local chars=M.chars(value);local out,line,used={},'',0
     maxlines=maxlines or 2
+    if measure then
+        local function fit(first,last,suffix)
+            local low,high,best=first,last,first-1
+            while low<=high do
+                local middle=math.floor((low+high)/2)
+                if measure(table.concat(chars,'',first,middle)..(suffix or ''),size)<=width then
+                    best=middle;low=middle+1
+                else high=middle-1 end
+            end
+            return best
+        end
+        local first=1
+        while first<=#chars do
+            local last=math.max(first,fit(first,#chars))
+            if maxlines>0 and #out==maxlines-1 and last<#chars then
+                out[#out+1]=table.concat(chars,'',first,fit(first,last,'…'))..'…'
+                return out
+            end
+            out[#out+1]=table.concat(chars,'',first,last);first=last+1
+        end
+        if #out==0 then out[1]='' end
+        return out
+    end
     for i,c in ipairs(chars) do
         local cw=(#c>1 and 1 or (c:match('[ilI.,! :;|]') and .3 or .6))*size
         if used+cw>width and line~='' then
@@ -216,6 +239,19 @@ function M.parse_presets(text)
         if id and name and tonumber(id)>=1 and tonumber(id)<=9 then out[tonumber(id)]=name end
     end
     return out
+end
+function M.read_presets(mp)
+    local path='~~/../animejanai/animejanai.conf'
+    for _,filter in ipairs(mp.get_property_native('vf',{}) or {}) do
+        if filter.name=='animejanai' and filter.params and filter.params.conf then
+            path=filter.params.conf;break
+        end
+    end
+    local file=io.open(mp.command_native({'expand-path',path}),'rb')
+    if not file then return {} end
+    local presets=M.parse_presets(file:read(1024*1024))
+    file:close()
+    return presets
 end
 function M.fps_sampler()
     local self={samples={}}
@@ -347,6 +383,13 @@ if not o.accent:match('^%x%x%x%x%x%x$') then o.accent='9F74D0' end
 local THEME,METRICS=core.theme(o.accent),core.metrics
 local ui=mp.create_osd_overlay('ass-events');ui.z=20
 local volume_osd=mp.create_osd_overlay('ass-events');volume_osd.z=25
+local width_overlay=mp.create_osd_overlay('ass-events');width_overlay.hidden=true;width_overlay.compute_bounds=true
+local function measure_text(value,size,w,h)
+    width_overlay.res_x=w;width_overlay.res_y=h
+    width_overlay.data=string.format('{\\rDefault\\an7\\pos(0,0)\\fn%s\\fs%d\\b0\\bord0.8\\shad0\\1a&H00&\\q2}%s',o.font,size,core.escape(value))
+    local bounds=width_overlay:update()
+    return bounds.x1 or 0
+end
 local state={visible=false,x=-1,y=-1,hover=nil,menu=nil,scroll=0,drag=nil,pressed=nil,
     rate=nil,fps=nil,cpu=nil,memory=nil}
 local playback_ready=false
@@ -370,8 +413,7 @@ local samples=core.fps_sampler()
 local WHITE,MUTED,PANEL,ACCENT=THEME.text,THEME.muted,THEME.panel,THEME.accent
 local presets={}
 local function read_presets()
-    local p=mp.command_native({'expand-path','~~/../animejanai/animejanai.conf'})
-    local f=io.open(p,'rb');if f then presets=core.parse_presets(f:read(1024*1024));f:close() end
+    presets=core.read_presets(mp)
 end
 read_presets()
 local function prop(name,default) return mp.get_property_native(name,default) end
@@ -728,14 +770,32 @@ return function(c)
             local p=kind=='audio' and 'aid' or 'sid'
             local selected=tostring(c.prop(p,'no'))
             row('关闭',function()c.set(p,'no')end,selected=='no',{stay=true,key=p..':no'})
+            local tracks={};local metadata=typ=='sub' and c.subtitle_tracks() or {}
+            local danmaku=c.prop('user-data/player_ui/danmaku',{}) or {}
             for _,t in ipairs(c.prop('track-list',{}) or {}) do
-                local danmaku=c.prop('user-data/player_ui/danmaku',{}) or {}
-                if t.type==typ and not (typ=='sub' and t.id==danmaku.track) then local id=t.id
-                    row(track_name(t),function()
-                        c.set_number(p,id)
-                        if p=='sid' then c.set_bool('sub-visibility',true) end
-                    end,selected==tostring(id),{stay=true,key=p..':'..id,wrap=typ=='sub' and 0 or nil})
+                if t.type==typ and not (typ=='sub' and t.id==danmaku.track) then
+                    tracks[#tracks+1]={track=t,info=metadata[tostring(t.id)] or {},order=#tracks+1}
                 end
+            end
+            table.sort(tracks,function(a,b)
+                local ap,bp=a.info.managed and a.info.pinned or false,b.info.managed and b.info.pinned or false
+                if ap~=bp then return ap end
+                return a.order<b.order
+            end)
+            for _,entry in ipairs(tracks) do
+                local t,info=entry.track,entry.info;local id=t.id
+                local extra={stay=true,key=p..':'..id,wrap=typ=='sub' and 0 or nil}
+                if info.managed then
+                    extra.actions={
+                        {id='pin',text='F',selected=info.pinned,stay=true,
+                            fn=function()c.command('script-message-to','mpvnet','pin-subtitle',tostring(id))end},
+                        {id='delete',icon='delete',fn=function()c.command('script-message-to','mpvnet','delete-subtitle',tostring(id))end},
+                    }
+                end
+                row(track_name(t),function()
+                    c.set_number(p,id)
+                    if p=='sid' then c.set_bool('sub-visibility',true) end
+                end,selected==tostring(id),extra)
             end
             separator()
             if kind=='sub' then row('搜索字幕',function()c.command('script-message-to','mpvnet','show-subtitle-search')end) end
@@ -743,7 +803,10 @@ return function(c)
         elseif kind=='danmaku' then
             local d=c.prop('user-data/player_ui/danmaku',{}) or {}
             row('关闭',function()if d.enabled then c.command('script-message','player_ui-danmaku-toggle')end end,not d.loaded or not d.enabled,{stay=true})
-            if d.autoload_state=='loading' then
+            if not d.loaded and d.autoload_state=='unconfigured' then
+                row('请先添加弹幕线路',nil,false,{status=true})
+                row('配置弹幕线路',function()c.command('script-message','player_ui-danmaku-manage')end)
+            elseif d.autoload_state=='loading' then
                 row('自动加载中…',nil,false,{status=true,spinner=true})
             elseif not d.loaded and d.autoload_state=='error' then
                 row('自动加载失败',nil,false,{status=true})
@@ -831,19 +894,27 @@ return function(c)
         ['audio-settings']='音频设置',stats='统计信息',chapters='章节',
         bangumi='Bangumi',trakt='Trakt',mal='MyAnimeList',['sync-settings']='同步设置',['bangumi-collection']='收藏',['bangumi-episode']='剧集',['trakt-episode']='剧集',['mal-episode']='剧集'}
     local function width(kind,l)
-        local widths={speed=216,settings=200,sub=344,audio=344,danmaku=312,ai=256,scale=280,stats=440,chapters=368,bangumi=440,trakt=440,mal=440}
+        local widths={speed=216,settings=200,sub=440,audio=344,danmaku=312,ai=256,scale=280,stats=440,chapters=368,bangumi=440,trakt=440,mal=440}
         local u=l.ui or 1
         return math.min((widths[kind] or 344)*u,math.max(1,l.w-2*metrics.menu_margin*u))
     end
-    local function measure(items,w,kind,u)
-        local key=string.format('%s:%.2f:%.3f',kind,w,u)
+    local function action_width(action,u) return 34*u end
+    local function actions_width(actions,u)
+        local width=0
+        for _,action in ipairs(actions or {}) do width=width+action_width(action,u)+6*u end
+        return math.max(0,width-6*u)
+    end
+    local function measure(items,w,kind,u,l)
+        local key=string.format('%s:%.2f:%.3f:%d:%d',kind,w,u,l.w,l.h)
         local cached=measure_cache[key]
         if cached and cached.items==items then return cached.total,cached.rows end
+        local text_width=kind=='sub' and function(value,size)return c.measure_text(value,size,l.w,l.h)end or nil
         local y,rows=0,{}
         for _,r in ipairs(items) do
             local indent=r.icon and metrics.icon_column*u or metrics.row_padding*u+8*u
-            local available=w-indent-30*u-(r.toggle and (metrics.switch_width+16)*u or r.value and core.ass_text_width(r.value,metrics.row_text*u)+16*u or r.hint and 52*u or 0)-(r.target and 28*u or 0)
-            local lines=core.wrap(r.text or '',available,metrics.row_text*u,r.wrap or 2)
+            local right=r.actions and 26*u+actions_width(r.actions,u) or 30*u
+            local available=w-indent-right-(r.toggle and (metrics.switch_width+16)*u or r.value and core.ass_text_width(r.value,metrics.row_text*u)+16*u or r.hint and 52*u or 0)-(r.target and 28*u or 0)
+            local lines=core.wrap(r.text or '',available,metrics.row_text*u,r.wrap or 2,text_width)
             local height=r.h and r.h*u or r.separator and metrics.separator*u or r.slider and metrics.slider*u
                 or math.max(kind=='ai' and 48*u or metrics.row_min*u,
                     #lines*metrics.row_line*u+(r.detail and metrics.row_detail_line*u+5*u or 0)+metrics.row_padding*u)
@@ -861,7 +932,7 @@ return function(c)
     local function makebox(l,kind)
         local u=l.ui or 1
         local title,items=M.data(kind);local w=width(kind,l);local hh=header_height(kind,title,u)
-        local total,rows=measure(items,w,kind,u);local bottom=l.h-(kind=='speed' and metrics.menu_speed_bottom or metrics.menu_bottom)*u
+        local total,rows=measure(items,w,kind,u,l);local bottom=l.h-(kind=='speed' and metrics.menu_speed_bottom or metrics.menu_bottom)*u
         local pad=metrics.menu_padding*u
         local margin=math.min(metrics.menu_margin*u,math.max(0,(l.w-w)/2))
         local max_height=math.max(1,l.h-2*margin)
@@ -906,7 +977,7 @@ return function(c)
                     -- that boundary after DPI scaling even when the anchor is inset.
                     d.clip(0,b.content,l.w,bottom,function()
                         if r.separator then d.rect(b.x0+12*u,yy+entry.height/2,b.x1-12*u,yy+entry.height/2+u,theme.divider,18);return end
-                        local box={id='row-'..index,index=index,x0=b.x0+6*u,x1=b.x1-6*u,y0=math.max(yy,b.content),y1=math.min(y1,bottom),key=r.key or r.text}
+                        local box={id='row-'..index,index=index,x0=b.x0+6*u,x1=b.x1-(r.actions and actions_width(r.actions,u)+22*u or 6*u),y0=math.max(yy,b.content),y1=math.min(y1,bottom),key=r.key or r.text}
                         if r.card then
                             local left=b.x0+120*u;local available=w-140*u
                             d.round(b.x0+20*u,yy+8*u,b.x0+106*u,yy+137*u,5*u,surface,0)
@@ -936,10 +1007,10 @@ return function(c)
                             end
                             return
                         end
-                        local hovered=core.inside(box,s.x,s.y)
+                        local hovered=s.x>=box.x0 and s.x<=b.x1-6*u and s.y>=box.y0 and s.y<=box.y1
                         local picked=(not r.toggle and r.selected) or (r.target and r.target==s.menu)
                         if hovered or picked then
-                            d.round(box.x0+2*u,yy+3*u,box.x1-2*u,y1-3*u,6*u,theme.hover,5)
+                            d.round(box.x0+2*u,yy+3*u,b.x1-8*u,y1-3*u,6*u,theme.hover,5)
                         end
                         if picked then d.round(b.x0+8*u,yy+entry.height/2-12*u,b.x0+11*u,yy+entry.height/2+12*u,1.5*u,accent,0) end
                         if not r.disabled then add(box) end
@@ -977,6 +1048,20 @@ return function(c)
                             elseif r.target then d.text(b.x1-25*u,yy+entry.height/2,27*u,'›',6,theme.secondary,false,nil,.8)
                             elseif r.value then d.text(b.x1-19*u,yy+entry.height/2,metrics.row_text*u,r.value,6,muted,false,nil,.8)
                             elseif r.hint then d.text(b.x1-19*u,yy+entry.height/2,13*u,r.hint,6,muted,false,nil,.8) end
+                            local right=b.x1-18*u
+                            for action_index=#(r.actions or {}),1,-1 do
+                                local action=r.actions[action_index];local width=action_width(action,u)
+                                local cy=yy+entry.height/2;local top,finish=cy-17*u,cy+17*u
+                                local actionbox={id='row-action-'..index..'-'..action.id,index=index,action=action_index,
+                                    key=(r.key or r.text)..':'..action.id,x0=right-width,x1=right,
+                                    y0=math.max(top,b.content),y1=math.min(finish,bottom)}
+                                local hover=core.inside(actionbox,s.x,s.y)
+                                if hover then d.round(right-width,top,right,finish,6*u,theme.hover,0) end
+                                if action.icon then d.icon(action.icon,right-width/2,cy,action.selected or hover,false)
+                                else d.text(right-width/2,cy,28*u,action.text,5,(action.selected or hover) and accent or white,true,nil,.8) end
+                                if actionbox.y1>actionbox.y0 then add(actionbox) end
+                                right=right-width-6*u
+                            end
                         end
                     end)
                 end
@@ -1027,7 +1112,10 @@ return function(c)
             c.command('script-message-to','mpvnet',b.id:gsub('%-logout$','-action'),'logout');M.close()
         elseif b.index then
             local r=M.rows[b.index]
-            if r and r.target then
+            local action=r and b.action and r.actions and r.actions[b.action]
+            if action and action.fn then
+                action.fn();if not action.stay then M.close() end
+            elseif r and r.target then
                 local parent=s.parent or s.menu
                 s.parent_scroll=s.parent and s.parent_scroll or s.scroll
                 c.open(r.target,parent)
@@ -1107,7 +1195,7 @@ end
 end)()({
     state=state,core=core,theme=THEME,accent=ACCENT,prop=prop,num=num,bool=bool,command=cmd,
     account=function(provider)return provider=='mal' and mal_account or provider=='trakt' and trakt_account or bangumi_account end,
-    subtitle_tracks=function()return subtitle_tracks end,
+    subtitle_tracks=function()return subtitle_tracks end,measure_text=measure_text,
     sync_services=function()return sync_services end,
     set=mp.set_property,set_number=mp.set_property_number,set_bool=mp.set_property_bool,
     read_presets=read_presets,presets=function()return presets end,current_slot=current_slot,select_slot=ai_select,
@@ -1226,6 +1314,7 @@ icons.mal=icons.bangumi
 icons.logout='m 3 3 l 16 3 16 6 6 6 6 26 16 26 16 29 3 29 m 13 14 l 25 14 20 9 22 7 31 16 22 25 20 23 25 18 13 18'
 icons.settings=icons.ai
 icons.plus='m 15 4 l 18 4 18 14 28 14 28 17 18 17 18 28 15 28 15 17 5 17 5 14 15 14'
+icons.delete='m 13 6.25 l 19 6.25 19 8.5 13 8.5 m 7.75 9.25 l 24.25 9.25 24.25 11.5 7.75 11.5 m 10 13 l 22 13 20.5 25.75 11.5 25.75 m 13 15.25 l 13 22.75 14.5 22.75 14.5 15.25 m 17.5 15.25 l 17.5 22.75 19 22.75 19 15.25'
 icons.info='m 16 1 b 7 1 1 7 1 16 b 1 25 7 31 16 31 b 25 31 31 25 31 16 b 31 7 25 1 16 1 m 14 14 l 14 25 18 25 18 14 m 14 7 l 14 11 18 11 18 7'
 local output={}
 local clip_region
@@ -1724,6 +1813,6 @@ mp.register_event('end-file',function()
 end)
 mp.register_event('shutdown',function()
     if metrics.reset then metrics.reset() end
-    remove_avatar();menus.shutdown();kill(timed_pause_timer);kill(render_timer);kill(hide_timer);kill(pulse);kill(network_timer);kill(clock_timer);kill(loading_timer);kill(volume_osd_timer);ui:remove();volume_osd:remove();bind_mouse(false)
+    remove_avatar();menus.shutdown();kill(timed_pause_timer);kill(render_timer);kill(hide_timer);kill(pulse);kill(network_timer);kill(clock_timer);kill(loading_timer);kill(volume_osd_timer);ui:remove();volume_osd:remove();width_overlay:remove();bind_mouse(false)
 end)
 show()

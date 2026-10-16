@@ -217,6 +217,12 @@ public partial class DanmakuSearchWindow : Window
         SearchButton.IsEnabled = _sources.Any(x => x.Index > 0);
         if (hasItems) return;
 
+        if (!_sources.Any(x => x.Index > 0))
+        {
+            EmptyHeading.Text = "请先添加弹幕线路";
+            EmptyDescription.Text = "";
+            return;
+        }
         if (episodesView)
         {
             bool loading = Status.Text.Contains("获取剧集列表中", StringComparison.Ordinal);
@@ -225,12 +231,7 @@ public partial class DanmakuSearchWindow : Window
             return;
         }
 
-        if (_sources.Count == 0)
-        {
-            EmptyHeading.Text = "还没有弹幕线路";
-            EmptyDescription.Text = "搜索弹幕需要先配置线路。";
-        }
-        else if (_pendingSearches > 0)
+        if (_pendingSearches > 0)
         {
             EmptyHeading.Text = "正在搜索作品";
             EmptyDescription.Text = "";
@@ -432,16 +433,16 @@ public partial class DanmakuSearchWindow : Window
 
     void Search(bool refresh = false)
     {
+        if (!_sources.Any(x => x.Index > 0))
+        {
+            Status.Text = "请先添加弹幕线路";
+            UpdateEmptyState();
+            return;
+        }
         string keyword = SearchBox.Text.Trim();
         if (keyword.Length < 2)
         {
             Status.Text = "请输入至少两个字的作品名。";
-            UpdateEmptyState();
-            return;
-        }
-        if (_sources.Count == 0 || !_sources.Any(x => x.Index > 0))
-        {
-            Status.Text = "还没有可搜索的弹幕线路。";
             UpdateEmptyState();
             return;
         }

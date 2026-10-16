@@ -1,0 +1,38 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="MpvNet.Windows.WPF.SubtitleArchiveNamesWindow"
+        Title="确认字幕文件名" Style="{StaticResource MatchWindow}" Width="640"
+        SizeToContent="Height" MaxHeight="760" WindowStartupLocation="CenterOwner">
+    <Window.Resources>
+        <Style TargetType="ComboBox" BasedOn="{StaticResource MatchComboBox}" />
+    </Window.Resources>
+    <Grid Margin="22">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <TextBlock Text="请选择显示正确的文件名。取消后保留原始字幕包。"
+                   TextWrapping="Wrap" Margin="0,0,0,14" />
+        <ScrollViewer Grid.Row="1" MaxHeight="500" VerticalScrollBarVisibility="Auto">
+            <ItemsControl ItemsSource="{Binding Files}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Margin="0,0,0,18">
+                            <TextBlock Text="{Binding Label}" FontWeight="SemiBold" Margin="0,0,0,6" />
+                            <ComboBox ItemsSource="{Binding Options}" DisplayMemberPath="Encoding"
+                                      SelectedItem="{Binding Selected, Mode=TwoWay}" />
+                            <TextBlock Text="{Binding Selected.Name}" TextWrapping="Wrap" Margin="0,8,0,0" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+        <TextBlock Grid.Row="2" x:Name="Status" Style="{StaticResource MatchStatusText}" />
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button Content="继续解压" IsDefault="True" Click="Continue_Click" Margin="0,0,8,0" />
+            <Button Content="取消" IsCancel="True" />
+        </StackPanel>
+    </Grid>
+</Window>

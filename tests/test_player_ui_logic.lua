@@ -128,6 +128,11 @@ local function suite()
   set_property_bool=function(n,v)props[n]=v;return true end,set_property=function(n,v)props[n]=v;return true end,
    create_osd_overlay=function()
     return {update=function(self)
+      if self.compute_bounds then
+       assert(self.hidden,'text measurement remains invisible')
+       local size=tonumber(self.data:match('\\fs(%d+)'))
+       return {x0=0,y0=0,x1=core.ass_text_width(self.data:match('^%b{}(.*)$'),size)*.8,y1=size}
+      end
       if self.z==20 then player_overlay_data=self.data elseif self.z==25 then volume_overlay_data=self.data end
      end,remove=function(self)
       if self.z==20 then player_overlay_data=nil elseif self.z==25 then volume_overlay_data=nil end

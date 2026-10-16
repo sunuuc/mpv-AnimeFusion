@@ -58,10 +58,212 @@ static class Program
             { using var stream=archive.CreateEntry(name).Open();stream.Write(Encoding.UTF8.GetBytes("1\n00:00:00,000 --> 00:00:01,000\nfixture\n")); }
         return bytes.ToArray();
     }
+    static void LibraryChecks()
+    {
+        static MpvNet.Windows.Trakt.TraktMedia Media(string title) => MpvNet.Windows.Trakt.TraktMedia.Parse(title, "", new Dictionary<string, string>());
+        string directory = Path.Combine(Root, "import-source"); Directory.CreateDirectory(directory);
+        string[] names = ["[Group] Library Fixture S01E01.sc.ass", "[Group] Library Fixture S01E02.sc.ass", "[Group] Library Fixture S02E01.sc.ass",
+            "[Group] Library Fixture S01E01.tc.ass", "[Other] Library Fixture S01E03.sc.ass", "[Group] Other Fixture S01E02.sc.ass"];
+        foreach (string name in names) File.WriteAllText(Path.Combine(directory, name), "原始字幕\n" + name);
+        var library = new SubtitleLibrary(Path.Combine(Root, "import-library"));
+        var first = Media("Library Fixture S01E01");
+        string original = Path.Combine(directory, names[0]);
+        string imported = library.Import(first, original);
+        Check(imported != original && File.ReadAllBytes(imported).SequenceEqual(File.ReadAllBytes(original)), "Local import preserves original bytes in a managed copy");
+        Check(Path.GetFileName(imported) == names[0] && File.Exists(original), "Local import preserves the original filename and source file");
+        Check(library.Tracks(first).Count == 2 && library.Results(first.Title).Single().Files.Count == 4, "Local import includes matching sibling episodes and variants without another work or release group");
+        Check(library.Tracks(Media("Library Fixture S01E03")).Count == 0, "A different release group does not enter the imported set");
+        library.SetPinned(first.Title, imported, true);
+        library.Remember(first.Title, 1, library.Tracks(first).Single(track => track.Path.EndsWith(".tc.ass")).Path);
+        Check(library.Tracks(first).First().Pinned && library.Tracks(first).First().Path == imported, "Pinned version sorts before the ordinary remembered version");
+        Check(new SubtitleLibrary(library.Root).Tracks(Media("Library Fixture S01E02")).Single().Pinned, "Pinned set survives reopening and follows the next matching episode");
+        Check(library.Tracks(Media("Library Fixture S02E01")).Single().Pinned, "A pinned set follows an explicitly numbered second season");
+        Check(library.Tracks(Media("Library Fixture S02E02")).Count == 0, "Pinned set cannot substitute another season or episode when the requested episode is absent");
+        Check(library.Import(first, imported) == imported && library.Results(first.Title).Single().Files.Count == 4, "Reimporting a current managed subtitle does not duplicate it");
+        try { library.Import(first, Path.Combine(directory, names[1])); throw new Exception("Mismatched episode should fail"); }
+        catch (SubtitleServiceException) { Check(library.Tracks(first).Count == 2, "An explicitly mismatched import is rejected before changing the current episode library"); }
+        library.SetPinned(first.Title, imported, false);
+        Check(library.Tracks(first).All(track => !track.Pinned), "Unpin restores ordinary version selection");
+        library.SetPinned(first.Title, imported, true);
+        Check(library.Remove(first.Title, imported, false).SequenceEqual([imported]) && File.Exists(imported) && File.Exists(original), "Default deletion removes only its library record and retains local and source files");
+        Check(library.Tracks(first).Count == 1 && library.Tracks(Media("Library Fixture S01E02")).Single().Pinned, "Deleting one row preserves other episodes and their set pin");
+        string second = library.Tracks(Media("Library Fixture S01E02")).Single().Path;
+        var deletedSecond = library.Remove(first.Title, second, true);
+        Check(!File.Exists(second) && !File.Exists(Path.Combine(directory, names[1])) && File.Exists(Path.Combine(directory, names[2])),
+            "Confirmed local deletion removes both the selected managed subtitle and its original source, preserving another episode");
+        Check(deletedSecond.ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals([second, Path.Combine(directory, names[1])]),
+            "Deletion returns both subtitle paths so an explicitly loaded original track can also be removed");
+
+        var movie = Media("Standalone Movie (2013)");
+        string stored = Path.Combine(library.SeasonDirectory(movie.Title, 0), "Assrt-fixture", "第一章.ass");
+        Directory.CreateDirectory(Path.GetDirectoryName(stored)!); File.WriteAllText(stored, "第一章");
+        var storedResult = new SubtitleResult(SubtitleSource.Assrt, "fixture", "电影合集", "", "", []);
+        string archive = library.ArchivePath(new(movie.Title, 0, null, ""), storedResult with { DownloadName = "原始字幕包.zip" });
+        Directory.CreateDirectory(Path.GetDirectoryName(archive)!); File.WriteAllBytes(archive, Zip(["第一章.ass", "第二章.ass"]));
+        string unrelatedArchive = library.ArchivePath(new(movie.Title, 0, null, ""), storedResult with { Id = "other", DownloadName = "其他字幕包.zip" });
+        Directory.CreateDirectory(Path.GetDirectoryName(unrelatedArchive)!); File.WriteAllBytes(unrelatedArchive, Zip(["其他字幕.ass"]));
+        library.Save(new(movie.Title, 0, null, ""), storedResult, new(SubtitleSource.Assrt, "fixture", 0, "第一章.ass", ""), stored, true);
+        string otherMovie = Path.Combine(Path.GetDirectoryName(stored)!, "第二章.ass"); File.WriteAllText(otherMovie, "第二章");
+        library.Save(new(movie.Title, 0, null, ""), storedResult, new(SubtitleSource.Assrt, "fixture", 0, "第二章.ass", ""), otherMovie, true);
+        Check(library.Tracks(movie).Count == 0, "A special shelf does not appear as a movie before explicit association");
+        string movieCopy = library.Import(movie, stored);
+        Check(movieCopy != stored && File.Exists(movieCopy) && File.Exists(stored), "An existing special shelf subtitle is copied into the explicitly selected movie shelf");
+        Check(library.Tracks(movie).Single().Path == movieCopy, "Associating a stored movie subtitle never attaches another movie from the same package");
+        var movieResult = library.Results(movie.Title).Single();
+        Check(library.CurrentFile(new(movie.Title, null, null, ""), movieResult, movieResult.Files)?.LocalPath == movieCopy,
+            "A movie associated from a special shelf can also load from the local search result");
+        library.SetPinned(movie.Title, movieCopy, true);
+        Check(library.Tracks(movie).Single().Pinned, "A movie subtitle can be pinned independently of an existing special shelf");
+        var shared = Media("Another Movie");
+        library.Save(new(shared.Title, null, null, ""), storedResult, new(SubtitleSource.Assrt, "fixture", 0, "第一章.ass", ""), movieCopy, true);
+        try { library.Remove(movie.Title, movieCopy, true); throw new Exception("Shared deletion should fail"); }
+        catch (SubtitleServiceException) { Check(File.Exists(movieCopy) && library.Tracks(movie).Count == 1, "Physical deletion refuses a file still referenced by another work without dropping its record"); }
+        library.Remove(shared.Title, movieCopy, false); var deletedMovie = library.Remove(movie.Title, movieCopy, true);
+        Check(!File.Exists(movieCopy) && !File.Exists(stored) && !File.Exists(archive) && File.Exists(unrelatedArchive)
+            && File.Exists(otherMovie) && library.Tracks(movie).Count == 0 && library.Results(movie.Title).Single().Files.Count == 1,
+            "Deleting an associated subtitle removes its original file, source index and package without deleting other extracted subtitles or packages");
+        Check(deletedMovie.ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals([movieCopy, stored]),
+            "Subtitle track removal includes the associated original but excludes the deleted archive");
+
+        string pairs = Path.Combine(Root, "pair-source"); Directory.CreateDirectory(pairs);
+        string idx = Path.Combine(pairs, "Pair Fixture.idx"), sub = Path.ChangeExtension(idx, ".sub");
+        File.WriteAllText(idx, "fixture"); File.WriteAllText(sub, "fixture");
+        var pairMovie = Media("Pair Fixture"); string managedIdx = library.Import(pairMovie, sub);
+        Check(library.Tracks(pairMovie).Single().Path == managedIdx, "IDX and SUB import as one selectable subtitle");
+        Check(library.Remove(pairMovie.Title, managedIdx, true).Count == 4 && !File.Exists(managedIdx) && !File.Exists(Path.ChangeExtension(managedIdx, ".sub"))
+            && !File.Exists(idx) && !File.Exists(sub), "Removing an IDX subtitle deletes both managed and original IDX/SUB companions");
+
+        string changedOriginal = Path.Combine(directory, "Changed Source.srt"); File.WriteAllText(changedOriginal, "original subtitle");
+        var changedMovie = Media("Changed Source"); string changedCopy = library.Import(changedMovie, changedOriginal);
+        File.WriteAllText(changedOriginal, "edited subtitle");
+        try { library.Remove(changedMovie.Title, changedCopy, true); throw new Exception("A changed original must not be deleted"); }
+        catch (SubtitleServiceException error)
+        {
+            Check(error.Message.Contains("已更改") && File.Exists(changedOriginal) && File.Exists(changedCopy)
+                && library.Tracks(changedMovie).Count == 1, "An original changed after import fails deletion before touching files or records");
+        }
+
+        string readonlyOriginal = Path.Combine(directory, "Readonly Source.srt"); File.WriteAllText(readonlyOriginal, "original subtitle");
+        var readonlyMovie = Media("Readonly Source"); string readonlyCopy = library.Import(readonlyMovie, readonlyOriginal);
+        File.SetAttributes(readonlyOriginal, File.GetAttributes(readonlyOriginal) | FileAttributes.ReadOnly);
+        try
+        {
+            try { library.Remove(readonlyMovie.Title, readonlyCopy, true); throw new Exception("A readonly original must prevent partial deletion"); }
+            catch (SubtitleServiceException error)
+            {
+                Check(error.Message.Contains("只读") && File.Exists(readonlyOriginal) && File.Exists(readonlyCopy)
+                    && new SubtitleLibrary(library.Root).Tracks(readonlyMovie).Single().Path == readonlyCopy,
+                    "A readonly original fails before deleting the managed copy or saved record, so deletion remains retryable");
+            }
+        }
+        finally { File.SetAttributes(readonlyOriginal, File.GetAttributes(readonlyOriginal) & ~FileAttributes.ReadOnly); }
+
+        string sharedOriginal = Path.Combine(directory, "Shared Source.srt"); File.WriteAllText(sharedOriginal, "shared subtitle");
+        var sharedMovie = Media("Shared Source"); string sharedCopy = library.Import(sharedMovie, sharedOriginal);
+        var sharedResult = library.Results(sharedMovie.Title).Single();
+        string sharedSeasonCopy = library.FilePath(new(sharedMovie.Title, 0, null, ""), sharedResult, "Shared Source.srt");
+        Directory.CreateDirectory(Path.GetDirectoryName(sharedSeasonCopy)!); File.Copy(sharedCopy, sharedSeasonCopy);
+        library.Save(new(sharedMovie.Title, 0, null, ""), sharedResult, new(SubtitleSource.Assrt, sharedResult.Id, 0, "Shared Source.srt", ""),
+            sharedSeasonCopy, true, imported: true, originalPath: sharedOriginal,
+            originalHash: Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(sharedOriginal))));
+        try { library.Remove(sharedMovie.Title, sharedCopy, true); throw new Exception("A shared source must not be deleted"); }
+        catch (SubtitleServiceException error)
+        {
+            Check(error.Message.Contains("仍被") && File.Exists(sharedOriginal) && File.Exists(sharedCopy) && File.Exists(sharedSeasonCopy),
+                "Shared original source references in another shelf of the same work prevent physical deletion");
+        }
+        library.Remove(sharedMovie.Title, sharedSeasonCopy, false);
+        var anotherSharedMovie = Media("Other Shared Movie"); string anotherSharedCopy = library.Import(anotherSharedMovie, sharedOriginal);
+        try { library.Remove(sharedMovie.Title, sharedCopy, true); throw new Exception("An original used by another work must not be deleted"); }
+        catch (SubtitleServiceException)
+        {
+            Check(File.Exists(sharedOriginal) && File.Exists(sharedCopy) && File.Exists(anotherSharedCopy),
+                "An external original used by another work is protected even when the managed copies differ");
+        }
+        library.Remove(anotherSharedMovie.Title, anotherSharedCopy, false);
+        new SubtitleLibrary(library.Root).Remove(sharedMovie.Title, sharedCopy, true);
+        Check(!File.Exists(sharedOriginal) && !File.Exists(sharedCopy), "Original source identity survives reopening and deletes once no other subtitle references it");
+
+        string invalidOriginal = Path.Combine(directory, "Invalid Original.srt"); File.WriteAllText(invalidOriginal, "subtitle");
+        var invalidMovie = Media("Invalid Original"); string invalidCopy = library.Import(invalidMovie, invalidOriginal);
+        string anotherDirectory = Path.Combine(Root, "unrelated-source"); Directory.CreateDirectory(anotherDirectory);
+        string unrelatedSource = Path.Combine(anotherDirectory, Path.GetFileName(invalidOriginal)); File.Copy(invalidOriginal, unrelatedSource);
+        string invalidIndex = Path.Combine(library.SeasonDirectory(invalidMovie.Title, null), "subtitles.json");
+        var invalidShelf = System.Text.Json.JsonSerializer.Deserialize<SubtitleShelf>(File.ReadAllBytes(invalidIndex))!;
+        invalidShelf = invalidShelf with { Packages = invalidShelf.Packages.Select(package => package with
+            { Files = package.Files.Select(file => file with { OriginalPath = unrelatedSource }).ToArray() }).ToArray() };
+        File.WriteAllBytes(invalidIndex, System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(invalidShelf));
+        try { library.Remove(invalidMovie.Title, invalidCopy, true); throw new Exception("An unrelated source path must not be deleted"); }
+        catch (SubtitleServiceException)
+        {
+            Check(File.Exists(invalidCopy) && File.Exists(invalidOriginal) && File.Exists(unrelatedSource),
+                "Matching filenames and bytes cannot authorize deletion outside the recorded import family directory");
+        }
+
+        string variants = Path.Combine(Root, "variant-source"); Directory.CreateDirectory(variants);
+        string[] versions = ["en", "ja", "sc", "tc", "full.en", "signs.en"];
+        foreach (int episode in new[] { 1, 2 })
+            foreach (string version in versions)
+                File.WriteAllText(Path.Combine(variants, $"[Group] Variant Fixture S01E{episode:00}.{version}.srt"), "fixture");
+        var variantMedia = Media("Variant Fixture S01E01");
+        library.Import(variantMedia, Path.Combine(variants, "[Group] Variant Fixture S01E01.en.srt"));
+        Check(library.Tracks(variantMedia).Count == versions.Length, "Parallel languages and named editions all enter the imported set");
+        Check(library.Tracks(variantMedia).Single(track => track.Title.EndsWith("S01E01.en.srt")).Language == "en"
+            && library.Tracks(variantMedia).Single(track => track.Title.EndsWith("S01E01.ja.srt")).Language == "ja",
+            "Imported track language follows its filename rather than a shared package language");
+        foreach (string version in versions)
+        {
+            var chosen = library.Tracks(variantMedia).Single(track => track.Title.EndsWith("S01E01." + version + ".srt"));
+            library.SetPinned(variantMedia.Title, chosen.Path, true);
+            Check(library.Tracks(variantMedia).Single(track => track.Pinned).Path == chosen.Path,
+                "Only the chosen imported language and edition is pinned: " + version);
+            var nextVariant = new SubtitleLibrary(library.Root).Tracks(Media("Variant Fixture S01E02"));
+            Check(nextVariant.Single(track => track.Pinned).Title.EndsWith("S01E02." + version + ".srt"),
+                "Reopening and advancing keeps the chosen imported language and edition: " + version);
+            library.Remember(variantMedia.Title, 1, chosen.Path);
+            var local = library.Results(variantMedia.Title).Single();
+            Check(library.CurrentFile(new(variantMedia.Title, 1, 2, ""), local, local.Files)!.Name.EndsWith("S01E02." + version + ".srt"),
+                "Explicit local search reuse respects the imported language and edition: " + version);
+        }
+        var onlineVariants = new SubtitleResult(SubtitleSource.Assrt, "versions", "字幕包", "多语言", "", []) { LanguageCode = "en,ja,zh" };
+        var onlineMedia = Media("Downloaded Fixture S01E01");
+        foreach (int episode in new[] { 1, 2 })
+            foreach (string version in versions)
+            {
+                var query = new SubtitleQuery(onlineMedia.Title, 1, episode, "");
+                string filename = $"[Group] Downloaded Fixture S01E{episode:00}.{version}.srt";
+                string filePath = library.FilePath(query, onlineVariants, filename);
+                Directory.CreateDirectory(Path.GetDirectoryName(filePath)!); File.WriteAllText(filePath, "fixture");
+                library.Save(query, onlineVariants, new(SubtitleSource.Assrt, onlineVariants.Id, 0, filename, ""), filePath, true);
+            }
+        foreach (string version in versions)
+        {
+            string chosen = library.Tracks(onlineMedia).Single(track => track.Title.EndsWith("S01E01." + version + ".srt")).Path;
+            library.SetPinned(onlineMedia.Title, chosen, true);
+            Check(new SubtitleLibrary(library.Root).Tracks(Media("Downloaded Fixture S01E02")).Single(track => track.Pinned).Title.EndsWith("S01E02." + version + ".srt"),
+                "Downloaded sets also pin exactly one language and edition: " + version);
+        }
+        string titledDirectory = Path.Combine(Root, "episode-title-source"); Directory.CreateDirectory(titledDirectory);
+        string[] titledNames = ["[Group] Titled Fixture - 01 - The Beginning.en.srt", "[Group] Titled Fixture - 02 - The Next Step.en.srt"];
+        foreach (string name in titledNames) File.WriteAllText(Path.Combine(titledDirectory, name), "fixture");
+        var titledMedia = Media("Titled Fixture S01E01");
+        string titledPath = library.Import(titledMedia, Path.Combine(titledDirectory, titledNames[0]));
+        library.SetPinned(titledMedia.Title, titledPath, true);
+        Check(new SubtitleLibrary(library.Root).Tracks(Media("Titled Fixture S01E02")).Single().Pinned,
+            "Episode-specific titles do not change the pinned set identity");
+        foreach (string title in new[] { "It", "No", "No Subtitle", "It Follows" })
+        {
+            string filePath = Path.Combine(titledDirectory, title + ".srt"); File.WriteAllText(filePath, "fixture");
+            var media = Media(title); library.Import(media, filePath);
+            Check(library.Tracks(media).Single().Language.Length == 0, "Ordinary title words cannot invent an imported language: " + title);
+        }
+    }
     static async Task Main(string[] args)
     {
         try
         {
+            LibraryChecks();
+            if (args.Contains("--library-only")) { Console.WriteLine($"Subtitle library checks passed: {_checks}; no desktop interaction or network access."); return; }
             var rootStore=Store("direct-root");
             Check(rootStore.Root==Path.Combine(Root,"direct-root")&&!Directory.Exists(Path.Combine(rootStore.Root,"Downloads")),"Subtitle storage uses Subtitles directly without a Downloads child");
             var directLibrary=new SubtitleLibrary(rootStore.Root);
