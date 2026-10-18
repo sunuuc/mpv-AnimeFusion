@@ -125,7 +125,7 @@ namespace AnimeJaNaiConfEditor.Views
                         {
                             Title = AnimeJaNai.Localization.UiText.T("Confirm Full Conf Import"),
                             ShowProgressBar = false,
-                            Content = AnimeJaNai.Localization.UiText.T("The following full conf file will be imported. All configuration settings will be backed up and then all configuration settings for ALL PROFILES will be replaced with the imported conf file.\n\n") +
+                            Content = AnimeJaNai.Localization.UiText.T("Back up and replace all profiles with this file?\n\n") +
     inPath,
                             Buttons =
             {
@@ -203,7 +203,7 @@ namespace AnimeJaNaiConfEditor.Views
                             {
                                 Title = AnimeJaNai.Localization.UiText.T("Confirm Profile Conf Import"),
                                 ShowProgressBar = false,
-                                Content = AnimeJaNai.Localization.UiText.F($"The following profile conf file will be imported to the current profile {vm.CurrentSlot.ProfileName}. All configuration settings will be backed up and then all configuration settings for the current profile {vm.CurrentSlot.ProfileName} will be overwritten.\n\n") +
+                                Content = AnimeJaNai.Localization.UiText.F($"Back up the configuration and replace profile {vm.CurrentSlot.ProfileName} with this file?\n\n") +
                                 inPath,
                                 Buttons =
                             {
@@ -259,7 +259,7 @@ namespace AnimeJaNaiConfEditor.Views
                         {
                             Title = AnimeJaNai.Localization.UiText.T("Confirm Profile Conf Import"),
                             ShowProgressBar = false,
-                            Content = AnimeJaNai.Localization.UiText.F($"The profile {vm.SelectedProfileToClone.ProfileName} will be cloned to the current profile {vm.CurrentSlot.ProfileName}. All configuration settings will be backed up and then all configuration settings for the current profile {vm.CurrentSlot.ProfileName} will be overwritten."),
+                            Content = AnimeJaNai.Localization.UiText.F($"Back up the configuration and replace profile {vm.CurrentSlot.ProfileName} with {vm.SelectedProfileToClone.ProfileName}?"),
                             Buttons =
                         {
                             new FATaskDialogButton(AnimeJaNai.Localization.UiText.T("OK"), FATaskDialogStandardResult.OK),

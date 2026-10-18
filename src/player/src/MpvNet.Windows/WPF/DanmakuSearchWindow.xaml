@@ -29,6 +29,10 @@
             <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
         <Style x:Key="ResultListBoxItem" TargetType="ListBoxItem" BasedOn="{StaticResource MatchResultItem}" />
+        <Style x:Key="AliasItem" TargetType="ListBoxItem" BasedOn="{StaticResource MatchResultItem}">
+            <Setter Property="Padding" Value="10,8" />
+            <Setter Property="Margin" Value="0,1" />
+        </Style>
         <Style x:Key="ResultGroupItem" TargetType="GroupItem">
             <Setter Property="Template">
                 <Setter.Value>
@@ -66,12 +70,41 @@
 
             <Grid Grid.Row="1" Margin="0,0,0,10">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                <Grid>
+                <Grid x:Name="SearchField">
                     <TextBox x:Name="SearchBox" Style="{StaticResource SearchTextBox}" MaxLength="120"
-                             TextChanged="SearchBox_TextChanged" KeyDown="SearchBox_KeyDown" />
-                    <TextBlock x:Name="SearchPlaceholder" Text="搜索作品名称" Margin="14,0,12,0"
+                             Padding="13,9,48,9" TextChanged="SearchBox_TextChanged" PreviewKeyDown="SearchBox_KeyDown" />
+                    <TextBlock x:Name="SearchPlaceholder" Text="搜索作品名称" Margin="14,0,48,0"
                                VerticalAlignment="Center" Foreground="{Binding Theme.Foreground2}"
                                IsHitTestVisible="False" />
+                    <Button x:Name="AliasesButton" Width="38" MinWidth="0" Padding="4" Margin="4"
+                            HorizontalAlignment="Right" Background="Transparent" Foreground="{Binding Theme.Foreground2}"
+                            ToolTip="选择作品别名" AutomationProperties.Name="选择作品别名"
+                            PreviewMouseLeftButtonDown="Aliases_PreviewMouseLeftButtonDown" Click="Aliases_Click">
+                        <Viewbox Width="28" Height="28">
+                            <Canvas Width="30" Height="30">
+                                <Path Data="M 3,12 A 12,12 0 0 1 25,7 M 25,2 L 25,7 L 20,7 M 27,18 A 12,12 0 0 1 5,23 M 5,28 L 5,23 L 10,23 M 19,19 L 23,23"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                      StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                                <Ellipse Canvas.Left="8.5" Canvas.Top="8.5" Width="12" Height="12" StrokeThickness="1.8"
+                                         Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                            </Canvas>
+                        </Viewbox>
+                    </Button>
+                    <Popup x:Name="AliasesPopup" Placement="Bottom" PlacementTarget="{Binding ElementName=SearchField}"
+                           StaysOpen="False" AllowsTransparency="True" VerticalOffset="4" PreviewKeyDown="Aliases_KeyDown">
+                        <Border Width="{Binding ActualWidth, ElementName=SearchField}" Padding="4" CornerRadius="5"
+                                Background="{Binding Theme.MenuBackground}" BorderBrush="{Binding Theme.MenuHighlight}" BorderThickness="1">
+                            <StackPanel>
+                                <ListBox x:Name="AliasesList" Style="{StaticResource MatchList}" ItemContainerStyle="{StaticResource AliasItem}"
+                                         MaxHeight="240" PreviewMouseLeftButtonUp="Alias_Click">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate><TextBlock Text="{Binding}" TextWrapping="Wrap" /></DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                                <TextBlock x:Name="AliasesStatus" Margin="10,8" Foreground="{Binding Theme.Foreground2}" Visibility="Collapsed" />
+                            </StackPanel>
+                        </Border>
+                    </Popup>
                 </Grid>
                 <Button x:Name="SearchButton" Grid.Column="1" Content="搜索"
                         IsDefault="True" Margin="10,0,0,0" Click="Search_Click" />

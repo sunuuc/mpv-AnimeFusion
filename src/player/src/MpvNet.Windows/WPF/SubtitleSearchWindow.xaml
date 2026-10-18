@@ -1,5 +1,6 @@
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:hc="clr-namespace:HandyControl.Controls"
         x:Class="MpvNet.Windows.WPF.SubtitleSearchWindow"
         Title="搜索字幕" Width="560" Height="620" MinWidth="500" MinHeight="430"
         ShowInTaskbar="False" WindowStartupLocation="CenterOwner" WindowStyle="None" ResizeMode="NoResize"
@@ -10,15 +11,28 @@
             <Setter Property="Padding" Value="12,6" />
             <Setter Property="Margin" Value="0,0,7,0" />
         </Style>
+        <Style x:Key="AliasItem" TargetType="ListBoxItem" BasedOn="{StaticResource MatchResultItem}">
+            <Setter Property="Padding" Value="10,8" />
+            <Setter Property="Margin" Value="0,1" />
+        </Style>
+        <Style x:Key="SearchSection" TargetType="ListBoxItem">
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="IsTabStop" Value="False" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Template">
+                <Setter.Value><ControlTemplate TargetType="ListBoxItem">
+                    <ContentPresenter HorizontalAlignment="Stretch" />
+                </ControlTemplate></Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
     <Border Margin="1" CornerRadius="8" Background="{Binding Theme.Background}"
             BorderBrush="{Binding Theme.MenuBackground}" BorderThickness="1">
         <Border.Effect><DropShadowEffect BlurRadius="12" ShadowDepth="2" Opacity="0.18" /></Border.Effect>
         <Grid Margin="18,16,18,15">
             <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" /><RowDefinition Height="*" />
+                <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
             <Grid Margin="2,0,0,13">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
@@ -27,35 +41,100 @@
                 </StackPanel>
                 <Button Grid.Column="1" Content="来源设置" Click="Settings_Click" VerticalAlignment="Center" />
             </Grid>
-            <Grid Grid.Row="1" Margin="0,0,0,10">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                <TextBox x:Name="SearchBox" Style="{StaticResource MatchTextBox}" MaxLength="160"
-                         KeyDown="SearchBox_KeyDown" Padding="13,9" />
-                <Button Grid.Column="1" Content="搜索" Margin="10,0,0,0" Click="Search_Click" />
-            </Grid>
-            <Grid x:Name="SourceRow" Grid.Row="2" Margin="0,0,0,10">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="58" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                <TextBlock Text="来源" Foreground="{Binding Theme.Foreground2}" VerticalAlignment="Center" />
-                <WrapPanel x:Name="SourceChips" Grid.Column="1">
-                    <Button Content="全部" Tag="all" Style="{StaticResource FilterButton}" Click="Source_Click" />
-                    <Button Content="ASSRT" Tag="assrt" Style="{StaticResource FilterButton}" Click="Source_Click" />
-                    <Button Content="本地" Tag="local" Style="{StaticResource FilterButton}" Click="Source_Click" />
-                </WrapPanel>
-            </Grid>
-            <Grid x:Name="SeasonRow" Grid.Row="3" Margin="0,0,0,10">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="58" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                <TextBlock Text="季度" Foreground="{Binding Theme.Foreground2}" VerticalAlignment="Center" />
-                <WrapPanel x:Name="SeasonChips" Grid.Column="1" />
-            </Grid>
-            <Grid x:Name="LanguageRow" Grid.Row="4" Margin="0,0,0,10">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="58" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                <TextBlock Text="语言" Foreground="{Binding Theme.Foreground2}" VerticalAlignment="Center" />
-                <WrapPanel x:Name="LanguageChips" Grid.Column="1" />
-            </Grid>
-            <Grid Grid.Row="5">
-                <ListBox x:Name="ResultsList" Style="{StaticResource MatchList}" PreviewMouseLeftButtonUp="Result_Click" KeyDown="Result_KeyDown" BorderThickness="0" Background="Transparent"
+                <ListBox x:Name="ResultsList" Grid.Row="1" Style="{StaticResource MatchList}" PreviewMouseLeftButtonUp="Result_Click" KeyDown="Result_KeyDown" BorderThickness="0" Background="Transparent"
                          ItemContainerStyle="{StaticResource MatchResultItem}" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                          VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling">
+                    <ListBox.ItemsSource>
+                        <CompositeCollection>
+                            <ListBoxItem Style="{StaticResource SearchSection}" x:Name="SearchControls">
+                                <StackPanel>
+                                    <Grid Margin="0,0,0,10">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                        <Grid x:Name="SearchField">
+                                            <TextBox x:Name="SearchBox" Style="{StaticResource MatchTextBox}" MaxLength="160"
+                                                     PreviewKeyDown="SearchBox_KeyDown" TextChanged="SearchBox_TextChanged" Padding="13,9,48,9" />
+                                            <Button x:Name="AliasesButton" Width="38" MinWidth="0" Padding="4" Margin="4"
+                                                    HorizontalAlignment="Right" VerticalAlignment="Stretch" Background="Transparent"
+                                                    Foreground="{Binding Theme.Foreground2}" ToolTip="选择作品别名"
+                                                    AutomationProperties.Name="选择作品别名" Click="Aliases_Click"
+                                                    PreviewMouseLeftButtonDown="Aliases_PreviewMouseLeftButtonDown">
+                                                <Viewbox Width="28" Height="28" IsHitTestVisible="False">
+                                                    <Canvas Width="30" Height="30">
+                                                        <Path Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                              StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                                              Data="M 3,12 A 12,12 0 0 1 25,7 M 25,2 L 25,7 L 20,7 M 27,18 A 12,12 0 0 1 5,23 M 5,28 L 5,23 L 10,23 M 19,19 L 23,23" />
+                                                        <Ellipse Canvas.Left="8.5" Canvas.Top="8.5" Width="12" Height="12" StrokeThickness="1.8"
+                                                                 Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                                                    </Canvas>
+                                                </Viewbox>
+                                            </Button>
+                                            <Popup x:Name="AliasesPopup" Placement="Bottom" PlacementTarget="{Binding ElementName=SearchField}"
+                                                   StaysOpen="False" AllowsTransparency="True" VerticalOffset="4" PreviewKeyDown="Aliases_KeyDown">
+                                                <Border Width="{Binding ActualWidth, ElementName=SearchField}" Padding="4" CornerRadius="5"
+                                                        Background="{Binding Theme.MenuBackground}" BorderBrush="{Binding Theme.MenuHighlight}" BorderThickness="1">
+                                                    <StackPanel>
+                                                        <ListBox x:Name="AliasesList" Style="{StaticResource MatchList}" ItemContainerStyle="{StaticResource AliasItem}"
+                                                                 MaxHeight="240" PreviewMouseLeftButtonUp="Alias_Click">
+                                                            <ListBox.ItemTemplate><DataTemplate>
+                                                                <TextBlock Text="{Binding}" TextWrapping="Wrap" />
+                                                            </DataTemplate></ListBox.ItemTemplate>
+                                                        </ListBox>
+                                                        <TextBlock x:Name="AliasesStatus" Margin="10,8" TextWrapping="Wrap"
+                                                                   Foreground="{Binding Theme.Foreground2}" Visibility="Collapsed" />
+                                                    </StackPanel>
+                                                </Border>
+                                            </Popup>
+                                        </Grid>
+                                        <Button x:Name="SearchButton" Grid.Column="1" Content="搜索" Margin="10,0,0,0" Click="Search_Click" />
+                                    </Grid>
+                                    <Grid x:Name="SourceRow" Margin="0,0,0,10">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="58" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                        <TextBlock Text="来源" Foreground="{Binding Theme.Foreground2}" VerticalAlignment="Center" />
+                                        <hc:ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"
+                                                         CanMouseWheel="False" Focusable="False" PanningMode="HorizontalFirst">
+                                        <StackPanel x:Name="SourceChips" Orientation="Horizontal">
+                                            <Button Content="全部" Tag="all" Style="{StaticResource FilterButton}" Click="Source_Click" />
+                                            <Button Content="ASSRT" Tag="assrt" Style="{StaticResource FilterButton}" Click="Source_Click" />
+                                            <Button Content="ameNZB（测试）" Tag="amenzb" Style="{StaticResource FilterButton}" Click="Source_Click" />
+                                            <Button Content="TsukiHime（测试）" Tag="tsukihime" Style="{StaticResource FilterButton}" Click="Source_Click" />
+                                            <Button Content="本地" Tag="local" Style="{StaticResource FilterButton}" Click="Source_Click" />
+                                        </StackPanel>
+                                        </hc:ScrollViewer>
+                                    </Grid>
+                                    <Grid x:Name="SeasonRow" Margin="0,0,0,10">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="58" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                        <TextBlock Text="季度" Foreground="{Binding Theme.Foreground2}" VerticalAlignment="Center" />
+                                        <WrapPanel x:Name="SeasonChips" Grid.Column="1" />
+                                    </Grid>
+                                    <Grid x:Name="EpisodeRow" Margin="0,0,0,10">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="58" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                        <TextBlock Text="集数" Foreground="{Binding Theme.Foreground2}" VerticalAlignment="Center" />
+                                        <hc:ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"
+                                                         CanMouseWheel="False" Focusable="False" PanningMode="HorizontalFirst">
+                                            <StackPanel x:Name="EpisodeChips" Orientation="Horizontal" />
+                                        </hc:ScrollViewer>
+                                    </Grid>
+                                    <Grid x:Name="LanguageRow" Margin="0,0,0,10">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="58" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                        <TextBlock Text="语言" Foreground="{Binding Theme.Foreground2}" VerticalAlignment="Center" />
+                                        <hc:ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"
+                                                         CanMouseWheel="False" Focusable="False" PanningMode="HorizontalFirst">
+                                            <StackPanel x:Name="LanguageChips" Orientation="Horizontal" />
+                                        </hc:ScrollViewer>
+                                    </Grid>
+                                </StackPanel>
+                            </ListBoxItem>
+                            <CollectionContainer x:Name="ResultsCollection" />
+                            <ListBoxItem Style="{StaticResource SearchSection}">
+                                <StackPanel x:Name="EmptyState" HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="420"
+                                            Margin="24,12" IsHitTestVisible="False" Visibility="Collapsed">
+                                    <TextBlock x:Name="EmptyHeading" FontSize="18" FontWeight="SemiBold" TextAlignment="Center" />
+                                    <TextBlock x:Name="EmptyDescription" Margin="0,8,0,0" Foreground="{Binding Theme.Foreground2}"
+                                               TextWrapping="Wrap" TextAlignment="Center" />
+                                </StackPanel>
+                            </ListBoxItem>
+                        </CompositeCollection>
+                    </ListBox.ItemsSource>
                     <ListBox.ItemTemplate><DataTemplate>
                         <Grid MinHeight="84">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="64" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
@@ -75,23 +154,16 @@
                         </Grid>
                     </DataTemplate></ListBox.ItemTemplate>
                 </ListBox>
-                <StackPanel x:Name="EmptyState" HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="420"
-                            Margin="24,12" IsHitTestVisible="False" Visibility="Collapsed">
-                    <TextBlock x:Name="EmptyHeading" FontSize="18" FontWeight="SemiBold" TextAlignment="Center" />
-                    <TextBlock x:Name="EmptyDescription" Margin="0,8,0,0" Foreground="{Binding Theme.Foreground2}"
-                               TextWrapping="Wrap" TextAlignment="Center" />
-                </StackPanel>
-            </Grid>
-            <StackPanel Grid.Row="6" Margin="2,8,2,0">
+            <StackPanel Grid.Row="2" Margin="2,8,2,0" VerticalAlignment="Center">
                 <TextBlock x:Name="ResultCount" Text="共 0 条搜索结果" Foreground="{Binding Theme.Foreground2}" />
                 <TextBlock x:Name="Status" Style="{StaticResource MatchStatusText}" />
             </StackPanel>
-            <Grid Grid.Row="7" Margin="0,12,0,0">
+            <Grid Grid.Row="3" Margin="0,12,0,0">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                 <Button Content="字幕目录" VerticalAlignment="Center" Click="Folder_Click" />
                 <TextBlock Grid.Column="1" Margin="10,0" VerticalAlignment="Center" FontSize="12"
                            Foreground="{Binding Theme.Foreground2}" TextWrapping="Wrap"
-                           Text="下载后如果未被自动识别，前往字幕目录将对应字幕文件拖动或粘贴到视频里。" />
+                           Text="字幕未自动加载时，可从字幕目录拖入或粘贴到视频中。" />
                 <Button Grid.Column="2" Content="关闭" VerticalAlignment="Center" IsCancel="True" Click="Close_Click" />
             </Grid>
         </Grid>

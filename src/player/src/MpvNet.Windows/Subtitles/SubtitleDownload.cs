@@ -5,6 +5,8 @@ using System.Threading.Tasks;
 using SharpCompress.Archives;
 using SharpCompress.Common;
 using SharpCompress.Readers;
+using SharpCompress.Compressors.Xz;
+using System.Text.RegularExpressions;
 
 namespace MpvNet.Windows.Subtitles;
 
@@ -20,6 +22,8 @@ public sealed class SubtitleDownload(HttpClient http, SubtitleLibrary library)
     {
         if (!result.Local)
         {
+            if (result.Individual)
+                return await DownloadIndividualAsync(query, result, progress, token).ConfigureAwait(false);
             if (query.Season == null && Supported(result.DownloadName))
             {
                 var movieFile = new SubtitleFile(result.Source, result.Id, 0, result.DownloadName, "");
@@ -68,6 +72,52 @@ public sealed class SubtitleDownload(HttpClient http, SubtitleLibrary library)
         }
         library.Complete(query, result);
         return path;
+    }
+
+    async Task<string?> DownloadIndividualAsync(SubtitleQuery query, SubtitleResult result, IProgress<string>? progress, CancellationToken token)
+    {
+        // An extracted track belongs to its release, even when the user searches
+        // another episode. Save it there, and only load it for the current episode.
+        // Unresolved coordinates remain in the unclassified shelf without loading.
+        bool sameWork = SubtitleLibrary.IndividualMatches(query, result);
+        var targetQuery = query with { Season = sameWork ? result.Season : -1, Episode = sameWork ? result.Episode : null };
+        bool matches = sameWork && query.Season == result.Season && query.Episode == result.Episode;
+        var package = library.Package(targetQuery, result);
+        if (package?.Complete == true && package.Files.Count == 1)
+        {
+            var saved = package.Files[0];
+            var savedFile = new SubtitleFile(result.Source, result.Id, saved.FileId, saved.Name, "");
+            if (library.Cached(targetQuery, result, savedFile) is { } cached) return matches ? cached : null;
+        }
+        string name = result.DownloadName;
+        byte[] bytes = await FetchAsync(result.DownloadUrl, 32 * 1024 * 1024, token, progress).ConfigureAwait(false);
+        if (name.EndsWith(".xz", StringComparison.OrdinalIgnoreCase))
+        {
+            progress?.Report("正在解压字幕…");
+            try
+            {
+                using var packed = new MemoryStream(bytes);
+                using var decoded = new XZStream(packed);
+                bytes = await SubtitleHttp.ReadBytesAsync(decoded, 32 * 1024 * 1024, token).ConfigureAwait(false);
+                name = name[..^3];
+            }
+            catch (Exception error) when (error is SharpCompress.Common.SharpCompressException or InvalidDataException or EndOfStreamException)
+            { throw new SubtitleServiceException("字幕无法解压。"); }
+        }
+        // Some services label extracted ASS tracks as .txt. Identify the actual
+        // text format without altering the original subtitle bytes or encoding.
+        string text = Encoding.UTF8.GetString(bytes.AsSpan(0, Math.Min(bytes.Length, 65536))).TrimStart('\uFEFF', ' ', '\r', '\n', '\t');
+        string format = text.StartsWith("[Script Info]", StringComparison.OrdinalIgnoreCase) ? "ass"
+            : text.StartsWith("WEBVTT", StringComparison.Ordinal) ? "vtt"
+            : Regex.IsMatch(text, @"(?m)^\d{1,2}:\d{2}:\d{2}[,.]\d{3}\s+-->\s+\d{1,2}:\d{2}:\d{2}[,.]\d{3}") ? "srt" : "";
+        if (format.Length == 0) throw new SubtitleServiceException("没有可用的文本字幕。");
+        if (Path.GetExtension(name).Equals(".txt", StringComparison.OrdinalIgnoreCase)) name = Path.ChangeExtension(name, format);
+        if (!Supported(name)) throw new SubtitleServiceException("不支持这份字幕格式。");
+        var file = new SubtitleFile(result.Source, result.Id, 0, name, "");
+        string path = library.FilePath(targetQuery, result, file.Name);
+        await WriteAsync(path, bytes, token).ConfigureAwait(false);
+        library.Save(targetQuery, result with { Format = format.ToUpperInvariant() }, file, path, true, true);
+        return matches ? path : null;
     }
 
     async Task<bool> ExtractAsync(SubtitleQuery query, SubtitleResult result, string archivePath, IProgress<string>? progress, CancellationToken token)

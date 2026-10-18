@@ -19,6 +19,7 @@ public sealed record SubtitlePackage(SubtitleSource Source, string Id, string Ti
     public string Details { get; init; } = "";
     public string Format { get; init; } = "";
     public bool Imported { get; init; }
+    public bool Individual { get; init; }
 }
 public sealed record SubtitleShelf(string Title, int? Season, IReadOnlyList<SubtitlePackage> Packages,
     string PreferredPackage = "", string PreferredVariant = "");
@@ -121,7 +122,8 @@ public sealed class SubtitleLibrary
     {
         query = FileQuery(query, result, file.Name);
         var parsed = BangumiMedia.FromPlayback(file.Name, file.Name);
-        double? episode = query.Season == null ? null : parsed.Ambiguous ? selected ? query.Episode : null : parsed.EpisodeNumber ?? (selected ? query.Episode : null);
+        double? episode = query.Season == null ? null : result.Individual ? result.Episode
+            : parsed.Ambiguous ? selected ? query.Episode : null : parsed.EpisodeNumber ?? (selected ? query.Episode : null);
         if (query.Season < 0) episode = null;
         var local = new LocalSubtitle(file.FileId, file.Name, System.IO.Path.GetFullPath(path), episode, Variant(file.Name, result.LanguageCode, imported))
             { OriginalPath = originalPath, OriginalHash = originalHash };
@@ -132,7 +134,8 @@ public sealed class SubtitleLibrary
             var old = shelf.Packages.FirstOrDefault(package => package.Source == result.Source && package.Id == result.Id);
             var files = (old?.Files ?? []).Where(item => file.FileId > 0 ? item.FileId != file.FileId : item.Name != file.Name).Append(local).ToArray();
             var package = new SubtitlePackage(result.Source, result.Id, result.Title, result.Language, result.LanguageCode, files, complete)
-                { Collection = result.Collection, Details = result.Details, Format = result.Format, Imported = imported || old?.Imported == true };
+                { Collection = result.Collection, Details = result.Details, Format = result.Format, Imported = imported || old?.Imported == true,
+                    Individual = result.Individual };
             Write(directory, shelf with { Packages = shelf.Packages.Where(item => item.Source != result.Source || item.Id != result.Id).Append(package).ToArray() });
         }
     }
@@ -403,11 +406,15 @@ public sealed class SubtitleLibrary
         }
         return "";
     }
-    static string FileLanguage(string filename)
+    internal static string FileLanguage(string filename)
     {
         string marker = LanguageMarker(filename);
-        return marker is "chs" or "cht" or "sc" or "tc" or "zh-cn" or "zh-tw" or "zh-hans" or "zh-hant" or "简" or "繁"
-            ? "zh" : SubtitleLanguage.Find(marker.Split('-')[0])?.Code ?? "";
+        return marker switch
+        {
+            "简" or "sc" => "zh-Hans",
+            "繁" or "tc" => "zh-Hant",
+            _ => SubtitleLanguage.Find(marker)?.Code ?? SubtitleLanguage.Find(marker.Split('-')[0])?.Code ?? ""
+        };
     }
     static string Variant(string filename, string language, bool includeEdition = false)
     {
@@ -430,6 +437,7 @@ public sealed class SubtitleLibrary
     }
     public SubtitleFile? CurrentFile(SubtitleQuery query, SubtitleResult result, IReadOnlyList<SubtitleFile> files)
     {
+        if (result.Individual && (result.Season != query.Season || result.Episode != query.Episode || !IndividualMatches(query, result))) return null;
         string preferred;
         lock (Gate) preferred = Read(SeasonDirectory(query.Title, query.Season), query.Title, query.Season).PreferredVariant;
         bool imported = Package(query, result)?.Imported == true;
@@ -439,15 +447,22 @@ public sealed class SubtitleLibrary
             : !result.Collection || FileQuery(query, result, file.Name).Season == query.Season).ToArray();
         return files.Where(file =>
             {
-                if (!query.MatchesFile(file.Name)) return false;
-                if (query.Season == null) return true;
+                if (!result.Individual && !query.MatchesFile(file.Name)) return false;
+                string language = FileLanguage(file.Name);
+                if (query.Language.Length > 0)
+                {
+                    var languages = language.Length > 0 ? new[] { SubtitleLanguage.Find(language)! } : result.Languages;
+                    if (languages.Count != 1 || !languages[0].Matches(query.Language)) return false;
+                }
+                if (query.Season == null || result.Individual) return true;
                 if (query.Episode == null) return false;
                 var parsed = BangumiMedia.FromPlayback(file.Name, file.Name);
                 return !parsed.Ambiguous && parsed.EpisodeNumber == query.Episode
                     || files.Count == 1 && parsed.EpisodeNumber == null;
             })
-            .OrderByDescending(file => preferred.Length > 0 && Variant(file.Name, result.LanguageCode, imported) == preferred)
-            .ThenByDescending(file => Regex.IsMatch(Variant(file.Name, result.LanguageCode), @"^(sc|chs|zh-cn|简)\.", RegexOptions.IgnoreCase))
+            .OrderByDescending(file => query.Language.Length > 0 && FileLanguage(file.Name) == query.Language)
+            .ThenByDescending(file => preferred.Length > 0 && Variant(file.Name, result.LanguageCode, imported) == preferred)
+            .ThenByDescending(file => Regex.IsMatch(Variant(file.Name, result.LanguageCode), @"^(sc|chs|zh-cn|zh-hans|简)\.", RegexOptions.IgnoreCase))
             .FirstOrDefault();
     }
     static string FileTitle(string filename)
@@ -457,10 +472,41 @@ public sealed class SubtitleLibrary
         return TraktMedia.Normalize(AnitomySharp.AnitomySharp.Parse(name, new(extension: false)).FirstOrDefault(element =>
             element.Category == AnitomySharp.Element.ElementCategory.ElementAnimeTitle)?.Value ?? "");
     }
+    internal static bool IndividualMatches(SubtitleQuery query, SubtitleResult result)
+    {
+        if (result.Season < 0 || result.Episode < 0 || (result.Season == null) != (result.Episode == null)) return false;
+        if (result.Season != null) return query.MatchesTitle([result.Title]);
+        string name = result.DownloadName.EndsWith(".xz", StringComparison.OrdinalIgnoreCase) ? result.DownloadName[..^3] : result.DownloadName;
+        string title = result.Title.Split(" / ", StringSplitOptions.None)[0];
+        if (query.Year != null && new[] { title, name }.Where(value => value.Length > 0)
+            .Select(value => BangumiMedia.FromPlayback(value, value).Year).Any(year => year != null && year != query.Year)) return false;
+        return MovieFileMatches(query, title)
+            || name.Length > 0 && MovieFileMatches(query, name);
+    }
+    static bool MovieFileMatches(SubtitleQuery query, string filename)
+    {
+        // A movie collection can include other films or remakes. Match a file's
+        // actual title/alias rather than the fuzzy ranking used by search.
+        string name = System.IO.Path.GetFileName(filename.Replace('\\', '/'));
+        string marker = LanguageMarker(name);
+        if (marker.Length > 0)
+            name = Regex.Replace(System.IO.Path.GetFileNameWithoutExtension(name),
+                @"(?:^|[._\s\[(-])" + Regex.Escape(marker) + @"[\])]?$", "", RegexOptions.IgnoreCase)
+                + System.IO.Path.GetExtension(name);
+        var parsed = BangumiMedia.FromPlayback(name, name);
+        if (parsed.Ambiguous || parsed.HasSeason || parsed.EpisodeNumber != null) return false;
+        if (query.Year != null && parsed.Year != null && query.Year != parsed.Year) return false;
+        string title = FileTitle(name);
+        return query.Names.Append(query.Title).SelectMany(BangumiMedia.TitleVariants)
+            .Select(value => TraktMedia.Normalize(BangumiMedia.Parse(value).Title))
+            .Any(value => value.Length > 0 && (title == value || query.Year is int year && title == value + year));
+    }
     public static SubtitleQuery FileQuery(SubtitleQuery query, SubtitleResult result, string filename)
     {
         if (!result.Collection) return query;
         string[] Parts(string name) => name.Replace('\\', '/').Split('/');
+        if (query.Season == null)
+            return query with { Season = MovieFileMatches(query, filename) ? null : -1, Episode = null };
         var names = result.PackageNames.Append(filename).Distinct().ToArray();
         var paths = names.Select(Parts).ToArray();
         var wanted = query.Names.Append(query.Title).SelectMany(BangumiMedia.TitleVariants)
@@ -504,11 +550,20 @@ public sealed class SubtitleLibrary
             {
                 var package = group.First().Package;
                 var seasons = group.Select(item => item.Shelf.Season).Distinct().ToArray();
+                var files = group.SelectMany(item => item.Package.Files.Where(Exists)
+                    .Select(file => new SubtitleFile(package.Source, package.Id, file.FileId, file.Name, "")
+                        { LocalPath = file.Path, Season = item.Shelf.Season, Episode = file.Episode })).ToArray();
+                var languages = files.Select(file => FileLanguage(file.Name)).ToArray();
+                var codes = languages.Where(code => code.Length > 0)
+                    .Concat(languages.Any(code => code.Length == 0) ? package.LanguageCode.Split(',', StringSplitOptions.RemoveEmptyEntries) : [])
+                    .Distinct(StringComparer.Ordinal).ToArray();
                 return new SubtitleResult(package.Source, package.Id,
-                package.Title, package.Language, package.Details, group.SelectMany(item => item.Package.Files.Where(Exists))
-                    .Select(file => new SubtitleFile(package.Source, package.Id, file.FileId, file.Name, "") { LocalPath = file.Path }).ToArray())
+                package.Title, package.Language, package.Details, files)
                 { Local = true, Format = package.Format, Season = seasons.Length == 1 ? seasons[0] : null, AvailableSeasons = seasons,
-                    LanguageCode = package.LanguageCode, Collection = package.Collection,
+                    TitleNames = group.Select(item => item.Shelf.Title).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
+                    LanguageCode = string.Join(',', codes), Collection = package.Collection, Individual = package.Individual,
+                    Episode = package.Individual && package.Files.FirstOrDefault()?.Episode is double episode
+                        && episode is >= 0 and <= int.MaxValue && episode == Math.Truncate(episode) ? (int)episode : null,
                     PackageNames = group.SelectMany(item => item.Package.Files).Select(file => file.Name).ToArray() };
             }).Where(result => result.Files.Count > 0).ToArray();
     }

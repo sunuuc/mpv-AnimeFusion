@@ -45,7 +45,7 @@ require(
 require(
     "portable_config/scripts/player_ui_danmaku.lua",
     "automatic_match_all_routes(attempt)",
-    "正在并行搜索全部弹幕线路…",
+    "正在搜索弹幕…",
 )
 require(
     "portable_config/mpv.conf",

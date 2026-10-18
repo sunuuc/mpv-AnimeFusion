@@ -168,6 +168,38 @@
         </Style.Triggers>
     </Style>
 
+    <Style x:Key="MatchToggleSwitch" TargetType="ToggleButton">
+        <Setter Property="Width" Value="44" />
+        <Setter Property="Height" Value="28" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToggleButton">
+                    <Border x:Name="Track" Height="24" CornerRadius="12" Padding="3" BorderThickness="1"
+                            Background="{Binding MenuHighlight, Source={x:Static ui:Theme.Current}}"
+                            BorderBrush="{Binding Foreground2, Source={x:Static ui:Theme.Current}}">
+                        <Ellipse x:Name="Thumb" Width="16" Height="16" HorizontalAlignment="Left"
+                                 Fill="{Binding Foreground, Source={x:Static ui:Theme.Current}}" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Track" Property="Background" Value="{Binding Heading, Source={x:Static ui:Theme.Current}}" />
+                            <Setter TargetName="Track" Property="BorderBrush" Value="{Binding Heading, Source={x:Static ui:Theme.Current}}" />
+                            <Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right" />
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Track" Property="Opacity" Value=".8" /></Trigger>
+                        <Trigger Property="IsPressed" Value="True"><Setter TargetName="Track" Property="Opacity" Value=".65" /></Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Track" Property="BorderBrush" Value="{Binding Foreground, Source={x:Static ui:Theme.Current}}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Track" Property="Opacity" Value=".4" /></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <Style x:Key="MatchComboBoxItem" TargetType="ComboBoxItem">
         <Setter Property="Foreground" Value="{Binding Foreground, Source={x:Static ui:Theme.Current}}" />
         <Setter Property="Background" Value="Transparent" />

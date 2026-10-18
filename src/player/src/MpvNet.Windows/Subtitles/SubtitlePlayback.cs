@@ -211,7 +211,7 @@ public sealed class SubtitlePlayback(SubtitleLibrary library)
             Player.CommandV("show-text", message, finished ? "5000" : "600000");
         }
     }
-    public async Task DownloadAsync(SubtitleQuery query, SubtitleResult result, SubtitleStore store, bool current)
+    public async Task DownloadAsync(SubtitleQuery query, SubtitleResult result, SubtitleStore store, SubtitleTitles titles)
     {
         CancellationTokenSource request;
         int generation;
@@ -224,10 +224,20 @@ public sealed class SubtitlePlayback(SubtitleLibrary library)
         using var filesClient = new HttpClient(new HttpClientHandler { AutomaticDecompression = System.Net.DecompressionMethods.All }) { Timeout = TimeSpan.FromSeconds(60) };
         try
         {
-            Notice(generation, result.Local ? "正在加载字幕…" : "正在获取字幕包…");
+            Notice(generation, result.Local ? "正在加载字幕…" : result.Individual ? "正在获取字幕…" : "正在获取字幕包…");
             if (!result.Local)
-                result = await new AssrtClient(api, store).DetailAsync(result, request.Token).ConfigureAwait(false);
+            {
+                ISubtitleClient source = result.Source switch
+                {
+                    SubtitleSource.Amenzb => new AmenzbClient(api),
+                    SubtitleSource.Tsukihime => new TsukihimeClient(api),
+                    _ => new AssrtClient(api, store)
+                };
+                result = await source.DetailAsync(result, request.Token).ConfigureAwait(false);
+            }
             request.Token.ThrowIfCancellationRequested();
+            bool current;
+            (query, current) = titles.CurrentWork().ForDownload(query, result);
             var selected = Library.CurrentFile(query, result, result.Files);
             if (selected == null && result.Local)
                 throw new SubtitleServiceException("没有当前集的字幕。");
@@ -239,17 +249,15 @@ public sealed class SubtitlePlayback(SubtitleLibrary library)
             lock (_lock)
             {
                 if (!_loaded || generation != _generation) return;
-                if (path == null || !current) { Notice(generation, "字幕包已保存", true); return; }
+                if (path == null || !current) { Notice(generation, result.Individual ? "字幕已保存" : "字幕包已保存", true); return; }
                 Select(path);
                 Notice(generation, "");
             }
         }
         catch (OperationCanceledException) when (request.IsCancellationRequested) { }
-        catch (Exception error)
+        catch (Exception)
         {
-            string text = error is SubtitleServiceException ? error.Message : error is OperationCanceledException ? "下载超时，请重试。"
-                : error is IOException or UnauthorizedAccessException ? "字幕保存失败。" : "字幕下载失败，请重试。";
-            Notice(generation, text, true);
+            Notice(generation, result.Local ? "字幕加载失败" : "字幕下载失败", true);
         }
         finally
         {

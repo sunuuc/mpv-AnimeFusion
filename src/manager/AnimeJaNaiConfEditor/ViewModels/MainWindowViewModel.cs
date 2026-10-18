@@ -99,7 +99,7 @@ namespace AnimeJaNaiConfEditor.ViewModels
                 // only our fallback, so installing TensorRT completes the setup
                 AnimeJaNaiConf.BackendAutoFallback = false;
                 AnimeJaNaiConf.SetTensorRtSelected();
-                notice = AnimeJaNai.Localization.UiText.T("TensorRT is installed — the backend has switched back to TensorRT.");
+                notice = AnimeJaNai.Localization.UiText.T("Switched to TensorRT.");
             }
             else if (!trtUsable)
             {
@@ -115,7 +115,7 @@ namespace AnimeJaNaiConfEditor.ViewModels
                 notice = nvidia == false
                     ? flipped + AnimeJaNai.Localization.UiText.T("TensorRT requires an NVIDIA GPU.")
                     : ComponentManager.TrtPackAvailable
-                        ? flipped + AnimeJaNai.Localization.UiText.T("TensorRT is not installed — install it from the Components tab (recommended for NVIDIA GPUs); the backend switches back automatically once installed.")
+                        ? flipped + AnimeJaNai.Localization.UiText.T("Install TensorRT from Components.")
                         : flipped + AnimeJaNai.Localization.UiText.T("TensorRT is not installed.");
             }
             BackendNotice = notice;

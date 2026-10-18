@@ -10,6 +10,8 @@ namespace MpvNet.Windows.Subtitles;
 internal static class SubtitleHttp
 {
     static readonly RequestRate AssrtRate = new(TimeSpan.FromSeconds(13));
+    static readonly RequestRate AmenzbRate = new(TimeSpan.FromSeconds(1));
+    static readonly RequestRate TsukihimeRate = new(TimeSpan.FromSeconds(1));
     public static string Text(JsonElement value, string key) => value.ValueKind == JsonValueKind.Object
         && value.TryGetProperty(key, out var item) && item.ValueKind == JsonValueKind.String ? item.GetString() ?? "" : "";
     public static int Number(JsonElement value, string key) => value.ValueKind == JsonValueKind.Object
@@ -41,13 +43,14 @@ internal static class SubtitleHttp
     public static async Task<HttpResponseMessage> SendAsync(HttpClient http, HttpRequestMessage request, string source, CancellationToken token)
     {
         request.Headers.TryAddWithoutValidation("User-Agent", "mpv-AnimeFusion v" + MpvNet.AppInfo.Version.ToString(3));
-        request.Headers.Accept.Add(new("application/json"));
+        if (request.Headers.Accept.Count == 0) request.Headers.Accept.Add(new("application/json"));
         var current = request;
         try
         {
             for (int redirects = 0; ; redirects++)
             {
-                await AssrtRate.WaitAsync(token).ConfigureAwait(false);
+                var rate = source switch { "ameNZB" => AmenzbRate, "TsukiHime" => TsukihimeRate, _ => AssrtRate };
+                await rate.WaitAsync(token).ConfigureAwait(false);
                 var response = await http.SendAsync(current, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
                 if (request.Method != HttpMethod.Get || response.StatusCode is not (HttpStatusCode.MovedPermanently
                     or HttpStatusCode.Found or HttpStatusCode.TemporaryRedirect or HttpStatusCode.PermanentRedirect)) return response;

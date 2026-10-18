@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.IO;
 using System.Text;
+using System.Text.Json;
 using System.Net.Http;
 using MpvNet;
 using MpvNet.Native;
@@ -9,6 +10,7 @@ using MpvNet.Windows.Trakt;
 
 string native=Environment.GetEnvironmentVariable("ANIMEFUSION_NATIVE_DIRECTORY")??throw new Exception("Native runtime path required");
 string video=Environment.GetEnvironmentVariable("ANIMEFUSION_TEST_VIDEO")??throw new Exception("Generated test video required");
+if(!Path.IsPathFullyQualified(video)||!File.Exists(video))throw new Exception("The generated test video must be an existing local file");
 NativeLibrary.SetDllImportResolver(typeof(LibMpv).Assembly,(name,_,_)=>File.Exists(Path.Combine(native,name))?NativeLibrary.Load(Path.Combine(native,name)):IntPtr.Zero);
 string temp=Path.Combine(Path.GetTempPath(),"AnimeFusion-NativeSubtitles-"+Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(temp);
@@ -56,6 +58,7 @@ async Task Drop(string path)
  await loaded.Task.WaitAsync(TimeSpan.FromSeconds(10));
 }
 string Selected()=>player.GetPropertyString("current-tracks/sub/external-filename");
+SubtitleTitles CurrentTitles()=>new(TraktMedia.Parse(player.GetPropertyString("media-title"),player.GetPropertyString("path"),new Dictionary<string,string>()),default);
 int SubtitleCount()=>Enumerable.Range(0,player.GetPropertyInt("track-list/count")).Count(i=>player.GetPropertyString($"track-list/{i}/type")=="sub");
 string TrackId(string path)=>Enumerable.Range(0,player.GetPropertyInt("track-list/count"))
  .Where(i=>player.GetPropertyString($"track-list/{i}/type")=="sub"
@@ -69,6 +72,61 @@ async Task WaitFor(Func<bool> ready,string message)
  var until=DateTime.UtcNow.AddSeconds(5);
  while(!ready()&&DateTime.UtcNow<until)await Task.Delay(15);
  Check(ready(),message);
+}
+async Task DownloadedSubtitleChecks()
+{
+ string manifest=Environment.GetEnvironmentVariable("ANIMEFUSION_TEST_SUBTITLE_MANIFEST");
+ if(string.IsNullOrWhiteSpace(manifest))return;
+ var fixture=JsonSerializer.Deserialize<DownloadedSubtitleFixture>(File.ReadAllText(manifest),new JsonSerializerOptions{PropertyNameCaseInsensitive=true})
+  ??throw new Exception("Downloaded subtitle manifest is empty");
+ Check(Path.IsPathFullyQualified(fixture.File)&&File.Exists(fixture.File),"The downloaded subtitle fixture is an existing local file");
+ var media=TraktMedia.Parse(fixture.MediaTitle,video,new Dictionary<string,string>());
+ Check(media.Kind=="show"&&media.Episode is >0&&fixture.Result.Individual,"Downloaded playback regression uses an identified single episode subtitle");
+ var work=new SubtitleWork(media,fixture.Names,fixture.MalId);
+ var matched=work.ForDownload(new(media.Title,media.Season,media.Episode,fixture.Result.LanguageCode),fixture.Result);
+ Check(matched.Current&&matched.Query.Title==media.Title,"Real provider metadata belongs to the confirmed current work before saving");
+ byte[] bytes=File.ReadAllBytes(fixture.File);
+ using var handler=new SubtitleBytesHandler(bytes);
+ using var http=new HttpClient(handler);
+ var downloader=new SubtitleDownload(http,library);
+ var downloadable=fixture.Result with{Local=false,DownloadUrl="https://subtitle-fixture.invalid/track"};
+ string saved=await downloader.DownloadAsync(matched.Query,downloadable,null,downloadable.Files,null,default)
+  ??throw new Exception("The real downloaded subtitle did not match the current episode");
+ Check(handler.Requests==1&&File.ReadAllBytes(saved).SequenceEqual(bytes),
+  "The real downloaded subtitle bytes enter the library unchanged through SubtitleDownload");
+ Check(saved.StartsWith(library.SeasonDirectory(media.Title,media.Season)+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase),
+  "The actual release is stored beneath the current canonical work and source season");
+ var local=library.Results(media.Title).Single(item=>item.Source==fixture.Result.Source&&item.Id==fixture.Result.Id);
+ await Open(fixture.MediaTitle);
+ player.SetPropertyBool("pause",true);
+ int starts=Volatile.Read(ref fileStarts);
+ string opened=player.GetPropertyString("path");
+ double position=player.GetPropertyDouble("time-pos");
+ var store=new SubtitleStore(Path.Combine(temp,"downloaded-fixture-account"));
+ await SubtitlePlayback.Current.DownloadAsync(matched.Query,local,store,CurrentTitles());
+ Check(Selected().Equals(saved,StringComparison.OrdinalIgnoreCase)&&player.GetPropertyBool("sub-visibility")
+  &&SubtitlePlayback.Current.DownloadStatus=="",
+  "Playback selects the actual downloaded subtitle immediately and clears its loading notice");
+ Check(player.GetPropertyString("current-tracks/sub/codec").Length>0&&HasTrack(saved),
+  "The native player recognizes the real subtitle as a loaded subtitle track");
+ Check(Volatile.Read(ref fileStarts)==starts&&player.GetPropertyString("path")==opened
+  &&Math.Abs(player.GetPropertyDouble("time-pos")-position)<.15,
+  "Loading the real subtitle neither reloads the local sample nor changes its playback position");
+ Check(await downloader.DownloadAsync(matched.Query,downloadable,null,downloadable.Files,null,default)==saved&&handler.Requests==1,
+  "Reusing the real subtitle performs no additional download request");
+ int tracks=SubtitleCount();
+ await SubtitlePlayback.Current.DownloadAsync(matched.Query,local,store,CurrentTitles());
+ Check(SubtitleCount()==tracks&&Selected().Equals(saved,StringComparison.OrdinalIgnoreCase)&&handler.Requests==1,
+  "Repeated playback loading reuses the same native subtitle track and stored bytes");
+ await Open(media.Title+$" S{media.Season}E{media.Episode+1}");
+ Check(!HasTrack(saved)&&SubtitleCount()==0,"The real downloaded episode is not restored for the next episode");
+ await SubtitlePlayback.Current.DownloadAsync(matched.Query with{Episode=media.Episode+1},local,store,CurrentTitles());
+ Check(!HasTrack(saved)&&SubtitleCount()==0&&SubtitlePlayback.Current.DownloadStatus=="字幕加载失败",
+  "Explicitly choosing the previous episode's local result cannot load it into the next episode");
+ await Open(fixture.MediaTitle);
+ Check(Selected().Equals(saved,StringComparison.OrdinalIgnoreCase)&&SubtitlePlayback.Current.DownloadStatus==""&&handler.Requests==1,
+  "Reopening the matching episode restores the downloaded version without another download");
+ Console.WriteLine($"Downloaded subtitle native chain passed; bytes={bytes.Length}; fixture HTTP reads={handler.Requests}; no network or desktop window.");
 }
 try
 {
@@ -96,11 +154,15 @@ try
  var progressStore=new SubtitleStore(Path.Combine(temp,"account"));
  var localResult=library.Results("测试作品").Single();
  Check(player.GetPropertyString("osd-ass-cc/0").Length>0,"Native ASS styled notice control is available");
- await SubtitlePlayback.Current.DownloadAsync(new("测试作品",2,1,"zh"),localResult,progressStore,true);
+ await SubtitlePlayback.Current.DownloadAsync(new("测试作品",2,1,"zh"),localResult,progressStore,CurrentTitles());
  Check(SubtitlePlayback.Current.DownloadStatus==""&&Selected().Equals(sc,StringComparison.OrdinalIgnoreCase),"Playback-owned loading clears progress and selects the real subtitles without a success notice");
  Check(player.GetPropertyInt("secondary-sid")==secondary,"Download progress leaves the secondary/danmaku track selected");
- await SubtitlePlayback.Current.DownloadAsync(new("测试作品",2,99,"zh"),localResult,progressStore,true);
- Check(SubtitlePlayback.Current.DownloadStatus=="没有当前集的字幕。","Loading errors are presented in playback, not the closed search window");
+ await SubtitlePlayback.Current.DownloadAsync(new("测试作品",2,1,"zh"),localResult with{Files=[]},progressStore,CurrentTitles());
+ Check(SubtitlePlayback.Current.DownloadStatus=="字幕加载失败"&&Selected().Equals(sc,StringComparison.OrdinalIgnoreCase),
+  "A missing local subtitle shows the short playback error without changing the selected subtitle");
+ await SubtitlePlayback.Current.DownloadAsync(new("测试作品",2,1,"zh"),new(SubtitleSource.Amenzb,"invalid","测试作品 S2E1","中文","",[]),progressStore,CurrentTitles());
+ Check(SubtitlePlayback.Current.DownloadStatus=="字幕下载失败"&&Selected().Equals(sc,StringComparison.OrdinalIgnoreCase),
+  "A rejected download shows the short playback error without contacting a provider or changing the selected subtitle");
  int tcId=Enumerable.Range(0,player.GetPropertyInt("track-list/count")).Where(i=>player.GetPropertyString($"track-list/{i}/external-filename")==tc).Select(i=>player.GetPropertyInt($"track-list/{i}/id")).Single();
  player.SetPropertyInt("sid",tcId);
  var deadline=DateTime.UtcNow.AddSeconds(3);
@@ -109,7 +171,7 @@ try
  await Open("测试作品 S2E2");
  Check(SubtitlePlayback.Current.DownloadStatus=="","Switching media clears the previous download notice and generation");
  Check(typeof(SubtitleResult).Assembly.GetType("MpvNet.Windows.Subtitles.OpenSubtitlesClient")==null,"Removed service implementation is absent from the loaded player assembly");
- Check(Enum.GetNames<SubtitleSource>().SequenceEqual(new[]{"Assrt"}),"ASSRT is the only online subtitle source in the loaded assembly");
+ Check(Enum.GetNames<SubtitleSource>().SequenceEqual(new[]{"Assrt","Amenzb","Tsukihime"}),"All three configured subtitle providers exist in the loaded assembly");
  Exception resourceError=null;
  var resourceThread=new Thread(()=>
  {
@@ -167,40 +229,162 @@ try
     var fixtureStore=new SubtitleStore(Path.Combine(temp,"window-account"));fixtureStore.Save(new(new string('a',32)));
     type.GetField("_store",fields)!.SetValue(window,fixtureStore);
     var items=(System.Collections.ObjectModel.ObservableCollection<SubtitleResult>)type.GetField("_results",fields)!.GetValue(window)!;
+    var searchBox=(System.Windows.Controls.TextBox)window.FindName("SearchBox");
+    var searchButton=(System.Windows.Controls.Button)window.FindName("SearchButton");
+    var languages=(System.Windows.Controls.StackPanel)window.FindName("LanguageChips");
+    var seasons=(System.Windows.Controls.WrapPanel)window.FindName("SeasonChips");
+    var episodes=(System.Windows.Controls.StackPanel)window.FindName("EpisodeChips");
+    var client=new WindowSearchClient();
+    ((SubtitleSearch)type.GetField("_search",fields)!.GetValue(window)!).Dispose();
+    type.GetField("_search",fields)!.SetValue(window,new SubtitleSearch(client));
+    void Refresh()=>type.GetMethod("RefreshResults",fields)!.Invoke(window,null);
+    string[] LanguageTags()=>languages.Children.Cast<System.Windows.Controls.Button>().Select(button=>(string)button.Tag).ToArray();
+    string[] EpisodeTags()=>episodes.Children.Cast<System.Windows.Controls.Button>().Select(button=>(string)button.Tag).ToArray();
+    string[] SeasonTags()=>seasons.Children.Cast<System.Windows.Controls.Button>().Select(button=>(string)button.Tag).ToArray();
+    void ChooseSeason(string code)=>type.GetMethod("Season_Click",fields)!.Invoke(window,[seasons.Children.Cast<System.Windows.Controls.Button>().Single(button=>(string)button.Tag==code),new System.Windows.RoutedEventArgs()]);
+    void ChooseSource(string code)=>type.GetMethod("Source_Click",fields)!.Invoke(window,[new System.Windows.Controls.Button{Tag=code},new System.Windows.RoutedEventArgs()]);
+    void ChooseLanguage(string code)=>type.GetMethod("Language_Click",fields)!.Invoke(window,[languages.Children.Cast<System.Windows.Controls.Button>().Single(button=>(string)button.Tag==code),new System.Windows.RoutedEventArgs()]);
+    void ChooseEpisode(string code)=>type.GetMethod("Episode_Click",fields)!.Invoke(window,[episodes.Children.Cast<System.Windows.Controls.Button>().Single(button=>(string)button.Tag==code),new System.Windows.RoutedEventArgs()]);
+    void WaitUi(Func<bool> ready)
+    {
+     var until=DateTime.UtcNow.AddSeconds(10);
+     while(DateTime.UtcNow<until)
+     {
+      var frame=new System.Windows.Threading.DispatcherFrame();
+      System.Windows.Threading.Dispatcher.CurrentDispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background,new Action(()=>frame.Continue=false));
+      System.Windows.Threading.Dispatcher.PushFrame(frame);
+      if(ready())return;
+      Thread.Sleep(1);
+     }
+     throw new Exception("Mock subtitle window action did not complete");
+    }
+    void WaitForSearch()=>WaitUi(()=>type.GetField("_searchResult",fields)!.GetValue(window) is SubtitleSearchResult{Complete:true});
+    void ClickSearch()=>type.GetMethod("Search_Click",fields)!.Invoke(window,[window,new System.Windows.RoutedEventArgs()]);
+    void EnterSearch()
+    {
+     var key=new System.Windows.Input.KeyEventArgs(System.Windows.Input.Keyboard.PrimaryDevice,new MemoryPresentationSource(),Environment.TickCount,System.Windows.Input.Key.Enter)
+      {RoutedEvent=System.Windows.Input.Keyboard.PreviewKeyDownEvent};
+     type.GetMethod("SearchBox_KeyDown",fields)!.Invoke(window,[searchBox,key]);
+     Check(key.Handled,"Enter is handled by the manual subtitle search action");
+    }
+    type.GetMethod("Window_Loaded",fields)!.Invoke(window,[window,new System.Windows.RoutedEventArgs()]);WaitUi(()=>true);
+    Check(client.Requests==0&&type.GetField("_searchResult",fields)!.GetValue(window)==null&&searchButton.Content?.ToString()=="搜索",
+     "First opening initializes the window without issuing a subtitle request");
+    Check(LanguageTags().Take(5).SequenceEqual(new[]{"","zh-Hans","zh-Hant","en","ja"})
+     &&(string)type.GetField("_language",fields)!.GetValue(window)! =="",
+     "All is selected as the leftmost language option, followed by the four fixed languages before any search");
+    Check((string)type.GetField("_source",fields)!.GetValue(window)! =="all"
+     &&(string)type.GetField("_season",fields)!.GetValue(window)! =="all"
+     &&(string)type.GetField("_episode",fields)!.GetValue(window)! =="all"
+     &&SeasonTags().Take(2).SequenceEqual(new[]{"all","2"})&&EpisodeTags().Take(2).SequenceEqual(new[]{"all","2"}),
+     "Source, season and episode default to All while the current season and episode are immediately available after All");
+    var initialItems=items.ToArray();string initialText=searchBox.Text;
+    items.Add(result with{Id="prior-season",Season=1,Episode=4,LanguageCode="en"});
+    items.Add(result with{Id="later-season",Season=3,Episode=5,LanguageCode="en"});
+    items.Add(result with{Id="earlier-episode",Season=2,Episode=1,LanguageCode="en"});
+    type.GetMethod("RefreshSeasons",fields)!.Invoke(window,null);Refresh();
+    Check(SeasonTags().Take(4).SequenceEqual(new[]{"all","2","1","3"})
+     &&EpisodeTags().Take(2).SequenceEqual(new[]{"all","2"}),
+     "The current season and episode precede numerically earlier available choices without changing All selection");
+    ChooseEpisode("2");
+    Check((string)type.GetField("_season",fields)!.GetValue(window)! =="all"
+     &&(string)type.GetField("_episode",fields)!.GetValue(window)! =="2"&&searchBox.Text==initialText&&client.Requests==0,
+     "The current episode can be selected under All seasons without rewriting the search text or sending a request");
+    ChooseEpisode("all");ChooseSeason("3");
+    Check(EpisodeTags().SequenceEqual(new[]{"all","5"})&&searchBox.Text==initialText&&client.Requests==0,
+     "A different season exposes its own episodes without injecting the playing episode or rewriting the keyword");
+    ChooseLanguage("ja");
+    Check(EpisodeTags().SequenceEqual(new[]{"all"})&&searchBox.Text==initialText&&client.Requests==0,
+     "An empty language in another season has no invented current episode and leaves the search text unchanged");
+    ChooseSource("tsukihime");ChooseSource("all");ChooseLanguage("");ChooseSeason("all");
+    Check(searchBox.Text==initialText&&client.Requests==0
+     &&EpisodeTags().Take(2).SequenceEqual(new[]{"all","2"}),
+     "Changing source, language and season is local, preserves the keyword, and restores the current-episode shortcut under All seasons");
+    items.Clear();foreach(var item in initialItems)items.Add(item);
+    type.GetMethod("RefreshSeasons",fields)!.Invoke(window,null);Refresh();
+    var defaultWindow=new MpvNet.Windows.WPF.SubtitleSearchWindow();
+    try
+    {
+     var defaultClient=new WindowSearchClient();
+     type.GetField("_store",fields)!.SetValue(defaultWindow,fixtureStore);
+     ((SubtitleSearch)type.GetField("_search",fields)!.GetValue(defaultWindow)!).Dispose();
+     type.GetField("_search",fields)!.SetValue(defaultWindow,new SubtitleSearch(defaultClient));
+     type.GetMethod("Window_Loaded",fields)!.Invoke(defaultWindow,[defaultWindow,new System.Windows.RoutedEventArgs()]);
+     type.GetMethod("Search_Click",fields)!.Invoke(defaultWindow,[defaultWindow,new System.Windows.RoutedEventArgs()]);
+     WaitUi(()=>type.GetField("_searchResult",fields)!.GetValue(defaultWindow) is SubtitleSearchResult{Complete:true});
+     Check(defaultClient.Requests==1&&defaultClient.LastQuery.RequestSeason==null&&defaultClient.LastQuery.RequestEpisode==null
+      &&defaultClient.LastQuery.Language==""&&defaultClient.LastQuery.Episode==2,
+      "A first manual search submits All seasons, episodes and languages while retaining separate current-playback identity");
+     Check(new System.Windows.Interop.WindowInteropHelper(defaultWindow).Handle==IntPtr.Zero,"Default-filter checks never create a desktop window");
+    }
+    finally{type.GetField("_canClose",fields)!.SetValue(defaultWindow,true);defaultWindow.Close();}
+    ChooseSeason("2");ChooseLanguage("zh-Hans");
+    ChooseEpisode("all");Refresh();
+    Check((string)type.GetField("_episode",fields)!.GetValue(window)! =="all"&&EpisodeTags().Contains("2")&&client.Requests==0,
+     "Choosing All before the first search retains the current-episode option and does not reset the manual choice");
+    ChooseEpisode("2");
+    Check((string)type.GetField("_episode",fields)!.GetValue(window)! =="2"&&client.Requests==0,
+     "The current episode can be reselected after All before the first search without a request");
+    ChooseEpisode("all");
+    type.GetMethod("OnClosing",fields)!.Invoke(window,[new System.ComponentModel.CancelEventArgs()]);
+    type.GetMethod("Window_Loaded",fields)!.Invoke(window,[window,new System.Windows.RoutedEventArgs()]);WaitUi(()=>true);
+    Check(client.Requests==0&&type.GetField("_searchResult",fields)!.GetValue(window)==null,
+     "Reopening before the first search still issues no request");
+    items.Clear();
     var pending=new SubtitleSearchResult(new("测试作品",2,2,""));
     type.GetField("_searchResult",fields)!.SetValue(window,pending);
-    items.Add(result);items.Add(result with{Id="2"});
-    void Refresh()=>type.GetMethod("RefreshResults",fields)!.Invoke(window,null);
+    type.GetField("_displayedKeyword",fields)!.SetValue(window,"测试作品");
+    type.GetField("_episode",fields)!.SetValue(window,"all");
+    items.Add(result with{LanguageCode="zh-Hans",Episode=1});items.Add(result with{Id="2",LanguageCode="en",Episode=2});
     var empty=(System.Windows.Controls.StackPanel)window.FindName("EmptyState");
     var status=(System.Windows.Controls.TextBlock)window.FindName("Status");
     var count=(System.Windows.Controls.TextBlock)window.FindName("ResultCount");
-    var languages=(System.Windows.Controls.WrapPanel)window.FindName("LanguageChips");
-    string[] LanguageTags()=>languages.Children.Cast<System.Windows.Controls.Button>().Select(button=>(string)button.Tag).ToArray();
     Refresh();
-    Check(LanguageTags().SequenceEqual(new[]{"","zh"}),"Compiled language filter shows only languages present in the results");
+    Check(LanguageTags().SequenceEqual(new[]{"","zh-Hans","zh-Hant","en","ja"})&&EpisodeTags().SequenceEqual(new[]{"all","2","1"}),
+     "The current-episode shortcut stays after All while actual simplified-language episode choices remain separately available");
+    ChooseLanguage("en");
+    Check(EpisodeTags().SequenceEqual(new[]{"all","2"})&&client.Requests==0,
+     "Selecting English changes the available episodes using cached results without a request");
+    ChooseLanguage("ja");
+    Check(EpisodeTags().SequenceEqual(new[]{"all","2"})&&System.Windows.Data.CollectionViewSource.GetDefaultView(items).IsEmpty
+     &&(string)type.GetField("_language",fields)!.GetValue(window)! =="ja",
+     "An unavailable fixed language keeps only All and the current-episode shortcut without inventing matching results");
+    ChooseLanguage("zh-Hans");
     items.Add(result with{Id="fr",LanguageCode="fr"});items.Add(result with{Id="ko",LanguageCode="ko"});
     items.Add(result with{Id="other",LanguageCode=""});Refresh();
-    Check(LanguageTags().ToHashSet().SetEquals(new[]{"","zh","fr","ko","other"})&&!LanguageTags().Contains("en")&&!LanguageTags().Contains("ja"),
-     "Compiled window dynamically adds French, Korean and Other without inventing absent English or Japanese");
+    Check(LanguageTags().Take(5).SequenceEqual(new[]{"","zh-Hans","zh-Hant","en","ja"})
+     &&LanguageTags().Skip(5).ToHashSet().SetEquals(new[]{"fr","ko","other"}),
+     "Additional result languages appear only after the fixed languages and All");
     type.GetMethod("Language_Click",fields)!.Invoke(window,[languages.Children.Cast<System.Windows.Controls.Button>().Single(button=>(string)button.Tag=="ko"),new System.Windows.RoutedEventArgs()]);
     Check(System.Windows.Data.CollectionViewSource.GetDefaultView(items).Cast<SubtitleResult>().Single().Id=="ko",
      "Dynamic language button filters cached results without a search");
     items.RemoveAt(4);items.RemoveAt(3);items.RemoveAt(2);Refresh();
-    Check(LanguageTags().SequenceEqual(new[]{"","zh"})&&(string)type.GetField("_language",fields)!.GetValue(window)! =="",
-     "Absent language buttons disappear and an unavailable selection returns to All");
-    type.GetField("_language",fields)!.SetValue(window,"zh");Refresh();
-    Check(empty.Visibility==System.Windows.Visibility.Collapsed&&status.Text=="正在搜索字幕…"&&count.Text=="共 2 条搜索结果",
+    Check(LanguageTags().SequenceEqual(new[]{"","zh-Hans","zh-Hant","en","ja","ko"})
+     &&(string)type.GetField("_language",fields)!.GetValue(window)! =="ko",
+     "The selected dynamic language remains visible when its results disappear, while absent unselected languages are removed");
+    var remaining=items.ToArray();items.Clear();Refresh();
+    Check(LanguageTags().SequenceEqual(new[]{"","zh-Hans","zh-Hant","en","ja","ko"})
+     &&(string)type.GetField("_language",fields)!.GetValue(window)! =="ko"&&client.Requests==0,
+     "Clearing all results retains the selected dynamic language without issuing a request");
+    foreach(var item in remaining)items.Add(item);Refresh();
+    ChooseLanguage("zh-Hans");
+    Check(empty.Visibility==System.Windows.Visibility.Collapsed&&status.Text=="正在搜索字幕…"&&count.Text=="共 2 条搜索结果，显示 1 条",
      "Actual compiled window immediately shows local count and only footer progress while network search is pending");
     items.Clear();Refresh();
     Check(empty.Visibility==System.Windows.Visibility.Collapsed&&status.Text=="正在搜索字幕…"&&count.Text=="共 0 条搜索结果",
      "Pending empty search also has no central progress overlay");
+    Check(LanguageTags().SequenceEqual(new[]{"","zh-Hans","zh-Hant","en","ja"})
+     &&(string)type.GetField("_language",fields)!.GetValue(window)! =="zh-Hans",
+     "An empty search never drops the fixed languages or falls back from simplified Chinese to All");
     typeof(SubtitleSearchResult).GetProperty("Complete")!.SetValue(pending,true);Refresh();
     Check(empty.Visibility==System.Windows.Visibility.Visible&&status.Text=="","Finished empty search displays one central empty state without duplicate footer text");
-    items.Add(result);Refresh();
+    items.Add(result with{LanguageCode="zh-Hans"});Refresh();
     Check(empty.Visibility==System.Windows.Visibility.Collapsed&&status.Text==""&&count.Text=="共 1 条搜索结果","Finished results hide all loading placeholders");
-    type.GetField("_ready",fields)!.SetValue(window,true);
-    var searchBox=(System.Windows.Controls.TextBox)window.FindName("SearchBox");
     type.GetField("_displayedKeyword",fields)!.SetValue(window,searchBox.Text);
+    window.RestoreResults();
+    var chosenLanguage=languages.Children.Cast<System.Windows.Controls.Button>().First(button=>((string)button.Tag).StartsWith("zh",StringComparison.Ordinal));
+    type.GetMethod("Language_Click",fields)!.Invoke(window,[chosenLanguage,new System.Windows.RoutedEventArgs()]);
+    string keptLanguage=(string)chosenLanguage.Tag;
     var cachedSearch=type.GetField("_search",fields)!.GetValue(window);
     var lifetime=(System.Threading.CancellationTokenSource)type.GetField("_lifetime",fields)!.GetValue(window)!;
     var closing=new System.ComponentModel.CancelEventArgs();
@@ -217,30 +401,114 @@ try
      &&type.GetField("_searchResult",fields)!.GetValue(window)==pending,
      "Returning to the same video reuses the existing search and result without requesting again");
     Check((string)type.GetField("_season",fields)!.GetValue(window)! =="2"
-     &&(string)type.GetField("_language",fields)!.GetValue(window)! =="zh",
+     &&(string)type.GetField("_language",fields)!.GetValue(window)! ==keptLanguage,
      "Reopening keeps the season and language filters");
-    var handler=new SearchHandler();var api=new HttpClient(handler);
-    ((HttpClient)type.GetField("_api",fields)!.GetValue(window)!).Dispose();
-    ((SubtitleSearch)type.GetField("_search",fields)!.GetValue(window)!).Dispose();
-    var assrt=new AssrtClient(api,fixtureStore);
-    type.GetField("_api",fields)!.SetValue(window,api);
-    type.GetField("_assrt",fields)!.SetValue(window,assrt);
-    type.GetField("_search",fields)!.SetValue(window,new SubtitleSearch(assrt));
-    void WaitForSearch()
+    ChooseLanguage("en");ClickSearch();WaitForSearch();
+    int requests=client.Requests;
+    Check(requests==1&&client.LastQuery.Language=="en", "The first explicit click submits exactly one request with the currently selected language");
+    Check(client.LastQuery.RequestSeason==2&&client.LastQuery.RequestEpisode==null&&client.LastQuery.Episode==2,
+     "A manually selected All on the first search clears the requested episode while preserving the independent current-playback episode");
+    items.Add(result with{Id="manual-other-episode",LanguageCode="en",Episode=1});Refresh();ChooseEpisode("1");
+    client.Block=true;ClickSearch();
+    WaitUi(()=>client.LastQuery.RequestEpisode==1&&type.GetField("_searchResult",fields)!.GetValue(window) is SubtitleSearchResult{Complete:false});
+    requests=client.Requests;
+    Check(client.LastQuery.RequestSeason==2&&client.LastQuery.Episode==2&&EpisodeTags().Contains("1")
+     &&(string)type.GetField("_episode",fields)!.GetValue(window)! =="1"&&searchButton.Content?.ToString()=="暂停",
+     "A manually chosen other episode survives clearing results and the first empty progress update as a distinct request target");
+    ClickSearch();WaitUi(()=>type.GetField("_searchResult",fields)!.GetValue(window) is SubtitleSearchResult{Paused:true});
+    ChooseEpisode("all");
+    Check(searchButton.Content?.ToString()=="搜索"&&EpisodeTags().Contains("1")&&client.Requests==requests,
+     "Changing the episode during a paused request only filters locally and leaves its original target available");
+    ChooseEpisode("1");
+    Check(searchButton.Content?.ToString()=="继续"&&client.Requests==requests,
+     "Returning to the paused episode restores Continue without beginning another search");
+    ChooseLanguage("ja");
+    Check(EpisodeTags().Contains("1")&&(string)type.GetField("_episode",fields)!.GetValue(window)! =="1"
+     &&System.Windows.Data.CollectionViewSource.GetDefaultView(items).IsEmpty&&client.Requests==requests,
+     "Switching to an unavailable language retains the selected episode as a search condition without inventing a matching result or sending a request");
+    ChooseLanguage("en");
+    Check(EpisodeTags().Contains("1")&&(string)type.GetField("_episode",fields)!.GetValue(window)! =="1"
+     &&searchButton.Content?.ToString()=="继续"&&client.Requests==requests,
+     "Returning to the same pending language restores the explicit episode choice and paused request");
+    ClickSearch();WaitUi(()=>client.Requests>requests);client.Finish();WaitForSearch();
+    Check(client.LastQuery.RequestEpisode==1&&(string)type.GetField("_episode",fields)!.GetValue(window)! =="1",
+     "Resuming retains the originally selected episode instead of replacing it with the playing episode");
+    var titleContext=(SubtitleTitles)type.GetField("_titles",fields)!.GetValue(window)!;
+    var confirmedNames=(HashSet<string>)typeof(SubtitleTitles).GetField("_currentNames",fields)!.GetValue(titleContext)!;
+    confirmedNames.Add("Test Work Alias");
+    requests=client.Requests;
+    type.GetMethod("SelectAlias",fields)!.Invoke(window,["Test Work Alias"]);
+    Check(client.Requests==requests,"Selecting an already confirmed alias only changes the text field");
+    ClickSearch();WaitForSearch();
+    Check(client.Requests==requests+1&&client.LastQuery.Title=="Test Work Alias"&&client.LastQuery.RequestSeason==2
+     &&client.LastQuery.RequestEpisode==1&&client.LastQuery.Episode==2,
+     "Searching an alias of the same work preserves the manually selected season and episode");
+    items.Add(result with{Id="chosen-season",Season=3,Episode=7,LanguageCode="en"});
+    items.Add(result with{Id="unknown-language-episode",Season=3,Episode=8,LanguageCode=""});
+    type.GetMethod("RefreshSeasons",fields)!.Invoke(window,null);ChooseSeason("3");ChooseEpisode("7");
+    void CheckSelection(string message)
     {
-     var until=DateTime.UtcNow.AddSeconds(20);
-     while(DateTime.UtcNow<until)
-     {
-      var frame=new System.Windows.Threading.DispatcherFrame();
-      System.Windows.Threading.Dispatcher.CurrentDispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background,new Action(()=>frame.Continue=false));
-      System.Windows.Threading.Dispatcher.PushFrame(frame);
-      if(type.GetField("_searchResult",fields)!.GetValue(window) is SubtitleSearchResult{Complete:true})return;
-      Thread.Sleep(1);
-     }
-     throw new Exception("Mock subtitle search did not complete");
+     Check((string)type.GetField("_season",fields)!.GetValue(window)! =="3"
+      &&(string)type.GetField("_episode",fields)!.GetValue(window)! =="7"
+      &&SeasonTags().Contains("3")&&EpisodeTags().Contains("7")
+      &&((System.Windows.FrameworkElement)window.FindName("SeasonRow")).Visibility==System.Windows.Visibility.Visible
+      &&((System.Windows.FrameworkElement)window.FindName("EpisodeRow")).Visibility==System.Windows.Visibility.Visible,message);
     }
-    type.GetMethod("Search",fields)!.Invoke(window,[true]);WaitForSearch();
-    int requests=handler.Requests;Check(requests>0,"The first window search performs the isolated HTTP request");
+    CheckSelection("A selected non-current season and episode remain visible as independent search conditions");
+    Check(!EpisodeTags().Contains("8"),"An unselected episode with unknown language is not advertised under the English filter");
+    client.Empty=true;client.Block=true;requests=client.Requests;ClickSearch();
+    WaitUi(()=>client.Requests>requests&&type.GetField("_searchResult",fields)!.GetValue(window) is SubtitleSearchResult{Complete:false});
+    CheckSelection("Clearing results for a fresh search preserves the selected non-current season and episode chips");
+    client.Finish();WaitForSearch();
+    CheckSelection("An empty completed response preserves both selected season and episode instead of falling back to All");
+    Check(client.LastQuery.RequestSeason==3&&client.LastQuery.RequestEpisode==7
+     &&System.Windows.Data.CollectionViewSource.GetDefaultView(items).IsEmpty,
+     "The retained selection is the actual submitted search condition and does not fabricate an available subtitle");
+    requests=client.Requests;ChooseLanguage("ja");
+    CheckSelection("Changing to a language with no matching results preserves the chosen season and episode");
+    ChooseSource("tsukihime");
+    CheckSelection("Changing to an empty source preserves the chosen season and episode");
+    Check(client.Requests==requests,"Changing source and language does not request or reset the selected season and episode");
+    ChooseSource("all");ChooseLanguage("en");
+    type.GetMethod("OnClosing",fields)!.Invoke(window,[new System.ComponentModel.CancelEventArgs()]);
+    window.RestoreResults();type.GetMethod("Window_Loaded",fields)!.Invoke(window,[window,new System.Windows.RoutedEventArgs()]);
+    CheckSelection("Closing and restoring an empty completed search retains the actual selected season and episode");
+    Check(client.Requests==requests,"Restoring the retained empty selection does not issue a search");
+    client.Fail=true;ClickSearch();WaitForSearch();
+    CheckSelection("A failed search preserves its selected season and episode for retry");
+    Check(((SubtitleSearchResult)type.GetField("_searchResult",fields)!.GetValue(window)!).Errors.Count==1,
+     "The failure regression receives an actual provider error rather than merely an empty page");
+    client.Fail=false;requests=client.Requests;searchBox.Text="";ClickSearch();
+    searchBox.Text="Test Work Alias";Refresh();
+    CheckSelection("Temporarily clearing the search text does not erase the selected season and episode");
+    Check(client.Requests==requests,"Submitting empty search text does not contact a provider");
+    ClickSearch();WaitForSearch();
+    CheckSelection("An explicit retry with the same work retains the previously selected season and episode");
+    Check(client.LastQuery.RequestSeason==3&&client.LastQuery.RequestEpisode==7&&client.Requests==requests+1,
+     "Retry after an empty or failed result submits the retained coordinates exactly once");
+    searchBox.Text="另一部作品 S04E02";requests=client.Requests;ClickSearch();WaitForSearch();
+    CheckSelection("Searching a different work with episode numbers in its text preserves the manually chosen season and episode");
+    Check(client.Requests==requests+1&&client.LastQuery.Title=="另一部作品 S04E02"
+     &&client.LastQuery.RequestSeason==3&&client.LastQuery.RequestEpisode==7&&client.LastQuery.Episode==null,
+     "A different keyword is submitted literally with the selected request coordinates but without current-playback ownership");
+    ChooseSeason("all");ChooseEpisode("all");ClickSearch();WaitForSearch();
+    window.RestoreResults();
+    Check((string)type.GetField("_season",fields)!.GetValue(window)! =="all"
+     &&(string)type.GetField("_episode",fields)!.GetValue(window)! =="all"
+     &&SeasonTags().First()=="all"&&EpisodeTags().SequenceEqual(new[]{"all","2"})
+     &&((System.Windows.FrameworkElement)window.FindName("SeasonRow")).Visibility==System.Windows.Visibility.Visible
+     &&((System.Windows.FrameworkElement)window.FindName("EpisodeRow")).Visibility==System.Windows.Visibility.Visible
+     &&client.LastQuery.RequestSeason==null&&client.LastQuery.RequestEpisode==null,
+     "Manually selected All remains visible after empty completion and restoration and is never replaced by the playing episode");
+    searchBox.Text="Test Work Alias";ClickSearch();WaitForSearch();
+    Check((string)type.GetField("_season",fields)!.GetValue(window)! =="all"
+     &&(string)type.GetField("_episode",fields)!.GetValue(window)! =="all"
+     &&client.LastQuery.RequestSeason==null&&client.LastQuery.RequestEpisode==null&&client.LastQuery.Episode==2,
+     "Returning to a known current-work alias preserves manually selected All while restoring only playback identity");
+    client.Empty=false;
+    items.Add(result with{Id="return-episode",Season=2,Episode=1,LanguageCode="en"});
+    type.GetMethod("RefreshSeasons",fields)!.Invoke(window,null);ChooseSeason("2");ChooseEpisode("1");
+    ChooseEpisode("all");requests=client.Requests;
     var completed=type.GetField("_searchResult",fields)!.GetValue(window);
     generation=(int)type.GetField("_searchGeneration",fields)!.GetValue(window)!;
     var displayed=items.ToArray();var originalQuery=type.GetField("_query",fields)!.GetValue(window);
@@ -250,25 +518,145 @@ try
     var editTimer=new System.Windows.Threading.DispatcherTimer{Interval=TimeSpan.FromMilliseconds(800)};
     editTimer.Tick+=(_,_)=>{editTimer.Stop();editFrame.Continue=false;};editTimer.Start();
     System.Windows.Threading.Dispatcher.PushFrame(editFrame);
-    Check(handler.Requests==requests&&(int)type.GetField("_searchGeneration",fields)!.GetValue(window)! ==generation,
+    Check(client.Requests==requests&&(int)type.GetField("_searchGeneration",fields)!.GetValue(window)! ==generation,
      "Typing, deleting and clearing text issue zero extra requests after the former debounce interval");
     Check(items.SequenceEqual(displayed)&&Equals(originalQuery,type.GetField("_query",fields)!.GetValue(window)),
      "Editing preserves the searched results and their query for filtering and downloading");
     type.GetMethod("OnClosing",fields)!.Invoke(window,[new System.ComponentModel.CancelEventArgs()]);
     window.RestoreResults();
     type.GetMethod("Window_Loaded",fields)!.Invoke(window,[window,new System.Windows.RoutedEventArgs()]);
-    Check(handler.Requests==requests&&ReferenceEquals(completed,type.GetField("_searchResult",fields)!.GetValue(window)),
+    Check(client.Requests==requests&&ReferenceEquals(completed,type.GetField("_searchResult",fields)!.GetValue(window)),
      "A real window close/restore sequence adds zero HTTP requests and retains the same complete search snapshot");
     Check(searchBox.Text=="测试作"&&items.Select(item=>(item.Id,item.Title)).SequenceEqual(displayed.Select(item=>(item.Id,item.Title))),
      "Reopening retains the edited draft and existing results without searching the draft");
     var oldRequest=(System.Threading.CancellationTokenSource)type.GetField("_searchLifetime",fields)!.GetValue(window)!;
-    type.GetMethod("Search_Click",fields)!.Invoke(window,[window,new System.Windows.RoutedEventArgs()]);
+    ChooseLanguage("zh-Hant");EnterSearch();
     Check(oldRequest.IsCancellationRequested,"An explicit search cancels the previous request before submitting the new keyword");
     WaitForSearch();
-    Check(handler.Requests>requests&&!ReferenceEquals(completed,type.GetField("_searchResult",fields)!.GetValue(window)),
-     "The explicit Search button still issues a new request after restoring the cached window");
+    Check(client.Requests==requests+1&&client.LastQuery.Language=="zh-Hant"&&!ReferenceEquals(completed,type.GetField("_searchResult",fields)!.GetValue(window)),
+     "Enter issues a fresh request using the newly selected language after restoring the cached window");
     Check(((SubtitleSearchResult)type.GetField("_searchResult",fields)!.GetValue(window)!).Query.Title=="测试作",
      "The explicit Search button submits the edited keyword");
+    Check(client.LastQuery.RequestSeason==2&&client.LastQuery.RequestEpisode==null&&client.LastQuery.Episode==null,
+     "A genuinely different keyword preserves the manually selected request coordinates while clearing current-playback episode ownership");
+    items.Add(result with{Id="ko",LanguageCode="ko"});Refresh();
+    client.Block=true;
+    ChooseLanguage("ko");ClickSearch();
+    WaitUi(()=>client.LastQuery.Language=="ko"&&type.GetField("_searchResult",fields)!.GetValue(window) is SubtitleSearchResult{Complete:false});
+    requests=client.Requests;
+    Check(items.Count==0&&LanguageTags().Contains("ko")
+     &&(string)type.GetField("_language",fields)!.GetValue(window)! =="ko",
+     "Starting a fresh search keeps the selected dynamic language visible while the results are reset and its response is pending");
+    ChooseLanguage("zh-Hans");
+    Check(!LanguageTags().Contains("ko")&&client.Requests==requests&&searchButton.Content?.ToString()=="搜索",
+     "An unavailable dynamic language disappears after selecting another language without submitting a request");
+    ClickSearch();
+    WaitUi(()=>client.LastQuery.Language=="zh-Hans"&&type.GetField("_searchResult",fields)!.GetValue(window) is SubtitleSearchResult{Complete:false});
+    requests=client.Requests;
+    Check(searchButton.Content?.ToString()=="暂停","A running request uses the shared button to pause when its selected language is unchanged");
+    ChooseLanguage("en");
+    Check(searchButton.Content?.ToString()=="搜索"&&client.Requests==requests,
+     "Changing language during a search only filters locally and makes the button start a new search");
+    ChooseLanguage("zh-Hans");
+    Check(searchButton.Content?.ToString()=="暂停"&&client.Requests==requests,"Returning to the active request's language restores its pause action");
+    ClickSearch();WaitUi(()=>type.GetField("_searchResult",fields)!.GetValue(window) is SubtitleSearchResult{Paused:true});
+    ChooseLanguage("en");
+    Check(searchButton.Content?.ToString()=="搜索"&&client.Requests==requests,"A changed language does not accidentally resume the paused request");
+    ChooseLanguage("zh-Hans");
+    Check(searchButton.Content?.ToString()=="继续","Returning to the paused request's language restores Continue");
+    type.GetMethod("OnClosing",fields)!.Invoke(window,[new System.ComponentModel.CancelEventArgs()]);
+    type.GetMethod("Window_Loaded",fields)!.Invoke(window,[window,new System.Windows.RoutedEventArgs()]);WaitUi(()=>true);
+    Check(searchButton.Content?.ToString()=="继续"&&client.Requests==requests,"Reopening a paused search preserves its page state without issuing a request");
+    ClickSearch();WaitUi(()=>client.Requests>requests);
+    Check(searchButton.Content?.ToString()=="暂停"&&client.LastQuery.Language=="zh-Hans","Continuing retries the unfinished page with its original language");
+    requests=client.Requests;
+    oldRequest=(System.Threading.CancellationTokenSource)type.GetField("_searchLifetime",fields)!.GetValue(window)!;
+    ChooseLanguage("en");ClickSearch();
+    WaitUi(()=>client.Requests>requests&&client.LastQuery.Language=="en");
+    Check(oldRequest.IsCancellationRequested&&client.Requests==requests+1,
+     "Searching another language cancels the old request and submits exactly one fresh request for that language");
+    client.Finish();WaitForSearch();
+    Check(searchButton.Content?.ToString()=="搜索"&&((SubtitleSearchResult)type.GetField("_searchResult",fields)!.GetValue(window)!).Query.Language=="en",
+     "A completed language-specific search returns to Search and cannot be overwritten by the canceled request");
+    requests=client.Requests;EnterSearch();WaitForSearch();
+    Check(client.Requests==requests+1&&client.LastQuery.Language=="en","Enter after completion refreshes the chosen language instead of silently reusing its cache");
+    string previousMediaTitle=player.GetPropertyString("force-media-title");
+    string previousDisplayedTitle=player.GetPropertyString("media-title");
+    void SetFixtureMediaTitle(string value,string expectedTitle)
+    {
+     var observed=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+     void OnTitle(string title){if(title==expectedTitle)observed.TrySetResult();}
+     // Registered after SubtitlePlayback.Load: completing this callback means the
+     // simulated title has finished applying before another scenario or file opens.
+     player.ObservePropertyString("media-title",OnTitle);
+     try
+     {
+      player.SetPropertyString("force-media-title",value);
+      if(!observed.Task.Wait(TimeSpan.FromSeconds(10)))throw new Exception("The fixture title change did not finish on the native event loop");
+     }
+     finally{lock(player.StringPropChangeActions)player.StringPropChangeActions["media-title"].Remove(OnTitle);}
+    }
+    try
+    {
+     foreach(var scenario in new[]{(Title:"特别篇回归 S00E03",Season:(int?)0,Episode:(int?)3),
+      (Title:"无集数电影 (2020)",Season:(int?)null,Episode:(int?)null),(Title:"多集不确定 S01E01-E02",Season:(int?)null,Episode:(int?)null)})
+     {
+      SetFixtureMediaTitle(scenario.Title,scenario.Title);
+      var targetWindow=new MpvNet.Windows.WPF.SubtitleSearchWindow();
+      try
+      {
+       var targetClient=new WindowSearchClient();
+       type.GetField("_store",fields)!.SetValue(targetWindow,fixtureStore);
+       ((SubtitleSearch)type.GetField("_search",fields)!.GetValue(targetWindow)!).Dispose();
+       type.GetField("_search",fields)!.SetValue(targetWindow,new SubtitleSearch(targetClient));
+       type.GetMethod("Window_Loaded",fields)!.Invoke(targetWindow,[targetWindow,new System.Windows.RoutedEventArgs()]);WaitUi(()=>true);
+       Check(targetClient.Requests==0&&(string)type.GetField("_season",fields)!.GetValue(targetWindow)! =="all"
+        &&(string)type.GetField("_episode",fields)!.GetValue(targetWindow)! =="all"
+        &&(string)type.GetField("_language",fields)!.GetValue(targetWindow)! =="",
+        "Specials, movies and ambiguous playback all start with All filters without automatically choosing coordinates");
+       if(scenario.Season==0)
+       {
+        targetClient.Empty=true;
+        var seasonPanel=(System.Windows.Controls.WrapPanel)targetWindow.FindName("SeasonChips");
+        var episodePanel=(System.Windows.Controls.StackPanel)targetWindow.FindName("EpisodeChips");
+        Check(seasonPanel.Children.Cast<System.Windows.Controls.Button>().Single(button=>(string)button.Tag=="0").Content?.ToString()=="特别篇",
+         "A confirmed season zero has its own Specials chip rather than sharing Other Works");
+        Check(seasonPanel.Children.Cast<System.Windows.Controls.Button>().Select(button=>(string)button.Tag).Take(2).SequenceEqual(new[]{"all","0"})
+         &&episodePanel.Children.Cast<System.Windows.Controls.Button>().Select(button=>(string)button.Tag).Take(2).SequenceEqual(new[]{"all","3"}),
+         "Current special season and episode appear directly after All without requiring a selected season");
+        type.GetMethod("Episode_Click",fields)!.Invoke(targetWindow,[episodePanel.Children.Cast<System.Windows.Controls.Button>().Single(button=>(string)button.Tag=="3"),new System.Windows.RoutedEventArgs()]);
+        var targetItems=(System.Collections.ObjectModel.ObservableCollection<SubtitleResult>)type.GetField("_results",fields)!.GetValue(targetWindow)!;
+        targetItems.Add(result with{Id="special",Season=0,Episode=3,LanguageCode="zh-Hans"});
+        targetItems.Add(result with{Id="unclassified",Season=-1,Episode=null,LanguageCode="zh-Hans"});
+        targetItems.Add(result with{Id="film",Season=null,Episode=null,LanguageCode="zh-Hans"});
+        type.GetMethod("RefreshSeasons",fields)!.Invoke(targetWindow,null);
+        type.GetMethod("Season_Click",fields)!.Invoke(targetWindow,[seasonPanel.Children.Cast<System.Windows.Controls.Button>().Single(button=>(string)button.Tag=="other"),new System.Windows.RoutedEventArgs()]);
+        Check((string)type.GetField("_episode",fields)!.GetValue(targetWindow)! =="3"
+         &&episodePanel.Children.Cast<System.Windows.Controls.Button>().Any(button=>(string)button.Tag=="3"),
+         "Switching to Other Works retains the selected episode instead of silently broadening the filter");
+        type.GetMethod("Episode_Click",fields)!.Invoke(targetWindow,[episodePanel.Children.Cast<System.Windows.Controls.Button>().Single(button=>(string)button.Tag=="all"),new System.Windows.RoutedEventArgs()]);
+        Check(System.Windows.Data.CollectionViewSource.GetDefaultView(targetItems).Cast<SubtitleResult>().Select(item=>item.Id).ToHashSet().SetEquals(new[]{"unclassified","film"}),
+         "Other Works includes unclassified results and films without duplicating the separate season-zero special");
+        type.GetMethod("Season_Click",fields)!.Invoke(targetWindow,[seasonPanel.Children.Cast<System.Windows.Controls.Button>().Single(button=>(string)button.Tag=="0"),new System.Windows.RoutedEventArgs()]);
+        Check((string)type.GetField("_episode",fields)!.GetValue(targetWindow)! =="all",
+         "Returning to the current special season preserves an explicit All episode selection");
+        type.GetMethod("Episode_Click",fields)!.Invoke(targetWindow,[episodePanel.Children.Cast<System.Windows.Controls.Button>().Single(button=>(string)button.Tag=="3"),new System.Windows.RoutedEventArgs()]);
+       }
+       type.GetMethod("Search_Click",fields)!.Invoke(targetWindow,[targetWindow,new System.Windows.RoutedEventArgs()]);
+       WaitUi(()=>type.GetField("_searchResult",fields)!.GetValue(targetWindow) is SubtitleSearchResult{Complete:true});
+       Check(targetClient.Requests==1&&targetClient.LastQuery.RequestSeason==scenario.Season&&targetClient.LastQuery.RequestEpisode==scenario.Episode,
+        "An explicit search transmits the selected current special or leaves movie and unknown request coordinates empty");
+       if(scenario.Season==0)
+        Check(((System.Windows.Controls.StackPanel)targetWindow.FindName("EpisodeChips")).Children.Cast<System.Windows.Controls.Button>().Select(button=>(string)button.Tag).SequenceEqual(new[]{"all","3"})
+         &&(string)type.GetField("_season",fields)!.GetValue(targetWindow)! =="0"
+         &&(string)type.GetField("_episode",fields)!.GetValue(targetWindow)! =="3"&&targetClient.Requests==1,
+         "After an empty completed search the selected special season and episode remain available without inventing a subtitle result");
+       Check(new System.Windows.Interop.WindowInteropHelper(targetWindow).Handle==IntPtr.Zero,"Episode-default tests never create a desktop window");
+      }
+      finally{type.GetField("_canClose",fields)!.SetValue(targetWindow,true);targetWindow.Close();}
+     }
+    }
+    finally{SetFixtureMediaTitle(previousMediaTitle,previousDisplayedTitle);}
     type.GetMethod("Media_Changed",fields)!.Invoke(window,null);
     Check(lifetime.IsCancellationRequested&&(bool)type.GetField("_canClose",fields)!.GetValue(window)!&&!window.IsCurrent,
      "Changing video ends the old search lifetime and permits final disposal");
@@ -476,6 +864,7 @@ try
  await Open(batchTitle+" S1E1");
  Check(SubtitleCount()==1&&Selected()==savedBatch&&!HasTrack(wrongEpisode),
   "Reopening after a partial batch failure restores only the successfully imported subtitle");
+ await DownloadedSubtitleChecks();
  Console.WriteLine($"Native subtitle playback checks passed: {checks}; local generated video only; no desktop window or service calls.");
 }
 
@@ -486,12 +875,46 @@ finally
  if(Path.GetFullPath(temp).StartsWith(Path.GetFullPath(Path.GetTempPath()),StringComparison.OrdinalIgnoreCase)&&Path.GetFileName(temp).StartsWith("AnimeFusion-NativeSubtitles-"))Directory.Delete(temp,true);
 }
 
-sealed class SearchHandler:HttpMessageHandler
+sealed class WindowSearchClient:ISubtitleClient
+{
+ TaskCompletionSource _finish=new(TaskCreationOptions.RunContinuationsAsynchronously);
+ readonly System.Collections.Concurrent.ConcurrentQueue<SubtitleQuery> _queries=new();
+ public SubtitleSource Source=>SubtitleSource.Assrt;
+ public int Requests=>_queries.Count;
+ public SubtitleQuery LastQuery=>_queries.LastOrDefault();
+ bool _block;
+ public bool Empty;
+ public bool Fail;
+ public bool Block{get=>_block;set{if(value&&!_block)_finish=new(TaskCreationOptions.RunContinuationsAsynchronously);_block=value;}}
+ public void Finish(){Block=false;_finish.TrySetResult();}
+ public async Task<SubtitlePage> SearchAsync(SubtitleQuery query,int page,CancellationToken token,IProgress<IReadOnlyList<SubtitleResult>>? progress=null)
+ {
+  _queries.Enqueue(query);
+  if(Block)await _finish.Task.WaitAsync(token);
+  token.ThrowIfCancellationRequested();
+  if(Fail)throw new SubtitleServiceException("fixture request failed");
+  return new(Empty?[]:[new(Source,"fixture-"+query.Language,query.Title,"","",[]){Season=query.RequestSeason??2,Episode=query.RequestEpisode??2,LanguageCode=query.Language}],false);
+ }
+ public Task<SubtitleResult> DetailAsync(SubtitleResult result,CancellationToken token)=>throw new Exception("Window search checks must not request subtitle details");
+}
+
+sealed class MemoryPresentationSource:System.Windows.PresentationSource
+{
+ public override System.Windows.Media.Visual RootVisual{get;set;}
+ public override bool IsDisposed=>false;
+ protected override System.Windows.Media.CompositionTarget GetCompositionTargetCore()=>null;
+}
+
+sealed record DownloadedSubtitleFixture(string File,string MediaTitle,IReadOnlyList<string> Names,SubtitleResult Result,int? MalId=null);
+
+sealed class SubtitleBytesHandler(byte[] bytes):HttpMessageHandler
 {
  public int Requests;
- protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken cancellationToken)
+ protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken token)
  {
+  token.ThrowIfCancellationRequested();
+  if(request.RequestUri?.AbsoluteUri!="https://subtitle-fixture.invalid/track")throw new Exception("Unexpected subtitle fixture request");
   Requests++;
-  return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK){Content=new StringContent("{\"status\":0,\"sub\":{\"subs\":[{\"id\":101,\"native_name\":\"测试作品 第二季\",\"lang\":{\"desc\":\"简\"}}]}}",Encoding.UTF8,"application/json")});
+  return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK){Content=new ByteArrayContent(bytes)});
  }
 }

@@ -14,6 +14,13 @@ public static class WinApi
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
     public static extern bool EnumSystemCodePages(CodePageEnumProc callback, uint flags);
 
+    public const uint LCMAP_SIMPLIFIED_CHINESE = 0x02000000;
+    public const uint LCMAP_TRADITIONAL_CHINESE = 0x04000000;
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)]
+    public static extern int LCMapStringEx(string locale, uint flags, string source, int sourceLength,
+        StringBuilder? destination, int destinationLength, IntPtr version, IntPtr reserved, IntPtr sortHandle);
+
     [DllImport("kernel32.dll")]
     public static extern bool AttachConsole(int dwProcessId);
 

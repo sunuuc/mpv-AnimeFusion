@@ -168,3 +168,6 @@ apply(root)
 
 from apply_watch_history import apply
 apply(root)
+
+from apply_animejanai_pre_resize import apply
+apply(root)

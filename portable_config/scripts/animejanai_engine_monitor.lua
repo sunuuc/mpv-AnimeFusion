@@ -31,10 +31,9 @@ local stats_path = mp.command_native({'expand-path', o.stats_path})
 local building = false
 local we_paused = false
 local started_at = 0
-local build_name = "?"
-local build_res = "?"
 local loaded_path
 local configured = false
+local filter_failed = false
 local timer
 
 local function has_filter()
@@ -75,6 +74,7 @@ end
 local function reset()
     loaded_path = nil
     configured = false
+    filter_failed = false
     stop_monitor()
 end
 
@@ -110,42 +110,33 @@ timer = mp.add_periodic_timer(o.poll_interval, function()
         else
             msg.info("engine build started")
         end
-    elseif not b and building then
+    elseif not b and building and s and
+           (s:find("build FAILED", 1, true) or
+            s:find("Applied Model:", 1, true) or
+            s:find("Applied RIFE", 1, true) or
+            s:find("applied RIFE", 1, true) or
+            s:find("No Chains Activated", 1, true)) then
         building = false
-        local failed = s ~= nil and s:find("build FAILED", 1, true) ~= nil
+        local failed = s:find("build FAILED", 1, true) ~= nil
         msg.info(string.format("engine build finished after %ds%s",
             math.floor(mp.get_time() - started_at),
             we_paused and "; resuming playback" or ""))
         release_pause()
         if failed then
-            local log_path = s and s:match("%(see ([^%)]+)%)") or
-                             "the .build.log file next to the model"
-            mp.osd_message(string.format(
-                "AnimeJaNai: Building TensorRT engine for %s for %s " ..
-                "failed. Upscaling is disabled. (details: %s).",
-                build_name, build_res, log_path), 10)
+            local log_path = s and s:match("%(see ([^%)]+)%)")
+            mp.osd_message("模型构建失败" ..
+                (log_path and "\n日志：" .. log_path or ""), 10)
         else
-            mp.osd_message(string.format(
-                "AnimeJaNai: Building TensorRT engine for %s for %s " ..
-                "completed successfully. Upscaling is active.",
-                build_name, build_res), 5)
+            mp.osd_message("")
         end
     end
 
     if building then
-        local n, r = s:match(
-            "Building TensorRT engine for ([^%s]+) for ([^%s]+)")
-        if n then
-            build_name = n
-            build_res = r
-        end
+        -- A stats rewrite can be briefly empty or unreadable. Keep waking the
+        -- filter until it reports an applied chain or an explicit failure.
         local elapsed = math.floor(mp.get_time() - started_at)
-        local second = we_paused and "Playback will resume on completion."
-                                  or "Upscaling will activate on completion."
         mp.osd_message(string.format(
-            "AnimeJaNai: Building TensorRT engine for %s for %s " ..
-            "(%ds, usually about a minute)\n%s",
-            build_name, build_res, elapsed, second),
+            "模型构建中（%d 秒）", elapsed),
             o.poll_interval + 0.5)
         -- while paused no frames flow, so the filter would never notice the
         -- finished build; this no-op command wakes it so it polls
@@ -158,7 +149,7 @@ timer:kill()
 -- after this file's video output has passed through the configured filter;
 -- file-loaded alone is too early, while the decoder is still starting.
 local function video_ready()
-    if has_video() then
+    if not filter_failed and has_video() then
         configured = true
         timer:resume()
     else
@@ -174,6 +165,22 @@ mp.register_event("file-loaded", function()
 end)
 mp.register_event("playback-restart", video_ready)
 mp.register_event("video-reconfig", video_ready)
+mp.enable_messages("error")
+mp.register_event("log-message", function(event)
+    if event.prefix ~= "animejanai" or
+       (event.level ~= "error" and event.level ~= "fatal") or
+       mp.get_property_bool("idle-active", true) or not has_filter() then
+        return
+    end
+    local text = (event.text or ""):gsub("[\r\n]+$", "")
+    if text == "" then return end
+    -- A failed filter may remain enabled in vf while mpv passes frames through.
+    -- Its old stats must not restart the build pause after a reconfiguration.
+    filter_failed = true
+    configured = false
+    stop_monitor()
+    mp.osd_message("超分与补帧失败：\n" .. text, 10)
+end)
 mp.observe_property("idle-active", "bool", function(_, idle)
     if idle then reset() end
 end)
@@ -183,6 +190,7 @@ end)
 mp.observe_property("vf", "native", function()
     if not has_filter() then
         configured = false
+        filter_failed = false
         stop_monitor()
     end
 end)

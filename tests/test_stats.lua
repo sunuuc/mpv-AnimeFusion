@@ -5,6 +5,7 @@ local root = real.get_property('script-opts'):match('r2root=([^,]+)')
 assert(root, 'missing test root')
 local now, count, paused, callbacks, events, props, timers, output = 0, 0, false, {}, {}, {}, {}, ''
 local target = 48
+local filters, log_level = {}, nil
 local fake = {
     get_time=function() return now end,
     get_property_number=function(name, default)
@@ -14,16 +15,22 @@ local fake = {
         return default
     end,
     get_property_bool=function() return paused end,
-    get_property_native=function(name, default) return default end,
+    get_property_native=function(name, default) return name=='vf' and filters or default end,
     get_property=function() return nil end,
     set_osd_ass=function(_,_,s) output=s end,
-    command_native=function(command) if command[1]=='escape-ass' then return command[2] end end,
+    command_native=function(command)
+        if command[1]=='escape-ass' then return command[2] end
+        if command[1]=='expand-path' then return 'stats.log' end
+    end,
     add_periodic_timer=function(_, f)
         local t={alive=true,fn=f}; function t:kill() self.alive=false end
         timers[#timers+1]=t; return t
     end,
-    register_event=function(n,f) events[n]=f end,
-    enable_messages=function() end,
+    register_event=function(n,f)
+        local previous=events[n]
+        events[n]=function(...) if previous then previous(...) end;f(...) end
+    end,
+    enable_messages=function(level) log_level=level end,
     observe_property=function(n,_,f) props[n]=f end,
     add_key_binding=function(_,n,f) callbacks[n]=f end,
 }
@@ -64,6 +71,58 @@ for i=1,4 do tick(144+i*12,.25) end
 assert(output:find('FPS: 48.00',1,true),output)
 tick(0,.25); assert(output:find('FPS: --',1,true),output)
 count=nil; now=now+.25; timers[#timers].fn();assert(output:find('FPS: --',1,true),output)
+
+-- A successful configuration file is not evidence that later inference worked.
+local saved_open=io.open
+local statustext='Applied RIFE v414 Interpolation 2.000x; New Video FPS: 48.000'
+io.open=function(path,...)
+    if path=='stats.log' then
+        return {read=function() return statustext end,close=function() end}
+    end
+    return saved_open(path,...)
+end
+filters={{name='animejanai',enabled=true,params={stats='stats.log'}}}
+props.vf();tick(0,.25)
+assert(output:find(statustext,1,true),output)
+assert(log_level=='v','native completed configuration messages must be observed')
+local function log(level,text,prefix)
+    events['log-message']({prefix=prefix or 'animejanai',level=level,text=text..'\n'})
+end
+local function failed()
+    assert(output:find('超分与补帧失败：',1,true) and
+        output:find('interpolation failed: fixture',1,true) and
+        not output:find('Applied RIFE',1,true),output)
+end
+log('error','interpolation failed: fixture')
+tick(0,.25);failed()
+tick(0,2.25);failed()
+for _,name in ipairs({'seek','playback-restart','file-loaded'}) do
+    events[name]();tick(0,.25);failed()
+end
+for _,name in ipairs({'pause','speed','vf','user-data/animejanai/requested-slot'}) do
+    props[name]();tick(0,.25);failed()
+end
+callbacks.show_animejanai_stats();callbacks.show_animejanai_stats();failed()
+log('v','Configured slot 1: 1280x720 -> 2560x1440 (depth 1)','other-filter')
+log('v','background engine build finished; reconfiguring')
+log('v','RIFE active: 2/1 interpolation')
+log('warn','fixture warning')
+tick(0,2.25);failed()
+log('v','Configured slot 1: 1280x720 -> 2560x1440 (depth 1)')
+tick(0,.25)
+assert(output:find(statustext,1,true) and not output:find('超分与补帧失败：',1,true),output)
+log('error','interpolation failed: fixture');tick(0,.25);failed()
+statustext='No active upscale chain'
+log('v','No chain active for 1280x720@24.000 slot 0 (passthrough)')
+tick(0,.25)
+assert(output:find(statustext,1,true) and not output:find('超分与补帧失败：',1,true),output)
+log('fatal','interpolation failed: fixture');tick(0,.25);failed()
+events['start-file']();tick(0,.25)
+assert(not output:find('超分与补帧失败：',1,true),output)
+log('error','interpolation failed: fixture');tick(0,.25);failed()
+events['end-file']();tick(0,.25)
+assert(not output:find('超分与补帧失败：',1,true),output)
+io.open=saved_open
 callbacks.show_animejanai_stats();assert(not timers[#timers].alive and output=='')
-msg.info('PASS native FPS Lua: full/half/3x-slot-switch/stall/pause/resume/reset/unavailable/hidden')
+msg.info('PASS native FPS Lua: full/half/3x-slot-switch/stall/pause/resume/reset/unavailable/hidden; native errors survive stale status until successful reconfigure or file lifecycle reset')
 real.commandv('quit', 0)

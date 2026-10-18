@@ -13,7 +13,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
-        <TextBlock Text="请选择显示正确的文件名。取消后保留原始字幕包。"
+        <TextBlock Text="请选择正确的文件名。"
                    TextWrapping="Wrap" Margin="0,0,0,14" />
         <ScrollViewer Grid.Row="1" MaxHeight="500" VerticalScrollBarVisibility="Auto">
             <ItemsControl ItemsSource="{Binding Files}">

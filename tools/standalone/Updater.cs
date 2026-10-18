@@ -239,7 +239,7 @@ void RemoveComponent(Pack pack, PackIndex index)
         if (index.packs.Any(p => p.name != pack.name && p.files.Contains(f) && PackContentMatches(p))) continue;
         File.Delete(Inside(installDir, f));
     }
-    Console.WriteLine(pack.name + " removed. Custom models and configurations are preserved.");
+    Console.WriteLine(pack.name + " removed.");
 }
 
 static List<string> RecommendedPacks(PackIndex index, bool nvidia, string sm, string configPath)

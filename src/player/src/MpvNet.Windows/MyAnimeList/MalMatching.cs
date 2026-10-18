@@ -55,6 +55,35 @@ public static class MalMatching
             .Select(l => l.Name).Distinct().Take(5);
         return BangumiMedia.SearchTitles(title).Concat(aliases).Where(s => s.Length > 0).Distinct();
     }
+
+    static double CatalogueScore(BangumiNet.Api.V0.Models.Subject entry, MalSubject subject)
+    {
+        if (entry.Date is not { Length: >= 7 } || subject.StartDate is not { Length: >= 7 }
+            || entry.Date[..7] != subject.StartDate[..7]
+            || entry.Platform?.ToLowerInvariant() is "tv" && subject.MediaType != "tv") return 0;
+        return BangumiMedia.SubjectTitles(entry).SelectMany(BangumiMedia.TitleVariants)
+            .SelectMany(name => subject.Names.Select(title => TitleScore(name, title))).DefaultIfEmpty().Max();
+    }
+
+    public static async Task<MalSubject?> MatchCatalogueAsync(MalClient client, BangumiNet.Api.V0.Models.Subject entry, CancellationToken token)
+    {
+        if (entry.Id is not > 0) return null;
+        var ids = await Task.Run(() => Links.Value.Where(link => link.BangumiId == entry.Id.Value.ToString())
+            .Select(link => int.TryParse(link.MalId, out int id) ? id : 0).Where(id => id > 0).Distinct().ToArray(), token).ConfigureAwait(false);
+        var candidates = new List<MalSubject>();
+        if (ids.Length > 0)
+        {
+            foreach (int id in ids) candidates.Add(await client.SubjectAsync(id, false, token).ConfigureAwait(false));
+        }
+        else if (!string.IsNullOrWhiteSpace(entry.Name))
+            candidates.AddRange(await client.SearchNameAsync(entry.Name, token).ConfigureAwait(false));
+        // The confirmed catalogue ID identifies a work, including its season. A live
+        // name, premiere-month and medium check rejects stale or split/merged maps.
+        var verified = candidates.DistinctBy(subject => subject.Id)
+            .Where(subject => BangumiMedia.IsMovie(entry) == (subject.MediaType == "movie") && CatalogueScore(entry, subject) >= .8).ToArray();
+        return verified.Length == 1 ? verified[0] : null;
+    }
+
     public static async Task<MalSubject?> MatchAsync(MalClient client, MalMedia media, CancellationToken token)
     {
         if (media.Parsed.Ambiguous) return null;
@@ -93,17 +122,12 @@ public static class MalMatching
             || s.Date?.StartsWith(media.Parsed.Year + "-", StringComparison.Ordinal) == true).ToArray());
         if (entry != null && !string.IsNullOrWhiteSpace(entry.Name))
         {
-            var names = BangumiMedia.SubjectTitles(entry).SelectMany(BangumiMedia.TitleVariants).ToArray();
             var candidates = await client.SearchNameAsync(entry.Name, token).ConfigureAwait(false);
             var linked = new List<(MalSubject Subject, double Score)>();
             foreach (var candidate in candidates)
             {
                 if (!EpisodeFits(media, candidate) || !DateMatches(media, candidate)) continue;
-                // Verify the live catalogue entry against the target title, premiere month and medium.
-                if (entry.Date is not { Length: >= 7 } || candidate.StartDate is not { Length: >= 7 }
-                    || entry.Date[..7] != candidate.StartDate[..7]) continue;
-                if (entry.Platform?.ToLowerInvariant() is "tv" && candidate.MediaType != "tv") continue;
-                double score = names.SelectMany(n => candidate.Names.Select(t => TitleScore(n, t))).DefaultIfEmpty().Max();
+                double score = CatalogueScore(entry, candidate);
                 if (score < .8 || !SeasonMatches(media, candidate, [], media.Episode != null ? media.Season : null)) continue;
                 linked.Add((candidate, score));
             }

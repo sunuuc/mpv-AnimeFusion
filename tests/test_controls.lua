@@ -28,6 +28,7 @@ local function test()
     set_property_native=function(name,value) props[name]=value end,
     register_script_message=function(name,fn) messages[name]=fn end,
     register_event=function(name,fn) events[name]=fn end,
+    enable_messages=function(level) assert(level=='error') end,
     observe_property=function(name,_,fn) observers[name]=fn end,
     commandv=function(command,label,action,slot)
       assert(command=='vf-command' and label=='aji')
@@ -100,19 +101,27 @@ local function test()
     'a loaded file without configured video output cannot consume the previous build log')
   ready();property('vf',filters);tick()
   assert(timer.enabled and paused and polls==1,'an explicit engine build pauses and wakes the active filter')
-  statustext='Active Upscale Chain: 1'
-  tick();assert(not paused and osd[#osd]:find('completed successfully',1,true),
-    'engine completion releases its own pause and reports the live result')
+  for _,text in ipairs({'', 'Upscale Profile: 1. Fixture', 'Active Upscale Chain: 1'}) do
+    statustext=text;local before=polls;tick()
+    assert(paused and timer.enabled and polls==before+1 and not osd[#osd]:find('successfully',1,true),
+      'an empty or incomplete stats rewrite must keep waiting and polling')
+  end
+  statustext=nil;local before=polls;tick()
+  assert(paused and timer.enabled and polls==before+1 and not osd[#osd]:find('successfully',1,true),
+    'an unreadable stats file must not release the build pause or report success')
+  statustext='Active Upscale Chain: 1\nApplied Model: fixture; New Video Resolution: 3840x2160'
+  tick();assert(not paused and osd[#osd]=='',
+    'engine completion releases its own pause and clears its progress message')
 
   property('pause',true)
   statustext='Building TensorRT engine for fixture for 1920x1080';tick()
-  statustext='Active Upscale Chain: 1';tick()
+  statustext='Applied RIFE v426 Interpolation 2.000x; New Video FPS: 48.000';tick()
   assert(paused,'engine completion preserves a pre-existing manual pause')
   property('pause',false)
   statustext='Building TensorRT engine for fixture for 1920x1080';tick()
   assert(paused)
   property('pause',false);property('pause',true)
-  statustext='Active Upscale Chain: 1';tick()
+  statustext='Padded to 1920x1088, applied RIFE v426 Interpolation 2.000x, cropped back to 1920x1080; New Video FPS: 48.000';tick()
   assert(paused,'manual unpause and repause between polls relinquishes monitor ownership')
 
   property('pause',false)
@@ -144,8 +153,43 @@ local function test()
     'ending a build preserves a pre-existing user-owned pause')
   property('pause',false);start('fourth.mkv');ready();tick()
   statustext='Engine build FAILED for fixture (see fixture.build.log); playing without this chain';tick()
-  assert(not paused and osd[#osd]:find('failed.',1,true) and not osd[#osd]:find('successfully',1,true),
+  assert(not paused and osd[#osd]=='模型构建失败\n日志：fixture.build.log',
     'a native build failure resumes playback with its failure message')
+  statustext='Building TensorRT engine for fixture for 1920x1080';tick()
+  assert(paused)
+  statustext='Upscale Profile: Off\nNo Chains Activated';tick()
+  assert(not paused and osd[#osd]=='', 'switching to bypass cancels the build notice without claiming success')
+
+  for _,level in ipairs({'error','fatal'}) do
+    statustext='Building TensorRT engine for fixture for 1920x1080'
+    start('native-'..level..'.mkv');ready();tick();assert(paused)
+    events['log-message']({prefix='other-filter',level=level,text='unrelated failure'})
+    assert(paused and timer.enabled,'unrelated filter errors do not take ownership of this build')
+    events['log-message']({prefix='animejanai',level='warn',text='recoverable warning'})
+    assert(paused and timer.enabled,'warnings do not terminate a build')
+    local native_error='inference failed: frame dims 1920x808 do not match configured 1280x538'
+    local before_seeks=seeks
+    events['log-message']({prefix='animejanai',level=level,text=native_error..'\n'})
+    assert(not paused and not timer.enabled and osd[#osd]=='超分与补帧失败：\n'..native_error,
+      'native '..level..' releases only the build pause and displays the real failure')
+    local last=osd[#osd];before_reads,before_polls=reads,polls
+    ready();tick();timer.callback()
+    assert(not paused and not timer.enabled and reads==before_reads and polls==before_polls and osd[#osd]==last,
+      'a failed native filter cannot revive its stale build log on later output events')
+    assert(seeks==before_seeks,'handling a native failure must not reload or seek the video')
+  end
+  property('pause',true);start('manual-pause.mkv');ready();tick()
+  events['log-message']({prefix='animejanai',level='error',text='configure failed: fixture'})
+  assert(paused and not timer.enabled,'native failure preserves a pre-existing manual pause')
+  property('pause',false);start('manual-takeover.mkv');ready();tick()
+  property('pause',false);property('pause',true)
+  events['log-message']({prefix='animejanai',level='fatal',text='inference failed: fixture'})
+  assert(paused and not timer.enabled,'native failure preserves manual pause ownership after takeover')
+  property('pause',false);start('recovered.mkv');ready();tick()
+  assert(paused and timer.enabled,'opening a new file allows its own native build to be monitored')
+  statustext='Applied Model: fixture; New Video Resolution: 3840x2160';tick()
+  assert(not paused and osd[#osd]=='',
+    'a new file clears build progress only after its own applied-model log')
   msg.info('PASS controls r5: native slots; engine lifecycle, stale log, pause ownership and filter removal')
 end
 local ok,err=xpcall(test,debug.traceback)

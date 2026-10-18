@@ -149,7 +149,7 @@ namespace AnimeJaNaiConfEditor.ViewModels
                 bool nvidia = gpu.GetProperty("nvidia").GetBoolean();
                 GpuText = nvidia
                     ? AnimeJaNai.Localization.UiText.F($"GPU：{gpu.GetProperty("name").GetString()}")
-                    : AnimeJaNai.Localization.UiText.T("GPU：未检测到 NVIDIA 设备；内置 DirectML 后端可用于 AMD 和 Intel GPU");
+                    : AnimeJaNai.Localization.UiText.T("No NVIDIA GPU detected.");
                 GpuNvidia = nvidia;
 
                 Packs.Clear();

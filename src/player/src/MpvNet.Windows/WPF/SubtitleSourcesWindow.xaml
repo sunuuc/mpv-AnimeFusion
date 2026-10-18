@@ -19,13 +19,30 @@
         <StackPanel Margin="22,18">
             <TextBlock Text="字幕来源设置" FontSize="24" FontWeight="SemiBold" Margin="0,0,0,18" />
             <DockPanel Margin="0,0,0,8">
-                <Button DockPanel.Dock="Right" Content="获取密钥" Tag="https://secure.assrt.net/usercp.php" Click="Website_Click" />
+                <ToggleButton x:Name="AssrtEnabledToggle" DockPanel.Dock="Right" Style="{StaticResource MatchToggleSwitch}"
+                              AutomationProperties.Name="启用 ASSRT" Click="Source_Click" />
                 <TextBlock Text="ASSRT" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center" />
             </DockPanel>
-            <TextBlock Text="API 密钥" Margin="0,4,0,6" />
-            <PasswordBox x:Name="AssrtTokenBox" MaxLength="128" />
-            <Button x:Name="VerifyButton" Content="验证" HorizontalAlignment="Left" Margin="0,10,0,0" Click="Verify_Click" />
-            <TextBlock x:Name="AssrtStatus" Style="{StaticResource MatchStatusText}" Margin="0,8,0,0" />
+            <StackPanel x:Name="AssrtSettings">
+                <DockPanel Margin="0,0,0,8">
+                    <Button DockPanel.Dock="Right" Content="获取密钥" Tag="https://secure.assrt.net/usercp.php" Click="Website_Click" />
+                    <TextBlock Text="API 密钥" VerticalAlignment="Center" />
+                </DockPanel>
+                <PasswordBox x:Name="AssrtTokenBox" MaxLength="128" />
+                <Button x:Name="VerifyButton" Content="验证" HorizontalAlignment="Left" Margin="0,10,0,0" Click="Verify_Click" />
+                <TextBlock x:Name="AssrtStatus" Style="{StaticResource MatchStatusText}" Margin="0,8,0,0" />
+            </StackPanel>
+            <DockPanel Margin="0,20,0,0">
+                <ToggleButton x:Name="AmenzbEnabledToggle" DockPanel.Dock="Right" Style="{StaticResource MatchToggleSwitch}"
+                              AutomationProperties.Name="启用 ameNZB" Click="Source_Click" />
+                <TextBlock Text="ameNZB（测试）" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center" />
+            </DockPanel>
+            <DockPanel Margin="0,14,0,0">
+                <ToggleButton x:Name="TsukihimeEnabledToggle" DockPanel.Dock="Right" Style="{StaticResource MatchToggleSwitch}"
+                              AutomationProperties.Name="启用 TsukiHime" Click="Source_Click" />
+                <TextBlock Text="TsukiHime（测试）" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center" />
+            </DockPanel>
+            <TextBlock x:Name="SourcesStatus" Style="{StaticResource MatchStatusText}" />
             <Button Content="关闭" IsCancel="True" HorizontalAlignment="Right" Margin="0,20,0,0" Click="Close_Click" />
         </StackPanel>
     </ScrollViewer>

@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[2]
 COMMIT = 'd4c06dd3424dc06d90d4ea15b0fa92fa3ceeb62f'
 GENERATORS = ('apply_native_r2.py', 'apply_secondary_sub_sync.py',
               'apply_subtitle_track_cache.py', 'apply_stats_header.py',
-              'apply_watch_history.py')
+              'apply_watch_history.py', 'apply_animejanai_pre_resize.py')
 
 
 def sha(path):

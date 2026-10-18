@@ -3,7 +3,6 @@ using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
 using System.Text;
 using MpvNet.Windows.Bangumi;
@@ -11,10 +10,11 @@ using static MpvNet.Windows.Subtitles.SubtitleHttp;
 
 namespace MpvNet.Windows.Subtitles;
 
-public sealed class AssrtClient(HttpClient http, SubtitleStore store)
+public sealed class AssrtClient(HttpClient http, SubtitleStore store) : ISubtitleClient
 {
+    public SubtitleSource Source => SubtitleSource.Assrt;
+    public bool Configured => store.Credentials.AssrtToken.Length > 0;
     sealed class InvalidResponseException() : SubtitleServiceException("ASSRT：返回结果异常，请重试。");
-    readonly ConcurrentDictionary<SubtitleQuery, string> _searchNames = new();
     async Task<JsonDocument> RequestAsync(string path, CancellationToken token, string? access = null, HttpContent? content = null)
     {
         access ??= store.Credentials.AssrtToken;
@@ -46,31 +46,12 @@ public sealed class AssrtClient(HttpClient http, SubtitleStore store)
     public async Task ValidateTokenAsync(string access, CancellationToken token)
     { using var response = await RequestAsync("user/quota", token, access).ConfigureAwait(false); }
 
-    public async Task<SubtitlePage> SearchAsync(SubtitleQuery query, int page, CancellationToken token)
+    public async Task<SubtitlePage> SearchAsync(SubtitleQuery query, int page, CancellationToken token,
+        IProgress<IReadOnlyList<SubtitleResult>>? progress = null)
     {
-        var names = new[] { query.Title }.Concat(query.Names).Select(s => Regex.Replace(s.Normalize(NormalizationForm.FormKC), @"[\s\p{P}\p{S}]+", " ").Trim())
-            .Where(s => s.Length >= 3).Distinct().OrderByDescending(s => Regex.IsMatch(s, @"\p{IsCJKUnifiedIdeographs}"))
-            .Take(3).ToArray();
-        if (names.Length == 0) throw new SubtitleServiceException("ASSRT 搜索词至少需要三个字符。");
-        if (page > 1 && _searchNames.TryGetValue(query, out string? chosen)) names = [chosen];
-        InvalidResponseException? invalid = null;
-        foreach (string name in names)
-        {
-            try
-            {
-                var result = await SearchNameAsync(query, name, page, token).ConfigureAwait(false);
-                token.ThrowIfCancellationRequested();
-                if (result.Results.Count > 0 || result.HasMore || page > 1)
-                { _searchNames[query] = name; return result; }
-            }
-            catch (InvalidResponseException error) { invalid = error; }
-        }
-        if (invalid != null) throw invalid;
-        return new([], false);
-    }
-
-    async Task<SubtitlePage> SearchNameAsync(SubtitleQuery query, string name, int page, CancellationToken token)
-    {
+        if (page < 1) throw new ArgumentOutOfRangeException(nameof(page));
+        string name = query.Title.Normalize(NormalizationForm.FormKC).Trim();
+        if (name.Length < 3) throw new SubtitleServiceException("ASSRT 搜索词至少需要三个字符。");
         using var document = await RequestAsync("sub/search", token, content: new FormUrlEncodedContent(new Dictionary<string, string>
             { ["q"] = name, ["cnt"] = "15", ["pos"] = ((page - 1) * 15).ToString(), ["filelist"] = "1" })).ConfigureAwait(false);
         var items = Array(Object(document.RootElement, "sub"), "subs").ToArray();
@@ -89,7 +70,8 @@ public sealed class AssrtClient(HttpClient http, SubtitleStore store)
                     PackageNames = Array(s, "filelist").Select(file => Text(file, "f")).Where(name => name.Length > 0).ToArray(),
                     Season = Season(Text(s, "native_name") is { Length: > 0 } nativeTitle ? nativeTitle : Text(s, "videoname"), query.Episode != null)
                 }).ToArray();
-        return new(results, items.Length == 15);
+        return new(results, items.Length == 15)
+            { PageKey = string.Join(',', items.Select(item => Number(item, "id")).Where(id => id > 0)) };
     }
 
     static int? Season(string title, bool episode)
@@ -100,7 +82,7 @@ public sealed class AssrtClient(HttpClient http, SubtitleStore store)
     }
 
     static bool LanguageMatches(JsonElement value, string language)
-        => language.Length == 0 || Languages(value).Contains(language);
+        => language.Length == 0 || Languages(value).Any(code => code == language || SubtitleLanguage.Find(code)?.Matches(language) == true);
 
     static IReadOnlyList<string> Languages(JsonElement value)
     {
@@ -111,12 +93,15 @@ public sealed class AssrtClient(HttpClient http, SubtitleStore store)
             foreach (var flag in list.EnumerateObject().Where(flag => flag.Value.ValueKind == JsonValueKind.True))
             {
                 string code = flag.Name.StartsWith("lang", StringComparison.Ordinal) ? flag.Name[4..] : flag.Name;
-                if (code is "chs" or "cht") codes.Add("zh");
+                if (code == "chs") codes.Add("zh-Hans");
+                else if (code == "cht") codes.Add("zh-Hant");
                 else if (SubtitleLanguage.Find(code) is { } language) codes.Add(language.Code);
                 else if (code != "dou") codes.Add("other");
             }
         string desc = Text(lang, "desc");
-        if (desc.Contains('中') || desc.Contains('简') || desc.Contains('繁')) codes.Add("zh");
+        if (desc.Contains('简') || desc.Contains('簡')) codes.Add("zh-Hans");
+        if (desc.Contains('繁')) codes.Add("zh-Hant");
+        if (desc.Contains('中') && !codes.Any(code => code.StartsWith("zh", StringComparison.Ordinal))) codes.Add("zh");
         if (desc.Contains('英')) codes.Add("en");
         if (desc.Contains('日')) codes.Add("ja");
         return codes.Count == 0 ? ["other"] : codes.Distinct().ToArray();

@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -10,6 +12,8 @@ using System.Windows.Media;
 using System.Windows.Threading;
 
 using MpvNet.Windows.Native;
+using MpvNet.Windows.Subtitles;
+using MpvNet.Windows.Trakt;
 using MpvNet.Windows.WPF.Controls;
 using MpvNet.Windows.UI;
 
@@ -25,6 +29,12 @@ public partial class DanmakuSearchWindow : Window
     readonly ObservableCollection<ChoiceChip> _platforms = new();
     readonly Dictionary<int, string> _serverNames = new();
     readonly int? _initialSeason;
+    readonly CancellationTokenSource _lifetime = new();
+    SubtitleTitles? _titles;
+    string _aliasMediaKey = "";
+    int _aliasesGeneration;
+    bool _aliasesWereOpen;
+    bool _closed;
     string _lastState = "";
     string _displayedKeyword = "";
     string _selectedTitle = "";
@@ -91,7 +101,13 @@ public partial class DanmakuSearchWindow : Window
         SearchInitialIfReady();
     }
 
-    void Window_Closed(object? sender, EventArgs e) => _refresh.Stop();
+    void Window_Closed(object? sender, EventArgs e)
+    {
+        _closed = true;
+        _refresh.Stop();
+        AliasesPopup.IsOpen = false;
+        _lifetime.Cancel();
+    }
 
     void FitToOwner()
     {
@@ -136,7 +152,7 @@ public partial class DanmakuSearchWindow : Window
         _displayedKeyword = Text(root, "search_keyword");
         string status = Text(root, "status");
         Status.Text = status == "无法取得片名"
-            ? "没识别到片名，可直接输入作品名搜索。"
+            ? "未识别片名，请输入作品名。"
             : status;
         bool showEpisodes = Text(root, "search_view") == "episodes";
         if (showEpisodes && root.TryGetProperty("selected_show", out var selectedShow)
@@ -192,15 +208,97 @@ public partial class DanmakuSearchWindow : Window
 
     void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
+        ++_aliasesGeneration;
+        if (AliasesPopup != null) AliasesPopup.IsOpen = false;
         UpdateSearchPlaceholder();
         UpdateEmptyState();
     }
 
     void SearchBox_KeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key != Key.Enter) return;
-        e.Handled = true;
-        Search(refresh: true);
+        if (e.Key == Key.Down)
+        {
+            e.Handled = true;
+            if (!AliasesPopup.IsOpen) OpenAliases();
+            else if (AliasesList.Items.Count > 0)
+            {
+                if (AliasesList.SelectedIndex < 0) AliasesList.SelectedIndex = 0;
+                (AliasesList.ItemContainerGenerator.ContainerFromIndex(AliasesList.SelectedIndex) as ListBoxItem)?.Focus();
+            }
+        }
+        else if (e.Key == Key.Enter)
+        { e.Handled = true; Search(refresh: true); }
+        else if (e.Key == Key.Escape && AliasesPopup.IsOpen)
+        { e.Handled = true; AliasesPopup.IsOpen = false; }
+    }
+
+    void Aliases_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        => _aliasesWereOpen = AliasesPopup.IsOpen;
+
+    void Aliases_Click(object sender, RoutedEventArgs e)
+    {
+        bool close = _aliasesWereOpen || AliasesPopup.IsOpen;
+        _aliasesWereOpen = false;
+        if (close) { AliasesPopup.IsOpen = false; return; }
+        OpenAliases();
+    }
+
+    async void OpenAliases()
+    {
+        string keyword = SearchBox.Text.Normalize(NormalizationForm.FormKC).Trim();
+        if (_closed) return;
+        var media = TraktMedia.Parse(Player.GetPropertyString("media-title"), Player.GetPropertyString("path"), new Dictionary<string, string>());
+        if (media.Title.Length == 0) return;
+        if (_titles == null || _aliasMediaKey != media.Key)
+        {
+            _titles = new(media, _lifetime.Token);
+            _aliasMediaKey = media.Key;
+        }
+        int generation = ++_aliasesGeneration;
+        AliasesList.ItemsSource = _titles.CachedNames;
+        AliasesStatus.Text = "正在匹配别名…";
+        AliasesStatus.Visibility = Visibility.Visible;
+        AliasesPopup.IsOpen = true;
+        SearchBox.Focus();
+        try
+        {
+            var names = await _titles.NamesAsync(_lifetime.Token);
+            if (_closed || generation != _aliasesGeneration || !AliasesPopup.IsOpen) return;
+            AliasesList.ItemsSource = names;
+            AliasesStatus.Text = names.Count == 0 ? "没有匹配的别名" : "";
+            AliasesStatus.Visibility = names.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+            AliasesList.SelectedItem = names.FirstOrDefault(name => name.Equals(keyword, StringComparison.OrdinalIgnoreCase));
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        catch (Exception error)
+        {
+            Terminal.WriteError(error);
+            if (_closed || generation != _aliasesGeneration || !AliasesPopup.IsOpen) return;
+            AliasesList.ItemsSource = _titles.CachedNames;
+            AliasesStatus.Text = "别名获取失败，请重试";
+        }
+    }
+
+    void Alias_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (ItemsControl.ContainerFromElement(AliasesList, e.OriginalSource as DependencyObject) is ListBoxItem { DataContext: string name })
+        { e.Handled = true; SelectAlias(name); }
+    }
+
+    void SelectAlias(string name)
+    {
+        SearchBox.Text = name;
+        AliasesPopup.IsOpen = false;
+        SearchBox.Focus();
+        SearchBox.CaretIndex = name.Length;
+    }
+
+    void Aliases_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        { e.Handled = true; AliasesPopup.IsOpen = false; SearchBox.Focus(); }
+        else if (e.Key == Key.Enter && AliasesList.SelectedItem is string name)
+        { e.Handled = true; SelectAlias(name); }
     }
 
     void UpdateSearchPlaceholder()
@@ -243,18 +341,18 @@ public partial class DanmakuSearchWindow : Window
         }
         else if (string.IsNullOrWhiteSpace(SearchBox.Text))
         {
-            EmptyHeading.Text = "片名未识别";
-            EmptyDescription.Text = "输入作品名，再按回车或点搜索。";
+            EmptyHeading.Text = "请输入作品名";
+            EmptyDescription.Text = "";
         }
         else if (_displayedKeyword == SearchBox.Text.Trim())
         {
             EmptyHeading.Text = "没有找到相关作品";
-            EmptyDescription.Text = "试试更短的作品名，或切换线路、季度和平台。";
+            EmptyDescription.Text = "";
         }
         else
         {
-            EmptyHeading.Text = "准备好搜索";
-            EmptyDescription.Text = "选择线路、季度和平台，点搜索查看结果。";
+            EmptyHeading.Text = "点击搜索";
+            EmptyDescription.Text = "";
         }
     }
 
@@ -433,6 +531,7 @@ public partial class DanmakuSearchWindow : Window
 
     void Search(bool refresh = false)
     {
+        AliasesPopup.IsOpen = false;
         if (!_sources.Any(x => x.Index > 0))
         {
             Status.Text = "请先添加弹幕线路";

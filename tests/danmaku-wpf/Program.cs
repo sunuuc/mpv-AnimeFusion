@@ -11,9 +11,11 @@ using MpvNet.Windows.WPF;
 static class Program
 {
     const BindingFlags Private = BindingFlags.NonPublic | BindingFlags.Instance;
+    static int _checks;
     static void Check(bool condition, string message)
     {
         if (!condition) throw new Exception(message);
+        _checks++;
     }
     static object Field(object instance, string name) => instance.GetType().GetField(name, Private)!.GetValue(instance)!;
     static void Set(object instance, string name, object value) => instance.GetType().GetField(name, Private)!.SetValue(instance, value);
@@ -25,6 +27,7 @@ static class Program
         // Construct actual WPF controls without showing a window or sending desktop input.
         Theme.Current = new Theme { Foreground = Brushes.White, Foreground2 = Brushes.Gray,
             Background = Brushes.Black, MenuBackground = Brushes.DarkSlateGray, MenuHighlight = Brushes.Purple };
+        WpfApplication.Init();
         var search = new DanmakuSearchWindow("间谍过家家");
         using var data = JsonDocument.Parse("""
         {"results":[
@@ -45,6 +48,18 @@ static class Program
         input.Text = "English 中文";
         input.Select(2, 0); input.SelectedText = "abc";
         Check(input.Text == "Enabcglish 中文", "Native input must retain ordinary editing");
+        int aliasesGeneration = (int)Field(search, "_aliasesGeneration");
+        Set(search, "_pendingKeyword", "保留正在搜索的作品");
+        Set(search, "_pendingSearches", 2);
+        Call(search, "SelectAlias", "SPY×FAMILY");
+        Check(input.Text == "SPY×FAMILY" && input.CaretIndex == input.Text.Length, "Choosing an alias must fill the input without shortening the name");
+        Check((string)Field(search, "_pendingKeyword") == "保留正在搜索的作品" && (int)Field(search, "_pendingSearches") == 2,
+            "Choosing an alias must not launch a search or replace the pending request");
+        Check((int)Field(search, "_aliasesGeneration") > aliasesGeneration, "Changing the input must invalidate a pending alias response");
+        Check((int)Field(search, "_selectedSearchSource") == 1 && (string)Field(search, "_selectedSeason") == "第 3 季",
+            "Choosing an alias must preserve the chosen route and season");
+        Set(search, "_pendingKeyword", null!);
+        Set(search, "_pendingSearches", 0);
         ((IList)Field(search, "_shows")).Clear();
         Set(search, "_failedSearches", 1);
         ((TextBlock)search.FindName("Status")).Text = "服务器返回：配额不足";
@@ -62,8 +77,7 @@ static class Program
         Call(search, "ApplyState", oldState.RootElement);
         var choices = ((IEnumerable)Field(search, "_sources")).Cast<object>().ToArray();
         Call(search, "SourceChip_Click", new Button { DataContext = choices[2] }, new RoutedEventArgs());
-        Check(((TextBlock)search.FindName("EmptyHeading")).Text == "正在搜索作品", "A route switch must not display stale failure");
-        Check(((TextBlock)search.FindName("EmptyDescription")).Text == "", "Searching must have only one status line");
+        Check((int)Field(search, "_pendingSearches") == 0, "Changing the route must only filter cached results, without a new search");
         Call(search, "ApplyState", oldState.RootElement);
         Check((int)Field(search, "_selectedSearchSource") == 2, "An old route snapshot must not undo a pending switch");
         using var newState = JsonDocument.Parse("""
@@ -100,6 +114,9 @@ static class Program
         Check(string.Join(",", routes.Sources.Select(x => x.Name)) == "A,B,C", "Down must restore order");
         Check(routes.Sources.Select(x => x.Priority).SequenceEqual(new[] { 1, 2, 3 }), "Priority numbers must follow order");
         Check(routes.GetType().GetMethod("SetCurrent_Click", Private) == null, "Current-route control must be removed");
-        Console.WriteLine("PASS actual WPF filtering, request failures, native input and route ordering (no windows shown)");
+        Call(search, "Window_Closed", search, EventArgs.Empty);
+        Check(((System.Threading.CancellationTokenSource)Field(search, "_lifetime")).IsCancellationRequested,
+            "Closing the search must cancel unfinished alias requests");
+        Console.WriteLine($"PASS {_checks} actual WPF filtering, request failures, native input, alias selection and route ordering checks (no windows shown)");
     }
 }

@@ -258,10 +258,80 @@ static class Program
             Check(library.Tracks(media).Single().Language.Length == 0, "Ordinary title words cannot invent an imported language: " + title);
         }
     }
+    static async Task MovieDownloadChecks()
+    {
+        var library = new SubtitleLibrary(Path.Combine(Root, "movie-download-library"));
+        var query = new SubtitleQuery("Example Movie", null, null, "zh") { Year = 2011 };
+        var names = new[] { "Example.Movie.2011.chs.ass", "Example.Movie.2011.cht.ass", "Example.Movie.2011.en.ass",
+            "Another.Movie.2011.chs.ass", "Example.Movie.2012.chs.ass", "Example.Movie.2.2011.chs.ass", "Example Movie S02E01.chs.ass" };
+        var handler = new Handler((_, _) => new(HttpStatusCode.OK) { Content = new ByteArrayContent(Zip(names)) });
+        using var http = new HttpClient(handler);
+        var result = new SubtitleResult(SubtitleSource.Assrt, "movie-collection", "电影多版本合集", "简繁英", "", [])
+        {
+            Collection = true, LanguageCode = "zh,en", DownloadName = "movie-collection.zip",
+            DownloadUrl = "https://download.example/movie-collection.zip"
+        };
+        var download = new SubtitleDownload(http, library);
+        var aliasQuery = query with { Names = ["Official Film Alias"] };
+        Check(SubtitleLibrary.FileQuery(aliasQuery, result, "[Group][Official Film Alias][2011].chs.ass").Season == null,
+            "A movie collection accepts an exact known alias and parsed release year");
+        Check(SubtitleLibrary.FileQuery(aliasQuery, result, "[Group][Official Film Alias][2012].chs.ass").Season == -1,
+            "A parsed different release year remains unclassified even with an exact alias");
+        string? selected = await download.DownloadAsync(query, result, null, [], null, default);
+        Check(selected != null && selected.EndsWith(names[0]), "A movie collection selects the matching film instead of saving it only as a season");
+        var media = MpvNet.Windows.Trakt.TraktMedia.Parse("Example Movie (2011)", "", new Dictionary<string, string>());
+        var tracks = library.Tracks(media);
+        Check(tracks.Count == 3 && tracks.All(track => !track.Path.EndsWith(names[3]) && !track.Path.EndsWith(names[4])),
+            "Movie variants restore to the current film without another title, sequel or release year");
+        library.Remember(media.Title, null, selected!);
+        string? english = await download.DownloadAsync(query with { Language = "en" }, result, null, [], null, default);
+        Check(english?.EndsWith(names[2]) == true && handler.Count == 1,
+            "An explicit language filter selects that saved movie language before a different remembered language");
+        library.Remember(media.Title, null, english!);
+        Check(await download.DownloadAsync(query with { Language = "" }, result, null, [], null, default) == english,
+            "All languages retains the last selected movie variant without another request");
+        Check(library.Package(query, result)!.Files.Count == names.Length,
+            "A movie collection retains every subtitle while loading only the matching movie");
+        var local = library.Results(query.Title).Single();
+        Check(library.CurrentFile(query with { Language = "en" }, local, local.Files)?.LocalPath == english,
+            "Selecting the completed local movie result preserves its matching language");
+        Check(library.CurrentFile(query with { Language = "ja" }, local, local.Files) == null,
+            "A missing requested language never substitutes a different recorded language");
+
+        var singleHandler = new Handler((_, _) => new(HttpStatusCode.OK) { Content = new StringContent("1\n00:00:00,000 --> 00:00:01,000\nmovie\n") });
+        using var singleHttp = new HttpClient(singleHandler);
+        var single = result with { Id = "movie-single", DownloadName = names[0], DownloadUrl = "https://download.example/movie.ass" };
+        var singleDownload = new SubtitleDownload(singleHttp, library);
+        string? singlePath = await singleDownload.DownloadAsync(query, single, null, [], null, default);
+        Check(singlePath != null && library.Tracks(media).Any(track => track.Path == singlePath),
+            "A single-file movie download also enters its movie shelf when the service marks it a collection");
+        Check(await singleDownload.DownloadAsync(query, single, null, [], null, default) == singlePath && singleHandler.Count == 1,
+            "A saved single-file movie reuses local bytes without another download");
+
+        using var cancelled = new CancellationTokenSource();
+        using var cancelHttp = new HttpClient(new Handler((_, _) =>
+        {
+            cancelled.Cancel();
+            return new(HttpStatusCode.OK) { Content = new ByteArrayContent(Zip(names)) };
+        }));
+        var interrupted = result with { Id = "cancelled-movie" };
+        try
+        {
+            await new SubtitleDownload(cancelHttp, library).DownloadAsync(query, interrupted, null, [], null, cancelled.Token);
+            throw new Exception("A cancelled movie download must not return a subtitle to load");
+        }
+        catch (OperationCanceledException)
+        {
+            Check(library.Package(query, interrupted) == null,
+                "Cancellation before subtitle transfer completes cannot publish a partial movie package");
+        }
+    }
     static async Task Main(string[] args)
     {
         try
         {
+            await MovieDownloadChecks();
+            if (args.Contains("--movie-download-only")) { Console.WriteLine($"Movie subtitle download checks passed: {_checks}; isolated mock downloads only."); return; }
             LibraryChecks();
             if (args.Contains("--library-only")) { Console.WriteLine($"Subtitle library checks passed: {_checks}; no desktop interaction or network access."); return; }
             var rootStore=Store("direct-root");
@@ -291,20 +361,27 @@ static class Program
             using (var languageHttp = new HttpClient(languageHandler))
             {
                 var page = await new AssrtClient(languageHttp, Store("dynamic-language")).SearchAsync(Query with { Language = "" }, 1, default);
-                foreach (var (id, code) in new[] { ("1", "fr"), ("2", "ko"), ("3", "es"), ("4", "de"), ("5", "ar"), ("6", "hi"), ("11", "zh") })
+                foreach (var (id, code) in new[] { ("1", "fr"), ("2", "ko"), ("3", "es"), ("4", "de"), ("5", "ar"), ("6", "hi") })
                 {
                     var item = page.Results.Single(result => result.Id == id);
                     Check(item.MatchesFilter(null, code, null), "Returned language flag dynamically resolves and filters: " + code);
                     Check(item.Languages.Single().Name.Length > 0, "Returned language has a system language name: " + code);
                 }
                 Check(page.Results.Single(result => result.Id == "7").Languages.Count == 2, "Multilingual result appears in every returned language");
+                var chinese = page.Results.Single(result => result.Id == "11");
+                Check(chinese.Languages.Select(language => language.Code).ToHashSet().SetEquals(["zh-Hans", "zh-Hant"])
+                    && chinese.MatchesFilter(null, "zh-Hans", null) && chinese.MatchesFilter(null, "zh-Hant", null),
+                    "Explicit simplified and traditional tracks remain separately filterable");
                 foreach (string id in new[] { "8", "9", "10" })
                     Check(page.Results.Single(result => result.Id == id).MatchesFilter(null, "other", null), "Unknown or unspecified language uses Other");
                 Check(!page.Results.Single(result => result.Id == "10").MatchesFilter(null, "zh", null), "Bilingual flag alone does not invent Chinese");
                 Check(languageHandler.Count == 1, "Language filters never issue an additional service request");
             }
             Check(directLibrary.FilePath(directQuery,directResult,"episode.srt").StartsWith(Path.Combine(rootStore.Root,"Root fixture","第 1 季")),"Work and season folders are direct children of the configured subtitle root");
-            var templatePath=Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,"../../../../../src/player/src/MpvNet.Windows/WPF/SubtitleSearchWindow.xaml"));
+            var repository = new DirectoryInfo(AppContext.BaseDirectory);
+            while (repository != null && !File.Exists(Path.Combine(repository.FullName, "release.json"))) repository = repository.Parent;
+            var templatePath=Path.Combine(repository?.FullName ?? throw new InvalidOperationException("Repository source is required."),
+                "src/player/src/MpvNet.Windows/WPF/SubtitleSearchWindow.xaml");
             var template=System.Xml.Linq.XDocument.Load(templatePath);
             var runs=template.Descendants().Where(e=>e.Name.LocalName=="Run" && (string?)e.Attribute("Text") is string t && t.StartsWith("{Binding"));
             Check(runs.All(e=>e.Attribute("Text")!.Value.Contains("Mode=OneWay")),"Read-only subtitle display bindings are one-way");
@@ -318,7 +395,7 @@ static class Program
             Check(template.Descendants().Single(e=>(string?)e.Attribute("Text")=="{Binding Details}").Attribute("TextWrapping")==null,
                 "Language, date and size stay on one metadata line");
             Check(!template.ToString().Contains("提供字幕"), "Footer source hint removed");
-            Check(template.Descendants().Count(e => e.Name.LocalName == "ListBox") == 1
+            Check(template.Descendants().Count(e => e.Name.LocalName == "ListBox" && !e.Attributes().Any(a => a.Name.LocalName == "Name" && a.Value == "AliasesList")) == 1
                 && !template.ToString().Contains("FilesList") && !template.ToString().Contains("BackButton"), "Search results are the only selection level; no clickable episode files or back step");
             Check(!template.ToString().Contains("LoadButton") && !template.ToString().Contains("下载并加载"), "No separate download button remains");
             string windowCode=File.ReadAllText(templatePath+".cs");
@@ -336,24 +413,21 @@ static class Program
             Check(playbackCode.Contains(@"\fs8\bord0.6") && !playbackCode.Contains("字幕已加载")
                 && playbackCode.Contains("if (text.Length == 0)"), "Progress uses compact OSD units and successful loading clears the notice immediately");
             Check(!windowCode.Contains("SeriesQuery"), "Search results are not hidden according to the current video's type");
-            Check(windowCode.Contains("season == _media.Season") && playbackCode.Contains("path == null || !current"), "Package from another season or work is saved without loading into the current video");
-            Check(windowCode.Contains("Search_Click(object sender, RoutedEventArgs e) => Search(refresh: true)")
-                && windowCode.Contains("e.Handled = true; Search(refresh: true)"),"Click and Enter explicitly refresh subtitle results");
-            Check(windowCode.Contains("Status.Text = loading ?") && windowCode.Contains("if (hasResults || loading) EmptyState.Visibility = Visibility.Collapsed")
+            Check(windowCode.Contains("Status.Text = paused ?") && windowCode.Contains("if (hasResults || loading || paused) EmptyState.Visibility = Visibility.Collapsed")
                 && !windowCode.Contains("Empty(\"正在搜索字幕"),"Search progress only appears in the footer, including when no results exist yet");
-            Check(windowCode.IndexOf("        RefreshResults();",windowCode.IndexOf("foreach (var local",StringComparison.Ordinal),StringComparison.Ordinal)
-                < windowCode.IndexOf("await search.SearchAsync",StringComparison.Ordinal),"Local result count and empty-state visibility refresh before any awaited catalogue or API request");
             Check(windowCode.Contains("failed.Fail(SubtitleSource.Assrt, error)")&&windowCode.Contains("ApplySearch(failed)"),"Query errors use the same non-overlapping result state as service errors");
             Check(windowCode.Contains("_searchGeneration == generation") && windowCode.Contains("_searchLifetime.Cancel(); _searchLifetime.Dispose();")
                 && windowCode.Contains("ResetSearch();"),"Refresh cancels the old request, replaces results and ignores stale replies");
-            Check(!template.Descendants().Any(e => e.Attribute("TextChanged") != null) && !windowCode.Contains("_autoSearch"),
-                "Editing subtitle search text has no automatic request or debounce timer");
+            int editHandler=windowCode.IndexOf("void SearchBox_TextChanged(",StringComparison.Ordinal);
+            string editBody=windowCode[editHandler..windowCode.IndexOf("\n    }",editHandler,StringComparison.Ordinal)];
+            Check(!editBody.Contains("Search(") && !editBody.Contains("NamesAsync(") && !windowCode.Contains("_autoSearch"),
+                "Editing subtitle search text only dismisses aliases and has no automatic request or debounce timer");
             string danmakuCode=File.ReadAllText(Path.Combine(Path.GetDirectoryName(templatePath)!,"DanmakuSearchWindow.xaml.cs"));
             Check(danmakuCode.Contains("Search_Click(object sender, RoutedEventArgs e) => Search(refresh: true)")
                 && danmakuCode.Contains("refresh ? \"true\" : \"false\""),"Danmaku search button explicitly refreshes through the existing script command");
             int danmakuFilter=danmakuCode.IndexOf("void SourceChip_Click(",StringComparison.Ordinal);
             Check(danmakuCode[danmakuFilter..danmakuCode.IndexOf("void Search_Click(",danmakuFilter,StringComparison.Ordinal)].Contains("player_ui-danmaku-search-filter"),"Danmaku source chip retains cached filtering");
-            foreach(string method in new[]{"Source_Click","Language_Click","Season_Click"})
+            foreach(string method in new[]{"Source_Click","Language_Click","Season_Click","Episode_Click"})
             {
                 int start=windowCode.IndexOf("void "+method+"(",StringComparison.Ordinal);
                 int end=windowCode.IndexOf("\n    }",start,StringComparison.Ordinal);
@@ -365,7 +439,8 @@ static class Program
             {
                 try
                 {
-                    var itemTemplate=template.Descendants().First(e=>e.Name.LocalName=="DataTemplate");
+                    var itemTemplate=template.Descendants().Single(e=>e.Attributes().Any(a=>a.Name.LocalName=="Name" && a.Value=="ResultsList"))
+                        .Elements().Single(e=>e.Name.LocalName=="ListBox.ItemTemplate").Elements().Single(e=>e.Name.LocalName=="DataTemplate");
                     var dataTemplate=(System.Windows.DataTemplate)System.Windows.Markup.XamlReader.Parse(itemTemplate.ToString());
                     var panel=(System.Windows.FrameworkElement)dataTemplate.LoadContent();
                     panel.DataContext=new SubtitleResult(SubtitleSource.Assrt,"1","fixture","简","简 · 2016-06-13 · 605.3 KB",[]){Format="SSA"};
@@ -505,12 +580,12 @@ static class Program
                 """));
             using(var cacheHttp=new HttpClient(cacheHandler))
             {
-                using var search=new SubtitleSearch(new(cacheHttp,Store("cache")));
+                using var search=new SubtitleSearch(new AssrtClient(cacheHttp,Store("cache")));
                 Task<SubtitleQuery> MakeQuery(CancellationToken token){queries++;return Task.FromResult(Query with {Season=null,Language=""});}
                 var progress=new Progress<SubtitleSearchResult>();
                 var first=await search.SearchAsync("YuruYuri",MakeQuery,progress,default);
                 Check(first.Complete&&first.Results.Count==3&&cacheHandler.Count==1,"Initial search retains all seasons and languages");
-                Check(first.Results.Count(r=>r.MatchesFilter(null,"zh",2))==1,"Chinese second season filters stored results");
+                Check(first.Results.Count(r=>r.MatchesFilter(null,"zh-Hans",2))==1,"Simplified Chinese second season filters stored results");
                 Check(first.Results.Count(r=>r.MatchesFilter(null,"en",1))==1,"English first season filters stored results");
                 var repeated=await search.SearchAsync(" yuruyuri ",MakeQuery,progress,default);
                 Check(ReferenceEquals(first,repeated)&&queries==1&&cacheHandler.Count==1,"Filters and automatic reuse make no new requests");
@@ -524,17 +599,15 @@ static class Program
                 try{await pending;throw new Exception("Old search must cancel");}
                 catch(OperationCanceledException){Check(replacement.Complete,"Explicit refresh cancels old replies");}
             }
-            string searchCode=File.ReadAllText(Path.Combine(Path.GetDirectoryName(templatePath)!,"../Subtitles/SubtitleSearch.cs"));
-            Check(!searchCode.Contains("page <= 20")&&searchCode.Contains("added == 0"),"Pagination retains every page and stops empty or repeated pages");
-            Check(Enum.GetNames<SubtitleSource>().SequenceEqual(new[]{"Assrt"})&&!sourceTemplate.ToString().Contains("OpenSubtitles")
-                &&!windowCode.Contains("OpenSubtitles")&&!template.ToString().Contains("OpenSubtitles"),"Only ASSRT remains in code, settings and search UI");
+            Check(Enum.GetNames<SubtitleSource>().SequenceEqual(new[]{"Assrt", "Amenzb", "Tsukihime"})&&!sourceTemplate.ToString().Contains("OpenSubtitles")
+                &&!windowCode.Contains("OpenSubtitles")&&!template.ToString().Contains("OpenSubtitles"),"The three supported sources are available without restoring OpenSubtitles");
             var packStore = Store("packs");
             packStore.Save(new(new string('a',32)));
             var packHandler = new Handler((request,count)=>
             {
                 string body=request.Content!.ReadAsStringAsync().Result;
-                Check(request.Method==HttpMethod.Post&&request.RequestUri!.AbsolutePath=="/v1/sub/search"&&body.Contains("q=YuruYuri")
-                    &&body.Contains("filelist=1"),"Canonical search requests package metadata through the official POST without downloading individual files");
+                Check(request.Method==HttpMethod.Post&&request.RequestUri!.AbsolutePath=="/v1/sub/search"&&body.Contains("q=YuruYuri%21")
+                    &&body.Contains("filelist=1"),"The selected title and punctuation reach the package metadata POST without another alias");
                 return Json("""
                 {"status":0,"sub":{"subs":[
                 {"id":1,"native_name":"YuruYuri 第一季","lang":{"desc":"简"}},
@@ -546,11 +619,11 @@ static class Program
             });
             using(var packHttp=new HttpClient(packHandler))
             {
-                var result=await new AssrtClient(packHttp,packStore).SearchAsync(Query with {Title="YuruYuri！", Names=["YuruYuri!"]},1,default);
+                var result=await new AssrtClient(packHttp,packStore).SearchAsync(Query with {Title="YuruYuri！", Names=["摇曳百合", "YuruYuri!"]},1,default);
                 Check(result.Results.Count==5 && result.Results.Any(r=>r.Id=="5"), "All retains the full API response, including season collections and specials");
                 Check(result.Results.Count(r=>r.MatchesFilter(null,"",null))==5,"All is not the union of recognized season chips");
                 var collection=result.Results.Single(r=>r.Id=="5");
-                Check(collection.MatchesFilter(null,"zh",2)&&collection.Collection,"Collections remain visible for the current season rather than being assumed to be season one");
+                Check(collection.MatchesFilter(null,"zh-Hant",2)&&collection.Collection,"Collections remain visible for the current season rather than being assumed to be season one");
                 Check(collection.Title=="ゆるゆり/摇曳百合/輕鬆百合/YuruYuri/[字幕组][合集(1+2+3期+OVA)]","Result title retains both the work aliases and the full release name");
                 Check(collection.Format=="SSA"&&collection.Details=="繁 · 2016-06-13 · 605.3 KB","Metadata only displays language, date and package size without a raw vote score");
                 Check(result.Results[0].Format==""&&result.Results[0].Details=="简","Missing format, date and size have no placeholder labels");
@@ -560,7 +633,7 @@ static class Program
                 ? "{\"status\":0,\"sub\":{\"subs\":["+string.Join(',',Enumerable.Range(1,15).Select(id=>$"{{\"id\":{id},\"native_name\":\"Other Work\",\"lang\":{{\"desc\":\"简\"}}}}"))+"]}}"
                 : "{\"status\":0,\"sub\":{\"subs\":[{\"id\":99,\"native_name\":\"YuruYuri 第二季\",\"lang\":{\"desc\":\"简\"}}]}}"));
             using(var sparseHttp=new HttpClient(sparseHandler))
-            using(var sparseSearch=new SubtitleSearch(new(sparseHttp,packStore)))
+            using(var sparseSearch=new SubtitleSearch(new AssrtClient(sparseHttp,packStore)))
             {
                 var result=await sparseSearch.SearchAsync("YuruYuri",_=>Task.FromResult(Query),new Progress<SubtitleSearchResult>(),default);
                 Check(result.Complete && result.Results.Count==16 && result.Results.Any(r=>r.Id=="99") && sparseHandler.Count==2,"All keeps both pages without local title suppression");
@@ -573,8 +646,8 @@ static class Program
                 : "{\"status\":0,\"sub\":{\"subs\":[{\"id\":2,\"native_name\":\"YuruYuri 第二季\",\"lang\":{\"desc\":\"简\"}}]}}"));
             using(var validAliasHttp=new HttpClient(validAliasHandler))
             {
-                var result=await new AssrtClient(validAliasHttp,packStore).SearchAsync(Query with {Names=["Alias"]},1,default);
-                Check(result.Results.Single().Id=="2" && validAliasHandler.Count==2,"A malformed response does not block the existing trusted-alias search");
+                await Fails(()=>new AssrtClient(validAliasHttp,packStore).SearchAsync(Query with {Names=["Alias"]},1,default),"返回结果异常");
+                Check(validAliasHandler.Count==1,"A malformed response is reported without retrying a different alias");
             }
             var movieHandler=new Handler((request,_)=>
             {

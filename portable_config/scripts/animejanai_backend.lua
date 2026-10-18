@@ -90,8 +90,7 @@ local function check_components(backend, rife_configured)
             and 'nvinfer_11.dll' or 'libnvinfer.so.11'
         if not exists('animejanai/inference/' .. nvinfer) then
             hints[#hints + 1] =
-                'TensorRT runtime not installed - press Ctrl+E to open ' ..
-                'AnimeJaNai Manager'
+                '缺少 TensorRT 组件，请按 Ctrl+E 安装'
         else
             -- builder resources are only needed to build new engines; cached
             -- engines still run without them, so this is a soft warning
@@ -109,8 +108,7 @@ local function check_components(backend, rife_configured)
             end
             if not has_builder then
                 hints[#hints + 1] =
-                    'No TensorRT kernel pack for this GPU - new engine builds ' ..
-                    'will fail; press Ctrl+E to open AnimeJaNai Manager'
+                    '缺少 TensorRT 构建组件，请按 Ctrl+E 安装'
             end
         end
     end
@@ -126,8 +124,7 @@ local function check_components(backend, rife_configured)
         end
         if not has_model then
             hints[#hints + 1] =
-                'RIFE is enabled but the models are not installed - ' ..
-                'press Ctrl+E to open AnimeJaNai Manager'
+                '缺少 RIFE 模型，请按 Ctrl+E 安装'
         end
     end
     if #hints == 0 then
@@ -151,7 +148,7 @@ local function check_components(backend, rife_configured)
         shown = true
         local after = mp.get_property_number('osd-duration', 1000) / 1000 + 0.5
         mp.add_timeout(after, function()
-            mp.osd_message('AnimeJaNai: ' .. table.concat(hints, '\n'), 10)
+            mp.osd_message(table.concat(hints, '\n'), 10)
         end)
     end)
 end

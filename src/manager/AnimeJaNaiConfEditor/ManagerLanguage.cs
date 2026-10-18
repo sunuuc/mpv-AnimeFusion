@@ -31,12 +31,12 @@ public static class LanguagePanel
             ?? throw new InvalidOperationException("Language hint missing from Global Settings.");
         select.ItemsSource = new[]{"简体中文","English","跟随系统 / System"};
         select.SelectedIndex = Array.IndexOf(InterfaceLanguage.Choices, InterfaceLanguage.Read());
-        hint.Text = UiText.T("Language changes take effect after restarting both applications.");
+        hint.Text = UiText.T("Restart the player and manager to apply language changes.");
         select.SelectionChanged += (_,_) => {
             if (select.SelectedIndex < 0) return;
             try {
                 InterfaceLanguage.Save(InterfaceLanguage.Choices[select.SelectedIndex]);
-                hint.Text = UiText.T("Saved. Restart the player and manager to apply the language.");
+                hint.Text = UiText.T("Saved. Restart the player and manager to apply.");
             }
             catch (Exception e) {
                 hint.Text = UiText.T("Could not save language: ") + e.Message;

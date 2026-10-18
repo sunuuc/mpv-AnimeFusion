@@ -1530,6 +1530,19 @@ public partial class MainForm : Form
         }
     }
 
+    internal bool TryCloseAfterUnhandledException()
+    {
+        if (IsDisposed || Disposing || !IsHandleCreated || InvokeRequired || _shutdownCompleted)
+            return false;
+
+        if (!_shutdownStarted)
+            Close();
+
+        // Only consume the dispatcher exception when the normal asynchronous
+        // shutdown has actually started and still owns the window message pump.
+        return _shutdownStarted;
+    }
+
     protected override void OnMouseDown(MouseEventArgs e)
     {
         base.OnMouseDown(e);

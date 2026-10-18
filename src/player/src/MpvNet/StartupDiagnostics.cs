@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 
 namespace MpvNet;
@@ -10,6 +11,7 @@ public static class StartupDiagnostics
     static readonly List<string> Phases = [];
     static bool nativeReady;
     static bool sawFile;
+    static bool failureRecorded;
     static int? optionError;
 
     public static void Begin()
@@ -28,7 +30,52 @@ public static class StartupDiagnostics
     }
 
     public static void OptionError(int error) { optionError = error; Record("option-rejected"); }
-    public static void Failed() => Record("startup-failed");
+    public static void Failed(Exception error)
+    {
+        lock (Sync)
+        {
+            // Keep the first failure; shutdown callbacks must not replace its stack.
+            if (failureRecorded) return;
+            failureRecorded = true;
+            Record("startup-failed");
+            try
+            {
+                Write("startup-error.json", new
+                {
+                    time = DateTimeOffset.Now,
+                    error = ErrorDetails(error)
+                });
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+            catch (ArgumentException) { }
+        }
+    }
+
+    static object ErrorDetails(Exception error, int depth = 0) => new
+    {
+        type = error.GetType().FullName,
+        code = error.HResult,
+        // Exception messages may contain credentials or media URLs. Record method
+        // names and source locations, without messages, arguments or machine paths.
+        frames = new StackTrace(error, true).GetFrames().Select(frame => new
+        {
+            method = frame.GetMethod()?.DeclaringType?.FullName + "." + frame.GetMethod()?.Name,
+            file = Path.GetFileName(frame.GetFileName()),
+            line = frame.GetFileLineNumber()
+        }).ToArray(),
+        inner = error.InnerException == null || depth >= 7 ? null : ErrorDetails(error.InnerException, depth + 1)
+    };
+
+    static void Write(string name, object data)
+    {
+        string folder = Path.Combine(Folder.Startup, "portable_config");
+        if (!Directory.Exists(folder)) folder = Player.ConfigFolder;
+        string path = Path.Combine(folder, name);
+        string json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
+        File.WriteAllText(path + ".tmp", json);
+        File.Move(path + ".tmp", path, true);
+    }
 
     // Shape of the caller's argument list: option names, value kinds and short
     // hashes only. Never the values themselves, so URLs, titles and tokens stay
@@ -162,12 +209,7 @@ public static class StartupDiagnostics
                     file_loaded = sawFile,
                     option_error = optionError
                 };
-                string folder = Path.Combine(Folder.Startup, "portable_config");
-                if (!Directory.Exists(folder)) folder = Player.ConfigFolder;
-                string path = Path.Combine(folder, "startup-diagnostic.json");
-                string json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
-                File.WriteAllText(path + ".tmp", json);
-                File.Move(path + ".tmp", path, true);
+                Write("startup-diagnostic.json", data);
             }
             catch (IOException) { }
             catch (UnauthorizedAccessException) { }

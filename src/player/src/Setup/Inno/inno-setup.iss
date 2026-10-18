@@ -43,7 +43,6 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [CustomMessages]
 chinesesimplified.UninstallDataTitle=卸载 mpv-AnimeFusion
 chinesesimplified.UninstallDataDescription=选择要同时删除的数据，未勾选的项目将保留。
-chinesesimplified.UninstallDataHint=程序文件和临时缓存会自动移除。
 chinesesimplified.UninstallPersonalData=个人数据
 chinesesimplified.UninstallSubtitlesAndDanmaku=字幕与弹幕
 chinesesimplified.UninstallModels=模型与推理组件
@@ -51,7 +50,6 @@ chinesesimplified.UninstallContinue=卸载
 chinesesimplified.UninstallDeleteError=无法删除已勾选的数据，卸载已停止。
 english.UninstallDataTitle=Uninstall mpv-AnimeFusion
 english.UninstallDataDescription=Select data to delete. Unchecked items will be kept.
-english.UninstallDataHint=Program files and temporary caches will be removed automatically.
 english.UninstallPersonalData=Personal data
 english.UninstallSubtitlesAndDanmaku=Subtitles and danmaku
 english.UninstallModels=Models and inference components
@@ -174,14 +172,14 @@ var
   Form: TSetupForm;
   Header: TPanel;
   HeaderLine, FooterLine: TBevel;
-  Title, Description, Hint: TNewStaticText;
+  Title, Description: TNewStaticText;
   Options: TNewCheckListBox;
   ContinueButton, CancelButton: TNewButton;
   I, ButtonWidth: Integer;
 begin
   { CreateCustomForm initializes and scales the form itself. Use the native
     wizard's design dimensions here; scale only the controls added afterward. }
-  Form := CreateCustomForm(497, 276, False, False);
+  Form := CreateCustomForm(497, 236, False, False);
   try
     Form.Caption := CustomMessage('UninstallDataTitle');
     Form.BorderIcons := [biSystemMenu];
@@ -221,19 +219,10 @@ begin
     FooterLine.SetBounds(0, Form.ClientHeight - ScaleY(47),
       Form.ClientWidth, ScaleY(2));
 
-    Hint := TNewStaticText.Create(Form);
-    Hint.Parent := Form;
-    Hint.SetBounds(ScaleX(40), Header.Height + ScaleY(20),
-      Form.ClientWidth - ScaleX(80), ScaleY(28));
-    Hint.AutoSize := False;
-    Hint.WordWrap := True;
-    Hint.Caption := CustomMessage('UninstallDataHint');
-    Hint.AdjustHeight;
-
     Options := TNewCheckListBox.Create(Form);
     Options.Parent := Form;
-    Options.SetBounds(Hint.Left, Hint.Top + Hint.Height + ScaleY(12),
-      Hint.Width, FooterLine.Top - Hint.Top - Hint.Height - ScaleY(32));
+    Options.SetBounds(ScaleX(40), Header.Height + ScaleY(20),
+      Form.ClientWidth - ScaleX(80), FooterLine.Top - Header.Height - ScaleY(40));
     Options.BorderStyle := bsNone;
     Options.ParentColor := True;
     Options.Flat := True;

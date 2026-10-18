@@ -122,7 +122,7 @@ static class Program
         }
         catch (Exception ex)
         {
-            StartupDiagnostics.Failed();
+            StartupDiagnostics.Failed(ex);
             Terminal.WriteError(ex);
         }
     }

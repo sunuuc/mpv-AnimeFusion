@@ -125,7 +125,7 @@
               <Grid ColumnDefinitions="Auto,Auto,*">
                 <TextBlock VerticalAlignment="Center" Margin="0,0,12,0">界面语言 / Interface language</TextBlock>
                 <ComboBox Grid.Column="1" x:Name="InterfaceLanguageSelector" Width="200" />
-                <TextBlock Grid.Column="2" x:Name="InterfaceLanguageHint" Classes="help" Margin="18,0,0,0">语言设置在重启播放器和管理器后生效。</TextBlock>
+                <TextBlock Grid.Column="2" x:Name="InterfaceLanguageHint" Classes="help" Margin="18,0,0,0">重启播放器和管理器后生效。</TextBlock>
               </Grid>
             </Border>
 
@@ -159,7 +159,7 @@
                       <ToggleButton IsChecked="{Binding AnimeJaNaiConf.TrtStaticSelected}" Content="{local:Text Key=s1d2c73dc01f2359b}" Command="{Binding AnimeJaNaiConf.SetTrtStatic}" />
                       <ToggleButton IsChecked="{Binding AnimeJaNaiConf.TrtDynamicSelected}" Content="{local:Text Key=sb6ee7b3e8d9c49d8}" Command="{Binding AnimeJaNaiConf.SetTrtDynamic}" />
                     </StackPanel>
-                    <TextBlock Grid.Column="1" Classes="help" Margin="20,0,0,0" xml:space="preserve"><Run Text="{local:Text Key=s3bea9c1abdf99558}" /><Bold><Run Text="{local:Text Key=sf89f136bfea79306}" /></Bold><Run Text="{local:Text Key=sdb3416aef1e7465c}" /><Bold><Run Text="{local:Text Key=s1d2c73dc01f2359b}" /></Bold><Run Text="{local:Text Key=se3ce407cd0ecb515}" /><Bold><Run Text="{local:Text Key=sb6ee7b3e8d9c49d8}" /></Bold><Run Text="{local:Text Key=s72dce64bf9194bcd}" /></TextBlock>
+                    <TextBlock Grid.Column="1" Classes="help" Margin="20,0,0,0" xml:space="preserve"><Bold><Run Text="{local:Text Key=sf89f136bfea79306}" /></Bold><Run Text="{local:Text Key=sdb3416aef1e7465c}" /><Bold><Run Text="{local:Text Key=s1d2c73dc01f2359b}" /></Bold><Run Text="{local:Text Key=se3ce407cd0ecb515}" /><Bold><Run Text="{local:Text Key=sb6ee7b3e8d9c49d8}" /></Bold><Run Text="{local:Text Key=s72dce64bf9194bcd}" /></TextBlock>
                   </Grid>
 
                   <StackPanel Orientation="Horizontal" Margin="0,0,0,5" IsVisible="{Binding AnimeJaNaiConf.TrtDynamicSelected}">
@@ -226,7 +226,6 @@
                 <Button Grid.Column="0" Classes="transparent" Command="{Binding SelectDefaultProfile}">
                   <CheckBox IsChecked="{Binding CurrentSlot.IsSelectedMpvProfile}" Content="{local:Text Key=s7524e7fb23604c3b}" IsHitTestVisible="False" />
                 </Button>
-                <TextBlock Grid.Column="1" Classes="help" Margin="20,0,0,0"><Run Text="{local:Text Key=s2f53e88e5f87beb5}" /></TextBlock>
               </Grid>
             </StackPanel>
 
@@ -387,7 +386,6 @@
 
                                 <Grid ColumnDefinitions="Auto,*" Margin="10,10,0,10">
                                   <CheckBox Grid.Column="0" IsChecked="{Binding EnableRife}" Content="{local:Text Key=s0505b30c271d8d2e}" IsEnabled="{Binding RifeToggleEnabled}" />
-                                  <TextBlock Grid.Column="1" Classes="help" Margin="20,0,0,0"><Run Text="{local:Text Key=s695645af935b2949}" /></TextBlock>
                                 </Grid>
 
                                 <TextBlock Margin="10,0,0,10" TextWrapping="Wrap" Foreground="Orange" IsVisible="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).RifeMissing}" Text="{local:Text Key=s8e68859097a24e34}" />
@@ -407,7 +405,6 @@
                                     <TextBlock Margin="0,0,5,0" VerticalAlignment="Center" Text="{local:Text Key=s5e2c614c23f02239}" />
                                     <ComboBox Margin="0,0,5,0" VerticalAlignment="Center" SelectedValue="{Binding RifeModel}" ItemsSource="{Binding RifeModelList}" />
                                   </StackPanel>
-                                  <TextBlock Grid.Column="1" Classes="help" Foreground="Gray" Margin="20,0,0,0" Text="{local:Text Key=sd0aaf2359d6a3282}" />
                                 </Grid>
 
                                 <Grid ColumnDefinitions="Auto,*" Margin="10,10,0,10" IsVisible="{Binding EnableRife}">

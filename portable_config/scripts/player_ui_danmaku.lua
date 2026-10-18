@@ -1922,15 +1922,15 @@ local function publish_search(entry)
     end
     search_health={pending=pending,failed=failed,responded=responded,total=total}
     if pending>0 then
-        status=#results>0 and ('找到 '..#results..' 个作品，其他线路搜索中…') or '正在搜索作品…'
+        status=#results>0 and ('共 '..#results..' 个作品，搜索中…') or '正在搜索作品…'
     elseif failed>0 and #results>0 then
         status='找到 '..#results..' 个作品，部分线路搜索失败'
     elseif failed>0 and responded==0 then
         status=tostring(first_error or '请求失败')
     elseif #results>0 then
-        status='找到 '..#results..' 个作品；请选择季度和平台'
+        status='共 '..#results..' 个作品'
     else
-        status='没有搜索结果；可以换关键词再试'
+        status='没有搜索结果'
     end
     publish()
 end
@@ -2239,7 +2239,7 @@ match_at=function(attempt,position)
     end
     local server=servers[index]
     if not server then match_at(attempt,position+1);return end
-    status='匹配弹幕中…（'..attempt.name..'）';publish()
+    status='匹配弹幕中…';publish()
     if attempt.direct_match_first then
         if not (attempt.match_attempted and attempt.match_attempted[index]) then
             match_by_file(attempt,position,index,server,true)
@@ -2351,7 +2351,7 @@ local function automatic_match_all_routes(attempt)
     end
     for _,index in ipairs(attempt.queue) do states[index]={ready=false,done=false,candidates={}} end
     if #attempt.queue==0 then finish();return end
-    status='正在并行搜索全部弹幕线路…（'..attempt.name..'）';publish()
+    status='正在搜索弹幕…';publish()
     for _,index in ipairs(attempt.queue) do
         request(servers[index].url..'/api/v2/search/anime?keyword='..online.urlencode(attempt.keyword or attempt.name),nil,function(body,err)
             if attempt.finished then return end
@@ -2558,7 +2558,7 @@ mp.register_script_message('player_ui-danmaku-search-filter',function(value)
     if entry then
         publish_search(entry)
     else
-        results={};status=search_keyword~='' and '请搜索作品后查看线路结果' or ''
+        results={};status=search_keyword~='' and '请先搜索作品' or ''
         publish()
     end
 end)
@@ -2592,7 +2592,7 @@ mp.register_script_message('player_ui-danmaku-show',function(anime_id,server_ind
         episodes=found
         local main=0
         for _,item in ipairs(found) do if not item.extra then main=main+1 end end
-        status=#found>0 and ('正片 '..main..' 条；另有 '..(#found-main)..' 条预告或其他内容') or '该作品没有可用剧集'
+        status=#found>0 and ('正片 '..main..' 集，其他 '..(#found-main)..' 条') or '该作品没有可用剧集'
         publish()
     end)
 end)

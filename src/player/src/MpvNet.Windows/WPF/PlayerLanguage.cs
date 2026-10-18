@@ -15,14 +15,14 @@ public static class LanguagePanel
     public static void Attach(Window window)
     {
         var original=(UIElement)window.Content;window.Content=null;
-        var hint=new TextBlock {Text=UiText.T("Language changes take effect after restarting both applications."),TextWrapping=TextWrapping.Wrap,FontSize=12,Opacity=0.75};
+        var hint=new TextBlock {Text=UiText.T("Restart the player and manager to apply the language."),TextWrapping=TextWrapping.Wrap,FontSize=12,Opacity=0.75};
         var select=new ComboBox {Name="InterfaceLanguageSelector",Width=215,
             Foreground=Theme.Current?.Foreground ?? SystemColors.ControlTextBrush,
             Background=Theme.Current?.Background ?? SystemColors.ControlBrush,
             ItemsSource=new[]{"简体中文","English","跟随系统 / System"},SelectedIndex=Array.IndexOf(InterfaceLanguage.Choices,InterfaceLanguage.Read())};
         select.SelectionChanged+=(_,_)=>{
             if(select.SelectedIndex<0)return;
-            try {InterfaceLanguage.Save(InterfaceLanguage.Choices[select.SelectedIndex]);hint.Text=UiText.T("Saved. Restart the player and manager to apply the language.");}
+            try {InterfaceLanguage.Save(InterfaceLanguage.Choices[select.SelectedIndex]);hint.Text=UiText.T("Restart the player and manager to apply the language.");}
             catch(Exception e){hint.Text=UiText.T("Could not save language: ")+e.Message;}
         };
         var top=new StackPanel {Margin=new Thickness(14,8,14,4)};
