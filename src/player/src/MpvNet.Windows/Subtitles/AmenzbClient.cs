@@ -73,7 +73,9 @@ public sealed class AmenzbClient(HttpClient http) : ISubtitleClient
                     _details.Add(release.Id, details);
                 }
             }
-            var matches = details.Where(result => MatchesLanguage(result.LanguageCode, language)).ToArray();
+            var matches = details.Where(result => MatchesLanguage(result.LanguageCode, language)
+                && (query.RequestSeason == null || result.Season == query.RequestSeason)
+                && (query.RequestEpisode == null || result.Episode == query.RequestEpisode)).ToArray();
             token.ThrowIfCancellationRequested();
             results.AddRange(matches);
             if (matches.Length > 0) progress?.Report(matches);
@@ -156,8 +158,8 @@ public sealed class AmenzbClient(HttpClient http) : ISubtitleClient
                 PackageNames = [filename],
                 TitleNames = result.TitleNames.Append(result.Title).Concat(titles).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
                 Individual = true,
-                Season = result.Season ?? (parsed.HasSeason || parsed.EpisodeNumber != null ? parsed.Season : null),
-                Episode = result.Season == -1 ? null : result.Episode ?? (parsed.EpisodeNumber is >= 0 and <= int.MaxValue and var episode
+                Season = parsed.Ambiguous ? -1 : result.Season ?? (parsed.HasSeason || parsed.EpisodeNumber != null ? parsed.Season : null),
+                Episode = parsed.Ambiguous || result.Season == -1 ? null : result.Episode ?? (parsed.EpisodeNumber is >= 0 and <= int.MaxValue and var episode
                     && episode == Math.Truncate(episode) ? (int)episode : null)
             };
         }
@@ -167,12 +169,14 @@ public sealed class AmenzbClient(HttpClient http) : ISubtitleClient
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, Origin + path);
         request.Headers.Accept.ParseAdd("text/html");
-        using var response = await SendAsync(http, request, "ameNZB", token).ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode)
-            throw new SubtitleServiceException(response.StatusCode == HttpStatusCode.TooManyRequests
-                ? "ameNZB：请求太频繁，请稍后重试。" : "ameNZB：服务暂时不可用，请稍后重试。");
-        using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
-        return Encoding.UTF8.GetString(await ReadBytesAsync(stream, 4 * 1024 * 1024, token).ConfigureAwait(false));
+        return await ReadAsync(http, request, "ameNZB", async (response, readToken) =>
+        {
+            if (!response.IsSuccessStatusCode)
+                throw new SubtitleServiceException(response.StatusCode == HttpStatusCode.TooManyRequests
+                    ? "ameNZB：请求太频繁，请稍后重试。" : "ameNZB：服务暂时不可用，请稍后重试。");
+            using var stream = await response.Content.ReadAsStreamAsync(readToken).ConfigureAwait(false);
+            return Encoding.UTF8.GetString(await ReadBytesAsync(stream, 4 * 1024 * 1024, readToken).ConfigureAwait(false));
+        }, token).ConfigureAwait(false);
     }
 
     static IEnumerable<Release> Releases(string html)

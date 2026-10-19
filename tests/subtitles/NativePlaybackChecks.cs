@@ -45,6 +45,7 @@ player.FileLoaded+=()=>loaded?.TrySetResult();
 int fileStarts=0;
 player.StartFile+=()=>Interlocked.Increment(ref fileStarts);
 var events=Task.Run(()=>player.EventLoop());
+var mainEvents=Task.Run(()=>player.MainEventLoop());
 async Task Open(string title,string options="",string path=null)
 {
  loaded=new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -288,13 +289,13 @@ try
      "The current season and episode precede numerically earlier available choices without changing All selection");
     ChooseEpisode("2");
     Check((string)type.GetField("_season",fields)!.GetValue(window)! =="all"
-     &&(string)type.GetField("_episode",fields)!.GetValue(window)! =="2"&&searchBox.Text==initialText&&client.Requests==0,
-     "The current episode can be selected under All seasons without rewriting the search text or sending a request");
+     &&(string)type.GetField("_episode",fields)!.GetValue(window)! =="2"&&searchBox.Text==initialText+" E02"&&client.Requests==0,
+     "The current episode appends its visible suffix under All seasons without sending a request");
     ChooseEpisode("all");ChooseSeason("3");
-    Check(EpisodeTags().SequenceEqual(new[]{"all","5"})&&searchBox.Text==initialText&&client.Requests==0,
-     "A different season exposes its own episodes without injecting the playing episode or rewriting the keyword");
+    Check(EpisodeTags().SequenceEqual(new[]{"all","5"})&&searchBox.Text==initialText+" S03"&&client.Requests==0,
+     "A different season exposes its own episodes and synchronizes the visible suffix without sending a request");
     ChooseLanguage("ja");
-    Check(EpisodeTags().SequenceEqual(new[]{"all"})&&searchBox.Text==initialText&&client.Requests==0,
+    Check(EpisodeTags().SequenceEqual(new[]{"all"})&&searchBox.Text==initialText+" S03"&&client.Requests==0,
      "An empty language in another season has no invented current episode and leaves the search text unchanged");
     ChooseSource("tsukihime");ChooseSource("all");ChooseLanguage("");ChooseSeason("all");
     Check(searchBox.Text==initialText&&client.Requests==0
@@ -440,7 +441,7 @@ try
     type.GetMethod("SelectAlias",fields)!.Invoke(window,["Test Work Alias"]);
     Check(client.Requests==requests,"Selecting an already confirmed alias only changes the text field");
     ClickSearch();WaitForSearch();
-    Check(client.Requests==requests+1&&client.LastQuery.Title=="Test Work Alias"&&client.LastQuery.RequestSeason==2
+    Check(client.Requests==requests+1&&client.LastQuery.Title=="Test Work Alias S02E01"&&client.LastQuery.RequestSeason==2
      &&client.LastQuery.RequestEpisode==1&&client.LastQuery.Episode==2,
      "Searching an alias of the same work preserves the manually selected season and episode");
     items.Add(result with{Id="chosen-season",Season=3,Episode=7,LanguageCode="en"});
@@ -488,9 +489,9 @@ try
      "Retry after an empty or failed result submits the retained coordinates exactly once");
     searchBox.Text="另一部作品 S04E02";requests=client.Requests;ClickSearch();WaitForSearch();
     CheckSelection("Searching a different work with episode numbers in its text preserves the manually chosen season and episode");
-    Check(client.Requests==requests+1&&client.LastQuery.Title=="另一部作品 S04E02"
+    Check(client.Requests==requests+1&&client.LastQuery.Title=="另一部作品 S03E07"&&searchBox.Text==client.LastQuery.Title
      &&client.LastQuery.RequestSeason==3&&client.LastQuery.RequestEpisode==7&&client.LastQuery.Episode==null,
-     "A different keyword is submitted literally with the selected request coordinates but without current-playback ownership");
+     "A different work submits the visible keyword with the selected request coordinates but without current-playback ownership");
     ChooseSeason("all");ChooseEpisode("all");ClickSearch();WaitForSearch();
     window.RestoreResults();
     Check((string)type.GetField("_season",fields)!.GetValue(window)! =="all"
@@ -535,8 +536,9 @@ try
     WaitForSearch();
     Check(client.Requests==requests+1&&client.LastQuery.Language=="zh-Hant"&&!ReferenceEquals(completed,type.GetField("_searchResult",fields)!.GetValue(window)),
      "Enter issues a fresh request using the newly selected language after restoring the cached window");
-    Check(((SubtitleSearchResult)type.GetField("_searchResult",fields)!.GetValue(window)!).Query.Title=="测试作",
-     "The explicit Search button submits the edited keyword");
+    Check(((SubtitleSearchResult)type.GetField("_searchResult",fields)!.GetValue(window)!).Query.Title=="测试作 S02"
+     &&searchBox.Text==client.LastQuery.Title,
+     "Explicit search submits the edited keyword with the selected season visible in the search box");
     Check(client.LastQuery.RequestSeason==2&&client.LastQuery.RequestEpisode==null&&client.LastQuery.Episode==null,
      "A genuinely different keyword preserves the manually selected request coordinates while clearing current-playback episode ownership");
     items.Add(result with{Id="ko",LanguageCode="ko"});Refresh();
@@ -870,8 +872,8 @@ try
 
 finally
 {
- player.CommandV("quit");await events.WaitAsync(TimeSpan.FromSeconds(5));
- LibMpv.mpv_destroy(player.Handle);LibMpv.mpv_destroy(core);
+ player.CommandVAsync("quit");await Task.WhenAll(events,mainEvents).WaitAsync(TimeSpan.FromSeconds(5));
+ player.Destroy();
  if(Path.GetFullPath(temp).StartsWith(Path.GetFullPath(Path.GetTempPath()),StringComparison.OrdinalIgnoreCase)&&Path.GetFileName(temp).StartsWith("AnimeFusion-NativeSubtitles-"))Directory.Delete(temp,true);
 }
 

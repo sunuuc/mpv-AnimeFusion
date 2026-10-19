@@ -31,6 +31,7 @@ public partial class BangumiMatchWindow : Window
         InitializeComponent();
         DataContext = this;
         QueryBox.Text = _media.Title;
+        QueryBox.SetMedia(new(_media, new Dictionary<string, string>()), _lifetime.Token);
         _sync.Changed += Sync_Changed;
         Closed += (_, _) =>
         {
@@ -60,6 +61,7 @@ public partial class BangumiMatchWindow : Window
             _media = _sync.Media;
             _generation = _sync.Generation;
             QueryBox.Text = _media.Title;
+            QueryBox.SetMedia(new(_media, new Dictionary<string, string>()), _lifetime.Token);
             SubjectsList.Items.Clear();
             EpisodesBox.Items.Clear();
             _episodes = [];

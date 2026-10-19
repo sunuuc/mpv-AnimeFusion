@@ -140,6 +140,7 @@ def prepare(validation_scope='headless'):
 
 def stage():
     require_build_source()
+    require_release_diagnostics(R/'publish-player/libmpvnet.dll')
     if ST.exists():shutil.rmtree(ST)
     base=download(LOCK['bootstrap_core']);extract(base,R/'base-unpack')
     cp(app_root(R/'base-unpack'),ST);shutil.rmtree(R/'base-unpack')
@@ -239,14 +240,26 @@ def organize_payload():
     if {p.name for p in ST.iterdir()}!=expected:raise RuntimeError('Unexpected portable root entries')
 
 
+def require_release_diagnostics(assembly):
+    if b'AnimeFusion.Diagnostics.Enabled' in assembly.read_bytes():
+        raise RuntimeError('Diagnostic player builds cannot be packaged; rebuild with EnableDiagnostics=false')
+
+
+def require_release_inference(assembly):
+    if b'.build.log' in assembly.read_bytes():
+        raise RuntimeError('Inference runtime writes build logs; rebuild aji_trt.dll without diagnostic output before publishing')
+
+
 def clean_session_files(app):
-    for folder in ('cache','watch_later'):
+    for folder in ('cache','watch_later','logs'):
         shutil.rmtree(app/'portable_config'/folder,ignore_errors=True)
-    for name in ('settings.xml','saved-props.json','watch_history.jsonl','startup-diagnostic.json','startup-diagnostic.json.tmp','playback-diagnostic.json','playback-error.json','playback-error.json.tmp','bangumi.json','bangumi-app.json','trakt.json','mal.json','sync.json'):
+    for name in ('settings.xml','saved-props.json','watch_history.jsonl','startup-diagnostic.json','startup-diagnostic.json.tmp','startup-error.json','startup-error.json.tmp','playback-diagnostic.json','playback-error.json','playback-error.json.tmp','MpvNet-debug.log','bangumi.json','bangumi-app.json','trakt.json','mal.json','sync.json'):
         (app/'portable_config'/name).unlink(missing_ok=True)
 
 def inspect_payload():
     clean_session_files(ST)
+    require_release_diagnostics(ST/'app/libmpvnet.dll')
+    require_release_inference(ST/'animejanai/inference/aji_trt.dll')
     expected={'mpv-AnimeFusion.exe','mpv-AnimeFusionManager.exe','app','docs','portable_config','animejanai'}
     if {p.name for p in ST.iterdir()}!=expected:raise RuntimeError('Unexpected portable root entries')
     for name in ('mpv-AnimeFusion','mpv-AnimeFusionManager'):

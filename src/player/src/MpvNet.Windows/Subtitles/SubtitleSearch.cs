@@ -47,6 +47,7 @@ public sealed class SubtitleSearch(params ISubtitleClient[] clients) : IDisposab
                 }
                 if (State != null) State.Paused = paused;
             }
+            MpvNet.Diagnostics.Write("subtitle.search", paused ? "paused" : "resumed");
             if (State != null) progress.Report(State);
             return true;
         }
@@ -143,6 +144,8 @@ public sealed class SubtitleSearch(params ISubtitleClient[] clients) : IDisposab
             var request = new Request(CancellationTokenSource.CreateLinkedTokenSource(token), progress);
             _searches[key] = request;
             var selected = clients.Where(client => sources == null || sources.Contains(client.Source)).ToArray();
+            MpvNet.Diagnostics.Write("subtitle.search", "start", new { keywordLength = keyword.Length, language,
+                season, episode, refresh, sources = selected.Select(client => client.Source.ToString()).ToArray() });
             request.Result = LoadAsync(query, progress, selected, cached?.State, request, language, season, episode);
             return request.Result;
         }
@@ -186,7 +189,11 @@ public sealed class SubtitleSearch(params ISubtitleClient[] clients) : IDisposab
         request.Initialize(result);
         async Task LoadSourceAsync(ISubtitleClient client)
         {
-            if (client is AssrtClient { Configured: false }) return;
+            if (client is AssrtClient { Configured: false })
+            {
+                MpvNet.Diagnostics.Write("subtitle.search", "unconfigured", new { source = client.Source.ToString() });
+                return;
+            }
             try
             {
                 client = client.BeginSearch();
@@ -197,8 +204,11 @@ public sealed class SubtitleSearch(params ISubtitleClient[] clients) : IDisposab
                     var attempt = await request.BeginPageAsync();
                     try
                     {
+                        MpvNet.Diagnostics.Write("subtitle.search", "page-start", new { source = client.Source.ToString(), page });
                         var response = await client.SearchAsync(result.Query, page, attempt.Token, new PageProgress(request, attempt));
                         if (!request.AcceptPage(attempt, response, pages, out bool more)) continue;
+                        MpvNet.Diagnostics.Write("subtitle.search", "page-complete", new { source = client.Source.ToString(),
+                            page, count = response.Results.Count, more });
                         page++;
                         progress.Report(result);
                         if (!more) break;
@@ -207,11 +217,18 @@ public sealed class SubtitleSearch(params ISubtitleClient[] clients) : IDisposab
                     finally { request.EndPage(attempt); }
                 }
             }
-            catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
-            catch (Exception error) { token.ThrowIfCancellationRequested(); result.Fail(client.Source, error); }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            { MpvNet.Diagnostics.Write("subtitle.search", "cancelled", new { source = client.Source.ToString() }); throw; }
+            catch (Exception error)
+            {
+                token.ThrowIfCancellationRequested();
+                MpvNet.Diagnostics.Write("subtitle.search", "failed", new { source = client.Source.ToString() }, error);
+                result.Fail(client.Source, error);
+            }
         }
         await Task.WhenAll(selected.Select(LoadSourceAsync));
         request.Complete();
+        MpvNet.Diagnostics.Write("subtitle.search", "complete", new { count = result.Results.Count, errors = result.Errors.Count });
         return result;
     }
 }

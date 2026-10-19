@@ -27,9 +27,10 @@ public sealed class SubtitleDownload(HttpClient http, SubtitleLibrary library)
             if (query.Season == null && Supported(result.DownloadName))
             {
                 var movieFile = new SubtitleFile(result.Source, result.Id, 0, result.DownloadName, "");
-                if (library.Cached(query, result, movieFile) is { } cached) return cached;
+                if (library.Cached(query, result, movieFile) is { } cached)
+                { MpvNet.Diagnostics.Write("subtitle.download", "reused", new { source = result.Source.ToString(), result.Id }); return cached; }
                 string moviePath = library.FilePath(query, result, movieFile.Name);
-                await WriteAsync(moviePath, await FetchAsync(result.DownloadUrl, 32 * 1024 * 1024, token, progress).ConfigureAwait(false), token).ConfigureAwait(false);
+                await WriteAsync(moviePath, await FetchAsync(result.DownloadUrl, result.Source, 32 * 1024 * 1024, token, progress).ConfigureAwait(false), token).ConfigureAwait(false);
                 library.Save(query, result, movieFile, moviePath, true, true);
                 return moviePath;
             }
@@ -39,7 +40,7 @@ public sealed class SubtitleDownload(HttpClient http, SubtitleLibrary library)
             if (!File.Exists(archivePath) || new FileInfo(archivePath).Length == 0)
             {
                 progress?.Report("正在下载字幕包…");
-                byte[] bytes = await FetchAsync(result.DownloadUrl, 64 * 1024 * 1024, token, progress).ConfigureAwait(false);
+                byte[] bytes = await FetchAsync(result.DownloadUrl, result.Source, 64 * 1024 * 1024, token, progress).ConfigureAwait(false);
                 using var stream = new MemoryStream(bytes);
                 if (!ArchiveFactory.IsArchive(stream, out var type) || type is not (SharpCompress.Common.ArchiveType.Zip or SharpCompress.Common.ArchiveType.Rar or SharpCompress.Common.ArchiveType.SevenZip))
                     throw new SubtitleServiceException("字幕包无法解压。");
@@ -87,10 +88,14 @@ public sealed class SubtitleDownload(HttpClient http, SubtitleLibrary library)
         {
             var saved = package.Files[0];
             var savedFile = new SubtitleFile(result.Source, result.Id, saved.FileId, saved.Name, "");
-            if (library.Cached(targetQuery, result, savedFile) is { } cached) return matches ? cached : null;
+            if (library.Cached(targetQuery, result, savedFile) is { } cached)
+            {
+                MpvNet.Diagnostics.Write("subtitle.download", "reused", new { source = result.Source.ToString(), result.Id, matches });
+                return matches ? cached : null;
+            }
         }
         string name = result.DownloadName;
-        byte[] bytes = await FetchAsync(result.DownloadUrl, 32 * 1024 * 1024, token, progress).ConfigureAwait(false);
+        byte[] bytes = await FetchAsync(result.DownloadUrl, result.Source, 32 * 1024 * 1024, token, progress).ConfigureAwait(false);
         if (name.EndsWith(".xz", StringComparison.OrdinalIgnoreCase))
         {
             progress?.Report("正在解压字幕…");
@@ -111,17 +116,38 @@ public sealed class SubtitleDownload(HttpClient http, SubtitleLibrary library)
             : text.StartsWith("WEBVTT", StringComparison.Ordinal) ? "vtt"
             : Regex.IsMatch(text, @"(?m)^\d{1,2}:\d{2}:\d{2}[,.]\d{3}\s+-->\s+\d{1,2}:\d{2}:\d{2}[,.]\d{3}") ? "srt" : "";
         if (format.Length == 0) throw new SubtitleServiceException("没有可用的文本字幕。");
+        if (format == "ass")
+        {
+            // A release's catalogue coordinates cannot override an explicit episode
+            // in its extracted track. Check only Script Info, never dialogue text.
+            string info = Regex.Match(text, @"\A\[Script Info\][^\S\r\n]*\r?\n(?<info>.*?)(?=^\[|\z)",
+                RegexOptions.Singleline | RegexOptions.Multiline | RegexOptions.IgnoreCase).Groups["info"].Value;
+            string title = Regex.Match(info, @"^Title:[^\S\r\n]*(?<title>[^\r\n]+)",
+                RegexOptions.Multiline | RegexOptions.IgnoreCase).Groups["title"].Value.Trim();
+            var content = Bangumi.BangumiMedia.FromPlayback(title, title);
+            if (content.Ambiguous || result.Episode != null && content.EpisodeNumber != null && result.Episode != content.EpisodeNumber
+                || result.Season >= 0 && content.HasSeason && result.Season != content.Season)
+            {
+                MpvNet.Diagnostics.Write("subtitle.download", "episode-mismatch", new { source = result.Source.ToString(), result.Id,
+                    result.Season, result.Episode, contentSeason = content.HasSeason ? (int?)content.Season : null,
+                    contentEpisode = content.EpisodeNumber, content.Ambiguous });
+                throw new SubtitleServiceException("字幕季集信息不一致。");
+            }
+        }
         if (Path.GetExtension(name).Equals(".txt", StringComparison.OrdinalIgnoreCase)) name = Path.ChangeExtension(name, format);
         if (!Supported(name)) throw new SubtitleServiceException("不支持这份字幕格式。");
         var file = new SubtitleFile(result.Source, result.Id, 0, name, "");
         string path = library.FilePath(targetQuery, result, file.Name);
         await WriteAsync(path, bytes, token).ConfigureAwait(false);
         library.Save(targetQuery, result with { Format = format.ToUpperInvariant() }, file, path, true, true);
+        MpvNet.Diagnostics.Write("subtitle.download", "indexed", new { source = result.Source.ToString(), result.Id, format,
+            bytes = bytes.Length, sameWork, matches, targetQuery.Season, targetQuery.Episode });
         return matches ? path : null;
     }
 
     async Task<bool> ExtractAsync(SubtitleQuery query, SubtitleResult result, string archivePath, IProgress<string>? progress, CancellationToken token)
     {
+        MpvNet.Diagnostics.Write("subtitle.download", "extract-start", new { source = result.Source.ToString(), result.Id });
         progress?.Report("正在解压字幕包…");
         try
         {
@@ -189,6 +215,7 @@ public sealed class SubtitleDownload(HttpClient http, SubtitleLibrary library)
             else foreach (var entry in entries) await SaveEntryAsync(entry, entry.OpenEntryStream).ConfigureAwait(false);
             if (count == 0) throw new SubtitleServiceException("字幕包里没有可用字幕。");
             library.Complete(query, result);
+            MpvNet.Diagnostics.Write("subtitle.download", "extract-complete", new { source = result.Source.ToString(), result.Id, count });
             return true;
         }
         catch (DecoderFallbackException) { throw new SubtitleServiceException("字幕包中的 Unicode 文件名无效。"); }
@@ -287,36 +314,40 @@ public sealed class SubtitleDownload(HttpClient http, SubtitleLibrary library)
     string SavedPath(SubtitleQuery query, SubtitleResult result, SubtitleFile file) =>
         library.Cached(query, result, file) ?? throw new SubtitleServiceException("没有已保存的字幕。");
 
-    async Task<byte[]> FetchAsync(string url, int limit, CancellationToken token, IProgress<string>? progress)
+    async Task<byte[]> FetchAsync(string url, SubtitleSource source, int limit, CancellationToken token, IProgress<string>? progress)
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https") || uri.UserInfo.Length > 0)
             throw new SubtitleServiceException("字幕下载链接无效。");
         using var request = new HttpRequestMessage(HttpMethod.Get, uri);
-        request.Headers.TryAddWithoutValidation("User-Agent", "mpv-AnimeFusion v" + MpvNet.AppInfo.Version.ToString(3));
-        using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode) throw new SubtitleServiceException("字幕下载失败，请稍后重试。");
-        string type = response.Content.Headers.ContentType?.MediaType ?? "";
-        if (type.Contains("html", StringComparison.OrdinalIgnoreCase) || type.Contains("json", StringComparison.OrdinalIgnoreCase))
-            throw new SubtitleServiceException("下载内容无效，请换一份字幕。");
-        using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
-        long total = response.Content.Headers.ContentLength ?? 0;
-        int lastPercent = -1;
-        long lastUpdate = System.Diagnostics.Stopwatch.GetTimestamp();
-        byte[] bytes = await SubtitleHttp.ReadBytesAsync(stream, limit, token, received =>
+        request.Headers.Accept.ParseAdd("*/*");
+        return await SubtitleHttp.ReadAsync(http, request, source.ToString(), async (response, readToken) =>
         {
-            if (total <= 0)
+            if (!response.IsSuccessStatusCode) throw new SubtitleServiceException("字幕下载失败，请稍后重试。");
+            string type = response.Content.Headers.ContentType?.MediaType ?? "";
+            if (type.Contains("html", StringComparison.OrdinalIgnoreCase) || type.Contains("json", StringComparison.OrdinalIgnoreCase))
+                throw new SubtitleServiceException("下载内容无效，请换一份字幕。");
+            using var stream = await response.Content.ReadAsStreamAsync(readToken).ConfigureAwait(false);
+            long total = response.Content.Headers.ContentLength ?? 0;
+            int lastPercent = -1;
+            long lastUpdate = System.Diagnostics.Stopwatch.GetTimestamp();
+            byte[] bytes = await SubtitleHttp.ReadBytesAsync(stream, limit, readToken, received =>
             {
-                if (System.Diagnostics.Stopwatch.GetElapsedTime(lastUpdate).TotalSeconds < 1) return;
-                lastUpdate = System.Diagnostics.Stopwatch.GetTimestamp();
-                progress?.Report($"下载字幕 {received / 1024} KB");
-                return;
-            }
-            int percent = (int)Math.Min(100, received * 100L / total) / 10 * 10;
-            if (percent != lastPercent) { lastPercent = percent; progress?.Report($"下载字幕 {percent}%"); }
-        }).ConfigureAwait(false);
-        if (lastPercent != 100) progress?.Report("下载字幕 100%");
-        if (bytes.Length == 0) throw new SubtitleServiceException("下载的字幕文件为空。");
-        return bytes;
+                if (total <= 0)
+                {
+                    if (System.Diagnostics.Stopwatch.GetElapsedTime(lastUpdate).TotalSeconds < 1) return;
+                    lastUpdate = System.Diagnostics.Stopwatch.GetTimestamp();
+                    progress?.Report($"下载字幕 {received / 1024} KB");
+                    return;
+                }
+                int percent = (int)Math.Min(100, received * 100L / total) / 10 * 10;
+                if (percent != lastPercent) { lastPercent = percent; progress?.Report($"下载字幕 {percent}%"); }
+            }).ConfigureAwait(false);
+            if (total > 0 && bytes.LongLength != total)
+                throw new HttpRequestException(HttpRequestError.ResponseEnded, "Subtitle response was incomplete.");
+            if (lastPercent != 100) progress?.Report("下载字幕 100%");
+            if (bytes.Length == 0) throw new SubtitleServiceException("下载的字幕文件为空。");
+            return bytes;
+        }, token, rateLimited: false).ConfigureAwait(false);
     }
 
     static async Task WriteAsync(string target, byte[] bytes, CancellationToken token)
@@ -326,6 +357,7 @@ public sealed class SubtitleDownload(HttpClient http, SubtitleLibrary library)
         {
             await File.WriteAllBytesAsync(target + ".tmp", bytes, token).ConfigureAwait(false);
             File.Move(target + ".tmp", target, true);
+            MpvNet.Diagnostics.Write("subtitle.download", "file-written", new { bytes = bytes.Length, format = Path.GetExtension(target) });
         }
         catch { File.Delete(target + ".tmp"); throw; }
     }

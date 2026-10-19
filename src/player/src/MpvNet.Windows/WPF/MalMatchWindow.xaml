@@ -1,5 +1,6 @@
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:MpvNet.Windows.WPF.Controls"
         x:Class="MpvNet.Windows.WPF.MalMatchWindow"
         Title="匹配 MyAnimeList" Style="{StaticResource MatchWindow}" SizeToContent="Height" WindowStartupLocation="CenterOwner">
     <Window.Resources>
@@ -9,8 +10,8 @@
     <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="760">
     <StackPanel Margin="22">
         <DockPanel Margin="0,0,0,10">
-            <Button x:Name="SearchButton" Content="搜索" DockPanel.Dock="Right" Margin="8,0,0,0" Click="Search_Click" />
-            <TextBox x:Name="QueryBox" MaxLength="256" />
+            <Button x:Name="SearchButton" Content="搜索" IsDefault="True" DockPanel.Dock="Right" Margin="8,0,0,0" Click="Search_Click" />
+            <controls:MatchSearchControl x:Name="QueryBox" />
         </DockPanel>
         <ListBox x:Name="SubjectsList" Style="{StaticResource MatchSubjectsList}" SelectionChanged="Subject_Changed" />
         <TextBlock Text="当前剧集" Margin="0,12,0,4" />

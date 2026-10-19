@@ -24,7 +24,7 @@ public sealed record BangumiMedia(string Title, int Season, double? EpisodeNumbe
         string Value(AnitomySharp.Element.ElementCategory kind) => elements.FirstOrDefault(e => e.Category == kind)?.Value ?? "";
         var numbers = elements.Where(e => e.Category == AnitomySharp.Element.ElementCategory.ElementEpisodeNumber)
             .Select(e => e.Value).Distinct().ToArray();
-        bool ambiguous = numbers.Length > 1;
+        bool ambiguous = media.Ambiguous || numbers.Length > 1;
         double? episode = numbers.Length == 1 && double.TryParse(numbers[0], System.Globalization.NumberStyles.Number,
             System.Globalization.CultureInfo.InvariantCulture, out double ep) ? ep : null;
         int? season = int.TryParse(Value(AnitomySharp.Element.ElementCategory.ElementAnimeSeason), out int sn) ? sn : null;
@@ -44,7 +44,8 @@ public sealed record BangumiMedia(string Title, int Season, double? EpisodeNumbe
         }
         int? year = int.TryParse(Value(AnitomySharp.Element.ElementCategory.ElementAnimeYear), out int yr) ? yr : null;
         string normalized = Regex.Replace(named.Title.ToLowerInvariant(), @"[\s\p{P}\p{S}]+", "");
-        return media with { Title = named.Title, Year = media.Year ?? year, Ambiguous = ambiguous, Key = normalized + "|s" + media.Season };
+        return media with { Title = named.Title, Year = media.Year ?? year, EpisodeNumber = ambiguous ? null : media.EpisodeNumber,
+            Ambiguous = ambiguous, Key = normalized + "|s" + media.Season };
     }
 
     public static BangumiMedia Parse(string title)
@@ -54,20 +55,23 @@ public sealed record BangumiMedia(string Title, int Season, double? EpisodeNumbe
         var match = Regex.Match(text, @"^(.*?)\s*[sS]0*(\d+)[ ._-]*[eE]0*(\d+(?:\.\d+)?)");
         int season = 1;
         double? episode = null;
+        bool ambiguous = false;
         if (match.Success)
         {
-            text = match.Groups[1].Value;
             season = int.Parse(match.Groups[2].Value);
             episode = double.Parse(match.Groups[3].Value, System.Globalization.CultureInfo.InvariantCulture);
+            ambiguous = HasMultipleEpisodes(text[match.Length..], season, episode.Value);
+            text = match.Groups[1].Value;
         }
         else
         {
             match = Regex.Match(text, @"^(.*?)\s*(?:(?<![A-Za-z0-9])[eE](\d+(?:\.\d+)?)\b|第\s*(\d+(?:\.\d+)?)\s*[集话話])");
             if (match.Success)
             {
-                text = match.Groups[1].Value;
                 string number = match.Groups[2].Success ? match.Groups[2].Value : match.Groups[3].Value;
                 episode = double.Parse(number, System.Globalization.CultureInfo.InvariantCulture);
+                ambiguous = HasMultipleEpisodes(text[match.Length..], season, episode.Value);
+                text = match.Groups[1].Value;
             }
         }
         var seasonMatch = Regex.Match(text, @"第\s*([\d一二三四五六七八九十]+)\s*[季部]");
@@ -91,11 +95,28 @@ public sealed record BangumiMedia(string Title, int Season, double? EpisodeNumbe
         if (seasonMatch.Success) text = text.Remove(seasonMatch.Index, seasonMatch.Length);
         text = Regex.Replace(text, @"\s*\((?:19|20)\d{2}(?:-\d{2})?\)\s*$", "").Trim(' ', '-', '_');
         string normalized = Regex.Replace(text.ToLowerInvariant(), @"[\s\p{P}\p{S}]+", "");
-        return new(text, season, episode, normalized + "|s" + season)
+        return new(text, season, ambiguous ? null : episode, normalized + "|s" + season)
         {
             Year = yearMatch.Success ? int.Parse(yearMatch.Groups[1].Value) : null,
-            HasSeason = seasonMatch.Success || Regex.IsMatch(title.Normalize(NormalizationForm.FormKC), @"[sS]\d+[ ._-]*[eE]\d+")
+            HasSeason = seasonMatch.Success || Regex.IsMatch(title.Normalize(NormalizationForm.FormKC), @"[sS]\d+[ ._-]*[eE]\d+"),
+            Ambiguous = ambiguous
         };
+    }
+
+    static bool HasMultipleEpisodes(string suffix, int season, double episode)
+    {
+        // Explicit episode continuations include Unicode range separators. A spaced
+        // dash followed by ordinary title text or a bare number is not an E token.
+        while (true)
+        {
+            var match = Regex.Match(suffix,
+                @"^(?:\s*[\p{Pd}\u2212~〜]\s*(?:S(?<season>\d+)[ ._-]*)?E\s*|[\p{Pd}\u2212~〜]|E)(?<episode>\d+(?:\.\d+)?)(?![\p{L}\p{N}])",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (!match.Success) return false;
+            if (double.Parse(match.Groups["episode"].Value, System.Globalization.CultureInfo.InvariantCulture) != episode
+                || match.Groups["season"].Success && int.Parse(match.Groups["season"].Value) != season) return true;
+            suffix = suffix[match.Length..];
+        }
     }
 
     public static bool IsMovie(Subject subject) => subject.Platform?.Trim().ToLowerInvariant()
@@ -148,7 +169,7 @@ public sealed record BangumiMedia(string Title, int Season, double? EpisodeNumbe
         foreach (var field in subject.Infobox ?? [])
         {
             string key = field.Key ?? "";
-            if (!Regex.IsMatch(key, "别名|別名|英文名|日文名|原作名|alias", RegexOptions.IgnoreCase)) continue;
+            if (!Regex.IsMatch(key, "别名|別名|中文|简体|簡體|繁体|繁體|英文名|日文名|原作名|alias", RegexOptions.IgnoreCase)) continue;
             if (!string.IsNullOrWhiteSpace(field.Value?.String)) yield return field.Value.String;
             foreach (var alias in field.Value?.SubjectsValueMember1 ?? [])
                 if (alias.AdditionalData.TryGetValue("v", out var value) && value is string name && !string.IsNullOrWhiteSpace(name))

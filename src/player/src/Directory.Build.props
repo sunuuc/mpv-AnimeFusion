@@ -2,5 +2,7 @@
 	<PropertyGroup>
 		<Product>mpv-AnimeFusion</Product>
 		<Nullable>enable</Nullable>
+		<EnableDiagnostics Condition="'$(EnableDiagnostics)' == ''">false</EnableDiagnostics>
+		<DefineConstants Condition="'$(EnableDiagnostics)' == 'true'">$(DefineConstants);ANIMEFUSION_DIAGNOSTICS</DefineConstants>
 	</PropertyGroup>
 </Project>

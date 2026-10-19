@@ -67,6 +67,7 @@ public sealed class TsukihimeClient(HttpClient http) : ISubtitleClient
         int? episode = position is >= 0 and <= int.MaxValue && position == Math.Truncate(position.Value)
             ? (int)position.Value : EpisodeNumber(item);
         if (season == null && episode != null) season = 1;
+        if (release.Ambiguous) { season = -1; episode = null; }
         string date = Date(item);
         foreach (string code in Array(item, "sublangs").Where(value => value.ValueKind == JsonValueKind.String)
             .Select(value => value.GetString()!.Trim()).Where(value => Regex.IsMatch(value, @"^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$"))

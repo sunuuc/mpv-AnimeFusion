@@ -42,6 +42,7 @@ local menu=create_menu({state=state,core=core,
         return measured_width(value,size)
     end,
     prop=function(name,default)local value=props[name];if value==nil then return default end;return value end,
+    num=function(name,default)return tonumber(props[name]) or default end,
     subtitle_tracks=function()return metadata end,
     command=function(...)commands[#commands+1]={...}end,
     set=function(name,value)props[name]=value;changes[#changes+1]={name,value}end,
@@ -61,7 +62,7 @@ local function draw(width,height,dpi)
     },buttons)
 end
 local function button(key)
-    for _,b in ipairs(buttons)do if b.key==key then return b end end
+    for _,b in ipairs(buttons)do if b.key==key or b.id==key then return b end end
 end
 local function row_highlight(key)
     local box=menu.boxes[1];local row=assert(button(key));local cy=(row.y0+row.y1)/2
@@ -187,4 +188,24 @@ for _,size in ipairs({{1280,720,1},{2560,1600,1.5},{640,360,1.5}})do
 end
 menu.open('audio');draw()
 check(menu.rows[2].key=='aid:5' and not menu.rows[2].actions,'audio selection retains its existing menu behavior')
+menu.open('sub-settings');draw()
+local position=menu.rows[2].slider
+check(position.value==0 and string.format(position.format,position.value)=='0',
+    'subtitle position displays its native default as zero without a percentage')
+check(position.min==-100 and position.max==50,'subtitle position covers the complete native range including downward offsets')
+props['secondary-sub-pos']=25
+for _,offset in ipairs({-5,5,-100,50,0})do
+    local slider_button=assert(button('slider-2'))
+    state.menu_drag={slider=position,box=slider_button}
+    menu.drag(slider_button.start+(slider_button.finish-slider_button.start)*(offset-position.min)/(position.max-position.min),0)
+    state.menu_drag=nil
+    check(props['sub-pos']==100+offset,'dragging a signed subtitle offset updates the native position')
+    menu.invalidate();draw();position=menu.rows[2].slider
+    local label=offset==0 and '0' or string.format('%+d',offset)
+    check(position.value==offset and string.format(position.format,position.value)==label,
+        'subtitle position redraw preserves the signed offset and neutral zero')
+    check(props['secondary-sub-pos']==25,'primary subtitle position does not move secondary subtitles')
+end
+props['sub-pos']=108;menu.invalidate();draw()
+check(menu.rows[2].slider.value==8,'native subtitle position changes remain reflected by the offset control')
 print('PASS subtitle menu: '..checks..' assertions')

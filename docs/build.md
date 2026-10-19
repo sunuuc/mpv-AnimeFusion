@@ -7,13 +7,17 @@
 ```powershell
 python tools/standalone/build.py prepare --validation-scope headless
 $version = (Get-Content release.json | ConvertFrom-Json).version
-dotnet publish player/src/MpvNet.Windows/MpvNet.Windows.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:InformationalVersion=$version -o publish-player
+dotnet publish player/src/MpvNet.Windows/MpvNet.Windows.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:EnableDiagnostics=false -p:InformationalVersion=$version -o publish-player
 dotnet publish manager/AnimeJaNaiConfEditor/AnimeJaNaiConfEditor.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:InformationalVersion=$version -o publish-manager
 dotnet publish tools/standalone/Updater.csproj -c Release -o publish-updater
 python tools/standalone/build.py stage
 ```
 
 构建前先提交本次源码、版本和发布说明，使用该提交的干净检出目录。`prepare`、`stage`、`package` 和发布步骤均检查真实 Git 提交及跟踪文件状态；发布阶段不生成额外源码提交。`prepare` 会重新建立构建验证目录，旧报告不会沿用。
+
+诊断日志默认关闭。仅本机测试构建使用 `-p:EnableDiagnostics=true`，日志写入播放器配置目录下的 `logs`，记录请求、重试、字幕处理及播放器异常并脱敏。发布时明确使用 `false`；打包检查会拒绝包含诊断标记的播放器构建，并清理测试日志。
+
+发行包的原生推理组件也不得生成诊断日志。当前上游 `animejanai-inference v0.8.0` 的 `aji_trt.dll` 会无条件写入 `.build.log`；发布检查会拒绝该组件，须从其维护源码关闭构建日志并重新编译。`currentanimejanai.log` 是现有模型状态交换文件，不能删除来关闭诊断。
 
 `stage` 目录为组装后的程序。构建脚本下载并校验固定版本的原生运行库，编译 DanmakuFactory，并生成引用固定下载来源的可选组件目录。播放器前端发布不重新替换原生内核或 libass；其字节由 `dependencies.json` 中的运行库输入哈希固定。
 

@@ -11,7 +11,9 @@ public static class Terminal
 
     public static void Write(object obj, string module, ConsoleColor color, bool useDefaultColor)
     {
-        string text = obj + "";
+#if ANIMEFUSION_DIAGNOSTICS
+        Diagnostics.Write("terminal", module, obj is Exception ? null : new { text = obj + "" }, obj as Exception);
+        string text = obj is Exception error ? error.GetType().Name : Diagnostics.Sanitize(obj + "");
 
         if (text == "")
             return;
@@ -35,6 +37,6 @@ public static class Terminal
             Console.WriteLine(text);
 
         Console.ResetColor();
-        Trace.WriteLine(obj);
+#endif
     }
 }

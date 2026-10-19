@@ -1,5 +1,7 @@
 using System.Diagnostics;
+using System.Net.Http;
 using System.Text.Json;
+using System.Threading.Tasks;
 
 namespace MpvNet;
 
@@ -7,19 +9,24 @@ namespace MpvNet;
 // authentication headers or machine paths, and never contacts a media server.
 public static class StartupDiagnostics
 {
+#if ANIMEFUSION_DIAGNOSTICS
     static readonly object Sync = new();
     static readonly List<string> Phases = [];
     static bool nativeReady;
     static bool sawFile;
     static bool failureRecorded;
     static int? optionError;
+#endif
 
     public static void Begin()
     {
+#if ANIMEFUSION_DIAGNOSTICS
         Player.Initialized += () => { nativeReady = true; Record("native-initialized"); };
         Player.StartFile += () => Record("media-opening");
         Player.FileLoaded += () => { sawFile = true; Record("media-loaded"); };
         Record("process-started");
+        Task.Run(RecordProxy);
+#endif
     }
 
     public static void Ready()
@@ -29,9 +36,17 @@ public static class StartupDiagnostics
             Player.CommandV("show-text", "外部启动脚本不存在，请检查调用方保存的播放器路径。", "8000");
     }
 
-    public static void OptionError(int error) { optionError = error; Record("option-rejected"); }
+    public static void OptionError(int error)
+    {
+#if ANIMEFUSION_DIAGNOSTICS
+        optionError = error;
+        Record("option-rejected");
+#endif
+    }
     public static void Failed(Exception error)
     {
+#if ANIMEFUSION_DIAGNOSTICS
+        Diagnostics.Write("startup", "failed", error: error);
         lock (Sync)
         {
             // Keep the first failure; shutdown callbacks must not replace its stack.
@@ -50,6 +65,27 @@ public static class StartupDiagnostics
             catch (UnauthorizedAccessException) { }
             catch (ArgumentException) { }
         }
+#endif
+    }
+
+#if ANIMEFUSION_DIAGNOSTICS
+    static void RecordProxy()
+    {
+        try
+        {
+            var proxy = HttpClient.DefaultProxy;
+            var targets = new[] { "api.assrt.net", "amenzb.moe", "api.tsukihime.org" };
+            Diagnostics.Write("startup", "network-proxy", targets.Select(host =>
+            {
+                var target = new Uri("https://" + host + "/");
+                bool bypassed = proxy.IsBypassed(target);
+                Uri? endpoint = bypassed ? null : proxy.GetProxy(target);
+                bool enabled = endpoint != null && endpoint != target;
+                return new { service = host, enabled, host = enabled ? endpoint!.Host : null,
+                    port = enabled ? (int?)endpoint!.Port : null };
+            }).ToArray());
+        }
+        catch (Exception error) { Diagnostics.Write("startup", "network-proxy-failed", error: error); }
     }
 
     static object ErrorDetails(Exception error, int depth = 0) => new
@@ -138,6 +174,7 @@ public static class StartupDiagnostics
         catch { }
         return hashes.ToArray();
     }
+#endif
 
     static int MissingScripts()
     {
@@ -157,6 +194,8 @@ public static class StartupDiagnostics
 
     static void Record(string phase)
     {
+#if ANIMEFUSION_DIAGNOSTICS
+        Diagnostics.Write("startup", phase);
         lock (Sync)
         {
             try
@@ -215,5 +254,6 @@ public static class StartupDiagnostics
             catch (UnauthorizedAccessException) { }
             catch (ArgumentException) { }
         }
+#endif
     }
 }

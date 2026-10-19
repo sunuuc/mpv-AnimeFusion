@@ -140,6 +140,7 @@ public partial class SubtitleSearchWindow : Window
 
     static string Error(Exception error) => error is SubtitleServiceException ? error.Message
         : error is OperationCanceledException ? "请求超时，请重试。"
+        : error is HttpRequestException { StatusCode: null } ? "网络请求失败，请重试。"
         : error is IOException or UnauthorizedAccessException ? "字幕文件无法保存，请检查本机目录权限。"
         : "字幕服务暂时不可用，请稍后重试。";
 
@@ -398,7 +399,7 @@ public partial class SubtitleSearchWindow : Window
         int visible = _results.Count(result => FilterResult(result));
         ResultCount.Text = visible == _results.Count ? $"共 {visible} 条搜索结果" : $"共 {_results.Count} 条搜索结果，显示 {visible} 条";
         string errors = _searchResult == null ? "" : string.Join("\n", _searchResult.Errors
-            .Where(pair => SelectedSource == null || SelectedSource == pair.Key).Select(pair => Error(pair.Value)));
+            .Where(pair => SelectedSource == null || SelectedSource == pair.Key).Select(pair => Error(pair.Value)).Distinct());
         bool searching = _displayedKeyword.Length > 0 && _searchResult?.Complete != true;
         bool paused = searching && _searchResult?.Paused == true;
         bool loading = searching && !paused && _source != "local"

@@ -67,6 +67,7 @@ static class Program
 
     static async Task RunAsync()
     {
+        EpisodeRangeChecks();
         var media = BangumiMedia.Parse("间谍过家家 (2025) S3E10 - 标题");
         Check(media.Title == "间谍过家家" && media.Season == 3 && media.EpisodeNumber == 10, "Parse formatted series title");
         var season = BangumiMedia.Parse("间谍过家家 第三季 (2025)");
@@ -296,6 +297,60 @@ static class Program
         await OAuthAsync();
         await client.DisconnectAsync(CancellationToken.None);
         Check(client.Account == null && store.ReadAccount() == null, "Disconnect removes saved account");
+    }
+
+    static void EpisodeRangeChecks()
+    {
+        const string release = "[LbE3L] Hanaori-san Still Wants to Fight in the Next S01E01–E04 [ AV1 Opus 2.0 Multi-Audio MSubs]";
+        const string file = release + ".FANSUBS ASS) Chinese – 简体中文 [Nekomoe kissaten].ass";
+        foreach (string title in new[] { release, file })
+        {
+            var parsed = BangumiMedia.Parse(title);
+            var playback = BangumiMedia.FromPlayback(title, title);
+            Check(parsed.Ambiguous && parsed.EpisodeNumber == null && parsed.HasSeason && parsed.Season == 1,
+                "A real multi-episode release never identifies its extracted subtitle as episode one");
+            Check(playback.Ambiguous && playback.EpisodeNumber == null && playback.HasSeason && playback.Season == 1,
+                "Filename parsing cannot restore the first episode of a known release range");
+        }
+        foreach (string separator in new[] { "-", "‐", "‑", "‒", "–", "—", "―", "−", "~", "〜", "～", "﹣", "－" })
+            foreach (string last in new[] { "E04", "04" })
+            {
+                string title = "Range Fixture S01E01" + separator + last + ".ass";
+                var parsed = BangumiMedia.Parse(title);
+                var playback = BangumiMedia.FromPlayback(title, title);
+                Check(parsed.Ambiguous && parsed.EpisodeNumber == null
+                    && playback.Ambiguous && playback.EpisodeNumber == null,
+                    "ASCII and Unicode episode ranges stay ambiguous with or without a repeated E prefix");
+            }
+        foreach (string suffix in new[] { "S01E01 - E04", "S01E01–S01E04", "S01E01-S02E01", "S01E01E04", "S01E01-E01-E04", "E01–E04" })
+        {
+            string title = "Range Fixture " + suffix + ".ass";
+            var parsed = BangumiMedia.Parse(title);
+            var playback = BangumiMedia.FromPlayback(title, title);
+            Check(parsed.Ambiguous && parsed.EpisodeNumber == null
+                && playback.Ambiguous && playback.EpisodeNumber == null,
+                "Repeated season or episode prefixes and nonconsecutive episode lists are not single episodes");
+        }
+        foreach (int episode in new[] { 1, 4, 12 })
+        {
+            string title = $"Range Fixture S01E{episode:00} - 单集标题";
+            var parsed = BangumiMedia.Parse(title);
+            var playback = BangumiMedia.FromPlayback(title, "video.mkv");
+            Check(!parsed.Ambiguous && parsed.EpisodeNumber == episode && parsed.Title == "Range Fixture"
+                && !playback.Ambiguous && playback.EpisodeNumber == episode,
+                "Separate ordinary episode releases retain their own episode and title");
+        }
+        foreach (string suffix in new[] { " - 1080p WEB-DL", " - 86: Eighty-Six", " - Ending", " – Everything begins" })
+        {
+            var parsed = BangumiMedia.Parse("Range Fixture S01E01" + suffix);
+            Check(!parsed.Ambiguous && parsed.EpisodeNumber == 1 && parsed.Title == "Range Fixture",
+                "Release metadata and ordinary episode titles are not mistaken for range endpoints");
+        }
+        var same = BangumiMedia.Parse("Range Fixture S01E01-E01.ass");
+        Check(!same.Ambiguous && same.EpisodeNumber == 1, "Repeating the same episode does not create a multi-episode range");
+        var conflict = BangumiMedia.FromPlayback("Range Fixture S01E01", "Range Fixture S01E04.mkv");
+        Check(conflict.Ambiguous && conflict.EpisodeNumber == null,
+            "Conflicting display and file episodes cannot leave a usable single-episode number");
     }
 
     static async Task OAuthAsync()

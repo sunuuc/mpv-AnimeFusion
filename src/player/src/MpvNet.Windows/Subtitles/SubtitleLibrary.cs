@@ -457,8 +457,8 @@ public sealed class SubtitleLibrary
                 if (query.Season == null || result.Individual) return true;
                 if (query.Episode == null) return false;
                 var parsed = BangumiMedia.FromPlayback(file.Name, file.Name);
-                return !parsed.Ambiguous && parsed.EpisodeNumber == query.Episode
-                    || files.Count == 1 && parsed.EpisodeNumber == null;
+                return !parsed.Ambiguous && (parsed.EpisodeNumber == query.Episode
+                    || files.Count == 1 && parsed.EpisodeNumber == null);
             })
             .OrderByDescending(file => query.Language.Length > 0 && FileLanguage(file.Name) == query.Language)
             .ThenByDescending(file => preferred.Length > 0 && Variant(file.Name, result.LanguageCode, imported) == preferred)

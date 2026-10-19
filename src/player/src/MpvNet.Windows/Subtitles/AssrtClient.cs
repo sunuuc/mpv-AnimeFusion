@@ -30,6 +30,7 @@ public sealed class AssrtClient(HttpClient http, SubtitleStore store) : ISubtitl
         if (Object(document.RootElement, "status").ValueKind != JsonValueKind.Number)
         { document.Dispose(); throw new SubtitleServiceException("ASSRT 返回了无效的响应。"); }
         int status = Number(document.RootElement, "status");
+        MpvNet.Diagnostics.Write("subtitle.assrt", "response", new { endpoint = path, status });
         if (status != 0)
         {
             document.Dispose();

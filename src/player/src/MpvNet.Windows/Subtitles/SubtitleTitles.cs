@@ -5,7 +5,6 @@ using System.Threading.Tasks;
 using BangumiNet.Api.V0.Models;
 using MpvNet.Windows.Bangumi;
 using MpvNet.Windows.MyAnimeList;
-using MpvNet.Windows.Native;
 using MpvNet.Windows.Trakt;
 
 namespace MpvNet.Windows.Subtitles;
@@ -25,18 +24,24 @@ public sealed class SubtitleTitles
     public SubtitleTitles(TraktMedia media, CancellationToken lifetime, MalClient? client = null)
     {
         _media = media; _lifetime = lifetime; _client = client ?? MalPlayback.Current?.Client;
-        foreach (string name in KnownNames()) _currentNames.Add(Key(name));
+        foreach (string name in KnownNames()) _currentNames.Add(Name(name));
     }
 
-    static string Key(string title) => string.Concat(title.Where(character => !char.IsControl(character)))
-        .Normalize(NormalizationForm.FormKC).Trim();
+    static string Name(string title) => string.Concat(title.Where(character => !char.IsControl(character))).Trim();
+    static string Key(string title) => Name(title).Normalize(NormalizationForm.FormKC);
 
     public bool IsCurrent(string title)
     {
         lock (_lock)
         {
-            foreach (string name in KnownNames()) _currentNames.Add(Key(name));
-            return !_media.Parsed.Ambiguous && _currentNames.Contains(Key(title));
+            foreach (string name in KnownNames()) _currentNames.Add(Name(name));
+            string keyword = Key(title);
+            string work = Regex.Replace(keyword, @"\s+(?:S[0-9]+(?:E[0-9]+)?|E[0-9]+)$", "",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            // Season/episode selectors are request conditions, not a different work.
+            // Keep the full keyword when sending the subtitle search.
+            return !_media.Parsed.Ambiguous && _currentNames.Select(Key).Any(name =>
+                StringComparer.OrdinalIgnoreCase.Equals(name, keyword) || StringComparer.OrdinalIgnoreCase.Equals(name, work));
         }
     }
 
@@ -52,7 +57,7 @@ public sealed class SubtitleTitles
     {
         lock (_lock)
         {
-            foreach (string name in KnownNames()) _currentNames.Add(Key(name));
+            foreach (string name in KnownNames()) _currentNames.Add(Name(name));
             int? malId = _currentMalId;
             var mal = MalPlayback.Current;
             if (mal?.Store.FindBinding(_media.Parsed.Key) is { } binding && binding.Season == _media.Season)
@@ -91,6 +96,7 @@ public sealed class SubtitleTitles
             if (!_queries.TryGetValue(key, out pending!) || pending.IsFaulted || pending.IsCanceled)
                 _queries[key] = pending = LoadAsync(key, current);
         }
+        MpvNet.Diagnostics.Write("subtitle.alias", "start", new { current, cached = pending.IsCompletedSuccessfully });
         try
         {
             var query = await pending.WaitAsync(token).ConfigureAwait(false);
@@ -105,10 +111,12 @@ public sealed class SubtitleTitles
                 await CompleteNamesAsync(subject, names, token, current).ConfigureAwait(false);
             query = Query(query.Title, current, names);
             Remember(query, current);
+            MpvNet.Diagnostics.Write("subtitle.alias", "complete", new { count = query.Names.Count });
             return query with { Title = keyword };
         }
-        catch
+        catch (Exception error)
         {
+            MpvNet.Diagnostics.Write("subtitle.alias", token.IsCancellationRequested ? "cancelled" : "failed", error: error);
             // Closing the popup cancels only its wait. A failed catalogue read can be retried
             // on the next explicit action, while an in-flight read remains shared.
             if (pending.IsCanceled || pending.IsFaulted)
@@ -170,7 +178,7 @@ public sealed class SubtitleTitles
         {
             foreach (string name in query.Names)
             {
-                if (current) _currentNames.Add(Key(name));
+                if (current) _currentNames.Add(Name(name));
                 if (!_queries.TryGetValue(Key(name), out var pending) || current && pending.IsCompletedSuccessfully)
                     _queries[Key(name)] = Task.FromResult(query);
             }
@@ -197,45 +205,15 @@ public sealed class SubtitleTitles
     }
 
     static IEnumerable<string> SubjectNames(Subject subject)
-    {
-        foreach (string name in BangumiMedia.SubjectTitles(subject)) yield return name;
-        var chinese = new List<string>();
-        if (!string.IsNullOrWhiteSpace(subject.NameCn)) chinese.Add(subject.NameCn);
-        foreach (var field in subject.Infobox ?? [])
-        {
-            // Generic aliases can contain Japanese kanji; only explicitly Chinese fields
-            // qualify for script conversion, and every original name remains available.
-            if (!Regex.IsMatch(field.Key ?? "", "中文|简体|簡體|繁体|繁體")) continue;
-            if (!string.IsNullOrWhiteSpace(field.Value?.String)) chinese.Add(field.Value.String);
-            foreach (var alias in field.Value?.SubjectsValueMember1 ?? [])
-                if (alias.AdditionalData.TryGetValue("v", out var value) && value is string name && !string.IsNullOrWhiteSpace(name))
-                    chinese.Add(name);
-        }
-        foreach (string name in chinese.Distinct(StringComparer.OrdinalIgnoreCase))
-        {
-            yield return name;
-            yield return ChineseName(name, WinApi.LCMAP_SIMPLIFIED_CHINESE);
-            yield return ChineseName(name, WinApi.LCMAP_TRADITIONAL_CHINESE);
-        }
-    }
+        => BangumiMedia.SubjectTitles(subject);
 
     SubtitleQuery Query(string title, bool current, IEnumerable<string> names) => new(title, null, current ? _media.Episode : null, "")
     {
-        Names = names.SelectMany(BangumiMedia.TitleVariants).Select(Key)
+        Names = names.Select(Name)
             .Where(name => name.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
         SearchSeason = current && _media.Kind == "show" ? _media.Season : null,
         Year = current && _media.Kind == "movie" ? _media.Parsed.Year : null
     };
-
-    static string ChineseName(string name, uint flags)
-    {
-        int length = WinApi.LCMapStringEx("zh-CN", flags, name, -1, null, 0, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
-        if (length == 0) throw new InvalidOperationException("中文别名转换失败。");
-        var text = new StringBuilder(length);
-        if (WinApi.LCMapStringEx("zh-CN", flags, name, -1, text, text.Capacity, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero) == 0)
-            throw new InvalidOperationException("中文别名转换失败。");
-        return text.ToString();
-    }
 
     static Subject? MatchTitle(string title, IReadOnlyList<Subject> subjects)
     {

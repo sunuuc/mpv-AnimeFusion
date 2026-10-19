@@ -22,18 +22,38 @@ local function remote(path)
 end
 local function safe_detail(text)
     text=tostring(text or ''):gsub('%a[%w+.-]*://[^%s"<>]+','<播放地址>')
-    text=text:gsub('[Aa]uthorization:[^\r\n]+','Authorization: <已隐藏>')
+    text=text:gsub('([%w_%-]+)(%s*:%s*)([^\r\n]+)',function(name,separator,value)
+        local key=name:lower()
+        if key:find('authorization',1,true) or key:find('cookie',1,true) or
+            key:find('token',1,true) or key:find('api-key',1,true) then
+            return name..': <已隐藏>'
+        end
+        return name..separator..value
+    end)
     text=text:gsub('[Bb]earer%s+[%w._~+/-]+=*','Bearer <已隐藏>')
+    text=text:gsub('([%w_%-]+)%s*([=:])%s*([^%s,;]+)',function(name,separator,value)
+        local key=name:lower():gsub('[_%-]','')
+        if key:find('token',1,true) or key:find('password',1,true) or
+            key:find('secret',1,true) or key:find('apikey',1,true) or key=='signature' then
+            return name..separator..'<已隐藏>'
+        end
+        return name..separator..value
+    end)
+    text=text:gsub('[A-Za-z]:[\\/][^\r\n":<>|]*','<路径>')
+    text=text:gsub('\\\\[^\r\n":<>|]*','<路径>')
+    text=text:gsub('([%s"\'])/[^%s"\'<>|]+','%1<路径>'):gsub('^/[^%s"\'<>|]+','<路径>')
     return text:gsub('[\r\n]+$','')
 end
 local function persist()
     mp.set_property_native('user-data/player_ui/playback',state)
+    if not mp.get_property_native('user-data/frontend/diagnostics',false) then return end
     local json=utils.format_json({version=2,events=history})
     local f=io.open(diagnostic,'wb');if f then f:write(json);f:close() end
 end
 local function sample_opening()
     opening_sampler=nil
-    if state.phase~='opening' or not state.network or not opened_at then return end
+    if not mp.get_property_native('user-data/frontend/diagnostics',false) or
+        state.phase~='opening' or not state.network or not opened_at then return end
     local samples=state.opening_samples or {}
     samples[#samples+1]={elapsed_ms=math.floor((mp.get_time()-opened_at)*1000+.5),
         cache_speed_bps=mp.get_property_number('cache-speed',0),
@@ -71,7 +91,9 @@ local function record(phase)
         open_to_loaded_ms=state.open_to_loaded_ms,loaded_to_playing_ms=state.loaded_to_playing_ms}
     while #history>24 do table.remove(history,1) end
     persist()
-    if phase=='opening' and state.network then opening_sampler=mp.add_timeout(.5,sample_opening) end
+    if phase=='opening' and state.network and mp.get_property_native('user-data/frontend/diagnostics',false) then
+        opening_sampler=mp.add_timeout(.5,sample_opening)
+    end
 end
 local function set(name,value)
     local ok,err=mp.set_property(name,value)
@@ -150,7 +172,7 @@ mp.register_event('end-file',function(e)
         record('failed')
         local failure={time=os.date('!%Y-%m-%dT%H:%M:%SZ'),file_error=state.file_error,
             error=state.error,http_status=state.http_status,certificate_error=certificate_failure,details=errors}
-        local f=io.open(failure_diagnostic,'wb')
+        local f=mp.get_property_native('user-data/frontend/diagnostics',false) and io.open(failure_diagnostic,'wb')
         if f then f:write(utils.format_json(failure));f:close() end
         local code=state.http_status
         local lines={'无法打开视频'}

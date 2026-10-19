@@ -23,6 +23,7 @@ public partial class MalMatchWindow : Window
     {
         _media = _sync.Media; _generation = _sync.Generation;
         InitializeComponent(); DataContext = this; QueryBox.Text = _media.Title;
+        QueryBox.SetMedia(new(_media.Parsed, new Dictionary<string, string>()), _lifetime.Token);
         _sync.Changed += Sync_Changed;
         Closed += (_, _) =>
         {
@@ -44,6 +45,7 @@ public partial class MalMatchWindow : Window
         {
             _request?.Cancel(); _busy = false; _media = _sync.Media; _generation = _sync.Generation;
             QueryBox.Text = _media.Title; SubjectsList.Items.Clear(); EpisodesBox.Items.Clear(); _message = "";
+            QueryBox.SetMedia(new(_media.Parsed, new Dictionary<string, string>()), _lifetime.Token);
         }
         Refresh();
     }));

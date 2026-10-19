@@ -64,16 +64,7 @@ public class AppClass
 
         Language = AnimeJaNai.Localization.InterfaceLanguage.PlayerValue;
 
-        if (DebugMode)
-        {
-            string filePath = Player.ConfigFolder + "MpvNet-debug.log";
-
-            if (File.Exists(filePath))
-                File.Delete(filePath);
-
-            Trace.Listeners.Add(new TextWriterTraceListener(filePath));
-            Trace.AutoFlush = true;
-        }
+        DebugMode = Diagnostics.Enabled;
 
         Player.Shutdown += Player_Shutdown;
         Player.Initialized += Player_Initialized;

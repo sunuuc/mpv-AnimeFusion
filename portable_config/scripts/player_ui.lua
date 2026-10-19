@@ -843,7 +843,8 @@ return function(c)
             end
         elseif kind=='sub-settings' then
             row('字号缩放',nil,false,{slider={value=c.num('sub-scale',1),min=.5,max=2,step=.05,format='%.2fx',set=function(v)c.set_number('sub-scale',v)end}})
-            row('字幕位置',nil,false,{slider={value=c.num('sub-pos',100),min=0,max=100,step=1,format='%.0f%%',set=function(v)c.set_number('sub-pos',v)end}})
+            local offset=c.num('sub-pos',100)-100
+            row('字幕位置',nil,false,{slider={value=offset,min=-100,max=50,step=1,format=offset==0 and '%.0f' or '%+.0f',set=function(v)c.set_number('sub-pos',v+100)end}})
             row('延迟  '..string.format('%+.1f 秒',c.num('sub-delay',0)),nil,false,{h=44})
             row('提前 0.1 秒',function()c.command('add','sub-delay','-0.1')end,false,{stay=true})
             row('延后 0.1 秒',function()c.command('add','sub-delay','0.1')end,false,{stay=true})

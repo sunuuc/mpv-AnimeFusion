@@ -245,13 +245,17 @@ static class Program
     static async Task AliasIdentityChecks()
     {
         const string subject = """
-            {"id":28900,"type":2,"name":"ゆるゆり♪♪","name_cn":"摇曳百合 第二季","platform":"TV","date":"2012-07-02"}
+            {"id":28900,"type":2,"name":"ゆるゆり♪♪","name_cn":"摇曳百合 第二季","platform":"TV","date":"2012-07-02",
+             "infobox":[{"key":"繁体中文名","value":"輕鬆百合 第二季"},
+                        {"key":"简体中文名","value":[{"v":"摇曳百合 第二季"},{"v":"剧场版 摇曳百合 第二季"}]},
+                        {"key":"别名","value":[{"v":"百合摇曳 第二季；百合摇曳续篇"}]},
+                        {"key":"官方网站","value":"https://unrelated.example/"}]}
             """;
         const string translated = """
             {"id":12403,"title":"Yuru Yuri♪♪","alternative_titles":{"synonyms":["Yuru Yuri 2nd Season"],"en":"YuruYuri: Happy Go Lily ♪♪","ja":"ゆるゆり♪♪"},"start_date":"2012-07-03","media_type":"tv","num_episodes":12}
             """;
         var media = TraktMedia.Parse("摇曳百合 S2E3", "episode.mkv", new Dictionary<string, string>());
-        string[] drafts = ["另一部作品", media.Title + " S04E02", ""];
+        string[] drafts = ["另一部作品", "另一部作品 S04E02", ""];
         for (int index = 0; index < drafts.Length; index++)
         {
             var keywords = new List<string>();
@@ -281,9 +285,20 @@ static class Program
             var work = titles.CurrentWork();
             Check(keywords.SequenceEqual([media.Title]) && reads == 3,
                 "The alias picker requests only the current playback title, even after the search input was changed or cleared.");
-            Check(names.Contains(media.Title) && names.Contains("摇曳百合 第二季") && names.Contains("搖曳百合 第二季")
+            Check(names.Contains(media.Title) && names.Contains("摇曳百合 第二季") && !names.Contains("搖曳百合 第二季")
                 && names.Contains("ゆるゆり♪♪") && names.Contains("YuruYuri: Happy Go Lily ♪♪") && !names.Contains(drafts[index]),
-                "Current-playback aliases include confirmed Chinese, Japanese and English names without the unrelated search text.");
+                "Current-playback aliases include returned Chinese, Japanese and English names without locally converting Chinese or using unrelated search text.");
+            Check(names.Contains("輕鬆百合 第二季") && !names.Contains("轻松百合 第二季")
+                && names.Contains("剧场版 摇曳百合 第二季") && names.Contains("百合摇曳 第二季；百合摇曳续篇")
+                && !names.Contains("百合摇曳 第二季") && !names.Contains("百合摇曳续篇")
+                && !names.Contains("https://unrelated.example/"),
+                "Chinese title fields and alias entries retain the returned wording without creating script or split-title alternatives.");
+            Check(titles.CachedNames.Contains("百合摇曳 第二季；百合摇曳续篇")
+                && titles.IsCurrent("百合摇曳 第二季;百合摇曳续篇") && !titles.IsCurrent("搖曳百合 第二季"),
+                "Cached aliases preserve source punctuation while identity matching can normalize it without inventing a translated Chinese title.");
+            Check(work.ForDownload(await titles.QueryAsync("百合摇曳续篇", default), new(SubtitleSource.Assrt, "derived-title", "百合摇曳续篇 S02E03", "", "", [])
+                { Season = 2, Episode = 3 }).Current && !titles.IsCurrent("百合摇曳续篇") && handler.Count == reads,
+                "Derived title variants remain available internally for matching but are not added as returned aliases or trigger extra requests.");
             Check(work.MalId == 12403 && work.Media == media && work.Names.Contains("YuruYuri: Happy Go Lily ♪♪"),
                 "An explicitly resolved current alias retains its confirmed MAL identity and original playback coordinates.");
             Check(work.ForDownload(await titles.QueryAsync("Yuru", default), new(SubtitleSource.Tsukihime, "yuru", "Unfamiliar title", "", "", [])
@@ -302,6 +317,11 @@ static class Program
             var current = await titles.QueryAsync(media.Title, default);
             Check(current.Title == media.Title && current.Episode == 3 && current.SearchSeason == 2 && handler.Count == reads,
                 "The actual current title retains its playback season and episode after unrelated searches.");
+            string selectedTitle = media.Title + " S02E03";
+            var selectedQuery = await titles.QueryAsync(selectedTitle, default);
+            Check(selectedQuery.Title == selectedTitle && selectedQuery.Episode == 3 && selectedQuery.SearchSeason == 2
+                && titles.IsCurrent(selectedTitle) && !titles.CachedNames.Contains(selectedTitle) && handler.Count == reads,
+                "A current-work search suffix retains playback identity and its literal request without becoming an alias or querying the catalogue again.");
         }
         var otherMedia = TraktMedia.Parse("另一部电影 (2020)", "other.mkv", new Dictionary<string, string>());
         var otherHandler = new Handler(request =>

@@ -194,6 +194,7 @@ public sealed class SubtitlePlayback(SubtitleLibrary library)
     }
     void CancelDownload()
     {
+        if (_download != null) MpvNet.Diagnostics.Write("subtitle.playback", "cancel", new { generation = _generation });
         _generation++;
         _download?.Cancel(); _download = null;
         if (DownloadStatus.Length > 0) Player.CommandV("show-text", "", "0");
@@ -224,6 +225,8 @@ public sealed class SubtitlePlayback(SubtitleLibrary library)
         using var filesClient = new HttpClient(new HttpClientHandler { AutomaticDecompression = System.Net.DecompressionMethods.All }) { Timeout = TimeSpan.FromSeconds(60) };
         try
         {
+            MpvNet.Diagnostics.Write("subtitle.playback", "start", new { generation, source = result.Source.ToString(),
+                result.Id, result.Local, result.Individual, query.RequestSeason, query.RequestEpisode, query.Language });
             Notice(generation, result.Local ? "正在加载字幕…" : result.Individual ? "正在获取字幕…" : "正在获取字幕包…");
             if (!result.Local)
             {
@@ -234,6 +237,7 @@ public sealed class SubtitlePlayback(SubtitleLibrary library)
                     _ => new AssrtClient(api, store)
                 };
                 result = await source.DetailAsync(result, request.Token).ConfigureAwait(false);
+                MpvNet.Diagnostics.Write("subtitle.playback", "detail", new { generation, files = result.Files.Count });
             }
             request.Token.ThrowIfCancellationRequested();
             bool current;
@@ -248,15 +252,21 @@ public sealed class SubtitlePlayback(SubtitleLibrary library)
             request.Token.ThrowIfCancellationRequested();
             lock (_lock)
             {
-                if (!_loaded || generation != _generation) return;
+                MpvNet.Diagnostics.Write("subtitle.playback", "saved", new { generation, current, matched = path != null });
+                if (!_loaded || generation != _generation)
+                { MpvNet.Diagnostics.Write("subtitle.playback", "stale", new { generation }); return; }
                 if (path == null || !current) { Notice(generation, result.Individual ? "字幕已保存" : "字幕包已保存", true); return; }
                 Select(path);
+                MpvNet.Diagnostics.Write("subtitle.playback", "selected", new { generation,
+                    sid = Player.GetPropertyString("sid"), visible = Player.GetPropertyBool("sub-visibility") });
                 Notice(generation, "");
             }
         }
-        catch (OperationCanceledException) when (request.IsCancellationRequested) { }
-        catch (Exception)
+        catch (OperationCanceledException) when (request.IsCancellationRequested)
+        { MpvNet.Diagnostics.Write("subtitle.playback", "cancelled", new { generation }); }
+        catch (Exception error)
         {
+            MpvNet.Diagnostics.Write("subtitle.playback", "failed", new { generation, source = result.Source.ToString() }, error);
             Notice(generation, result.Local ? "字幕加载失败" : "字幕下载失败", true);
         }
         finally

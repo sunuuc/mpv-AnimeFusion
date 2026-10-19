@@ -322,13 +322,13 @@ public class GuiCommand
 
     void LoadSubtitle(IList<string> args)
     {
-        using var dialog = new OpenFileDialog();
-        string path = Player.GetPropertyString("path");
-
-        if (File.Exists(path))
-            dialog.InitialDirectory = Path.GetDirectoryName(path);
-
-        dialog.Multiselect = true;
+        string directory = MpvNet.Windows.Subtitles.SubtitlePlayback.Current.Library.Root;
+        Directory.CreateDirectory(directory);
+        using var dialog = new OpenFileDialog
+        {
+            InitialDirectory = directory,
+            Multiselect = true
+        };
 
         if (dialog.ShowDialog() == DialogResult.OK)
             foreach (string filename in dialog.FileNames)
@@ -354,11 +354,20 @@ public class GuiCommand
         if (window.ShowDialog() != true) return;
         try
         {
-            if (!playback.Remove(removal, window.DeleteLocal)) Msg.ShowInfo("当前视频已切换，请重新选择字幕。");
+            if (!playback.Remove(removal, window.DeleteLocal))
+            {
+                Diagnostics.Write("subtitle.delete", "stale", new { deleteLocal = window.DeleteLocal });
+                Msg.ShowError("删除失败");
+            }
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException
             or MpvNet.Windows.Subtitles.SubtitleServiceException)
-        { Terminal.WriteError(error); Msg.ShowError(error is MpvNet.Windows.Subtitles.SubtitleServiceException ? error.Message : "字幕删除失败，请检查文件是否被占用。"); }
+        {
+            Diagnostics.Write("subtitle.delete", "failed", new { deleteLocal = window.DeleteLocal,
+                reason = error is MpvNet.Windows.Subtitles.SubtitleServiceException ? error.Message : null }, error);
+            Terminal.WriteError(error);
+            Msg.ShowError("删除失败");
+        }
     }
 
     void OpenFiles(IList<string> args)

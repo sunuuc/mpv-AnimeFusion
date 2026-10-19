@@ -24,6 +24,7 @@ public partial class TraktMatchWindow : Window
     {
         _media = _sync.Media; _generation = _sync.Generation;
         InitializeComponent(); DataContext = this; QueryBox.Text = _media.Title;
+        QueryBox.SetMedia(_media, _lifetime.Token);
         _sync.Changed += Sync_Changed;
         Closed += (_, _) =>
         {
@@ -45,6 +46,7 @@ public partial class TraktMatchWindow : Window
         {
             _request?.Cancel(); _busy = false; _media = _sync.Media; _generation = _sync.Generation;
             QueryBox.Text = _media.Title; SubjectsList.Items.Clear(); EpisodesBox.Items.Clear(); _episodes = []; _message = "";
+            QueryBox.SetMedia(_media, _lifetime.Token);
         }
         Refresh();
     }));

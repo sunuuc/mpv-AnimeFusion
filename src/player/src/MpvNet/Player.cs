@@ -149,6 +149,11 @@ public class MainPlayer : MpvClient
 
         Environment.SetEnvironmentVariable("MPVNET_VERSION", AppInfo.Version.ToString());  // deprecated
 
+        // Native messages are captured through the client event queue and redacted
+        // by Diagnostics; never let an inherited option write raw media addresses.
+        SetPropertyString("log-file", "");
+        SetPropertyString("dump-stats", "");
+
         mpv_error err = mpv_initialize(MainHandle);
 
         if (err < 0)
@@ -174,6 +179,7 @@ public class MainPlayer : MpvClient
         SetPropertyString("user-data/frontend/name", "mpv-AnimeFusion");
         SetPropertyString("user-data/frontend/version", AppInfo.Version.ToString());
         SetPropertyString("user-data/frontend/process-path", Environment.ProcessPath!);
+        SetPropertyBool("user-data/frontend/diagnostics", Diagnostics.Enabled);
 
         ObservePropertyBool("pause", value => {
             Paused = value;
@@ -384,6 +390,13 @@ public class MainPlayer : MpvClient
 
     protected override void OnLogMessage(mpv_event_log_message data)
     {
+#if ANIMEFUSION_DIAGNOSTICS
+        Diagnostics.Write("native", ConvertFromUtf8(data.prefix), new
+        {
+            level = data.log_level.ToString(),
+            text = ConvertFromUtf8(data.text)
+        });
+#endif
         if (data.log_level == mpv_log_level.MPV_LOG_LEVEL_INFO)
         {
             string prefix = ConvertFromUtf8(data.prefix);

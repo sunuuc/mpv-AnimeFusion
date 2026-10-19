@@ -91,6 +91,15 @@ static class Program
         var english = await titles.QueryAsync("Yuru Yuri Season 2", default);
         Check(english.Title == "Yuru Yuri Season 2" && english.Episode == 3 && english.SearchSeason == 2
             && titles.IsCurrent("  Yuru Yuri Season 2  "), "An explicitly chosen alias retains the current episode and season.");
+        foreach (string suffix in new[] { " S02", " E01", " S02E01" })
+        {
+            string keyword = "Yuru Yuri Season 2" + suffix;
+            var selectedQuery = await titles.QueryAsync(keyword, default);
+            Check(titles.IsCurrent(keyword) && selectedQuery.Title == keyword && selectedQuery.Episode == 3
+                && selectedQuery.SearchSeason == 2 && handler.Count == loaded,
+                "Visible season/episode conditions retain the playback identity and full search text without extra requests.");
+        }
+        Check(!titles.IsCurrent("Unrelated movie S02E01"), "A season/episode suffix never makes an unrelated title the current work.");
         Check((await titles.NamesAsync(default)).SequenceEqual(original.Names) && handler.Count == loaded,
             "Reopening the alias list or selecting another matched name reuses the catalogue request.");
         foreach (string keyword in new[] { "另一部动画", "Unrelated movie", "" })
@@ -1356,6 +1365,72 @@ static class Program
         Console.WriteLine($"{source}: search rows={page.Results.Count}, selected={detail.Id}, S{detail.Season}E{detail.Episode}, subtitle bytes={new FileInfo(path!).Length}, HTTP requests={requests}; no video requests.");
     }
 
+    static async Task EpisodeIdentityChecks()
+    {
+        var rangeLibrary = new SubtitleLibrary(Path.Combine(Root, "range-only-package"));
+        var rangeFile = new SubtitleFile(SubtitleSource.Assrt, "range", 0, "Fixture S04E08–E10.ass", "");
+        var rangePackage = new SubtitleResult(SubtitleSource.Assrt, "range", "Fixture", "中文", "", [rangeFile]);
+        Check(rangeLibrary.CurrentFile(Query, rangePackage, rangePackage.Files) == null,
+            "A package with one range-named file cannot fall back to the current episode simply because no single episode was parsed.");
+        const string title = "[LbE3L] Hanaori-san Still Wants to Fight in the Next S01E01–E04 [ AV1 Opus 2.0 Multi-Audio MSubs]";
+        const string owner = "176456154";
+        string detail = "<h1>" + title + "</h1><table id=\"subs-table\">"
+            + SubtitleTrack(owner, "181748", "chi", "FANSUBS ASS) Chinese – 简体中文 [Nekomoe kissaten]") + "</table>";
+        using (var http = new HttpClient(new Handler(request => Content(request.RequestUri!.AbsolutePath == "/browse"
+            ? BrowseRow(owner, title.Replace("–E04", "", StringComparison.Ordinal), "chi", "S1 E01") : detail, "text/html"))))
+        {
+            var page = await new AmenzbClient(http).SearchAsync(new("Hanaori-san", 1, 1, "zh-Hans")
+                { RequestSeason = 1, RequestEpisode = 1 }, 1, default);
+            Check(page.Results.Count == 0, "A detail page revealing a collection overrides a single-episode browse row before results are offered.");
+        }
+        var handler = new Handler(request => Content(request.RequestUri!.AbsolutePath == "/browse"
+            ? BrowseRow(owner, title, "chi", "S1 E01") : detail, "text/html"));
+        using (var http = new HttpClient(handler))
+        {
+            var client = new AmenzbClient(http);
+            var query = new SubtitleQuery("Hanaori-san", 1, 1, "zh-Hans");
+            var page = await client.SearchAsync(query, 1, default);
+            var result = page.Results.Single();
+            Check(result.Season == -1 && result.Episode == null && result.EpisodesFor(1).Count == 0,
+                "A real Unicode episode-range release cannot label its extracted attachment as the catalogue's first episode.");
+            Check(!result.MatchesFilter(null, "zh-Hans", 1, 1) && !result.MatchesFilter(null, "zh-Hans", 1, 4),
+                "An attachment with no per-file coordinates is not offered as either endpoint of its collection.");
+            int before = handler.Count;
+            foreach (int episode in new[] { 1, 4 })
+                Check((await client.SearchAsync(query with { RequestSeason = 1, RequestEpisode = episode }, 1, default)).Results.Count == 0,
+                    "An episode-scoped search cannot substitute an unidentified collection attachment.");
+            Check(handler.Count == before, "Excluding unidentified collection attachments does not add detail or MediaInfo requests.");
+            string payload = Ass.Replace("ScriptType:", "Title: [Nekomoe kissaten] Hanaori-san wa Tensei shitemo Kenka ga Shitai [04][Web].SC\nScriptType:", StringComparison.Ordinal);
+            using var files = new HttpClient(new Handler(_ => Content(payload, "text/plain")));
+            var library = new SubtitleLibrary(Path.Combine(Root, "range-attachment"));
+            Check(await new SubtitleDownload(files, library).DownloadAsync(query, result, null, [], null, default) == null,
+                "Downloading the collection's fourth-episode track does not return a first-episode playback path.");
+            var local = library.Results(query.Title).Single();
+            Check(local.AvailableSeasons.SequenceEqual(new int?[] { -1 }) && local.Files[0].Episode == null
+                && File.ReadAllText(local.Files[0].LocalPath) == payload,
+                "Unidentified attachments retain their original bytes in the unclassified shelf.");
+            await Rejected(() => Task.Run(() => library.Import(TraktMedia.Parse("Hanaori-san S01E01", "", new Dictionary<string, string>()),
+                local.Files[0].LocalPath)), "Manually importing a collection-named track cannot silently assign the first episode.");
+        }
+        foreach (SubtitleSource source in new[] { SubtitleSource.Amenzb, SubtitleSource.Tsukihime })
+        foreach (string contentTitle in new[] { "[Group] Fixture [09][Web].SC", "Fixture S05E08", "Fixture S04E08–E10" })
+        {
+            string payload = Ass.Replace("ScriptType:", "Title: " + contentTitle + "\nScriptType:", StringComparison.Ordinal);
+            using var http = new HttpClient(new Handler(_ => Content(payload, "text/plain")));
+            var library = new SubtitleLibrary(Path.Combine(Root, "conflicting-content-" + Guid.NewGuid().ToString("N")));
+            await Rejected(() => new SubtitleDownload(http, library).DownloadAsync(Query, Result(source), null, [], null, default),
+                source + ": an explicit conflicting episode or season inside the actual subtitle is rejected.");
+            Check(library.Results(Query.Title).Count == 0 && !Directory.EnumerateFiles(library.Root, "*", SearchOption.AllDirectories).Any(),
+                "A conflicting subtitle is not written or indexed before reporting download failure.");
+        }
+        using (var http = new HttpClient(new Handler(_ => Content(Ass.Replace("ScriptType:", "Title: Fixture S04E08\nScriptType:", StringComparison.Ordinal), "text/plain"))))
+        {
+            var library = new SubtitleLibrary(Path.Combine(Root, "matching-content"));
+            Check(await new SubtitleDownload(http, library).DownloadAsync(Query, Result(SubtitleSource.Amenzb), null, [], null, default) != null,
+                "A subtitle whose embedded title agrees with the selected episode remains loadable.");
+        }
+    }
+
     static async Task IndividualWorkChecks()
     {
         var movieQuery = new SubtitleQuery("Spirited Away", null, null, "zh") { Year = 2001 };
@@ -1414,6 +1489,7 @@ static class Program
             await ProviderParsingChecks();
             await DownloadChecks();
             await IndividualWorkChecks();
+            await EpisodeIdentityChecks();
             if (args.Length > 0 && args[0] == "--live")
             {
                 var sources = args.Skip(1).ToArray();

@@ -38,6 +38,12 @@ public class MpvClient
 
             try
             {
+#if ANIMEFUSION_DIAGNOSTICS
+                if (evt.event_id != mpv_event_id.MPV_EVENT_LOG_MESSAGE
+                    && evt.event_id != mpv_event_id.MPV_EVENT_PROPERTY_CHANGE
+                    && evt.event_id != mpv_event_id.MPV_EVENT_NONE)
+                    Diagnostics.Write("player", evt.event_id.ToString(), new { error = evt.error });
+#endif
                 switch (evt.event_id)
                 {
                     case mpv_event_id.MPV_EVENT_SHUTDOWN:
