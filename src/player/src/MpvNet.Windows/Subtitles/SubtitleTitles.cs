@@ -235,16 +235,15 @@ public sealed record SubtitleWork(TraktMedia Media, IReadOnlyList<string> Names,
     {
         bool current = Compatible(result) && Matches(result);
         if (!current) return (search with { Episode = null }, false);
-        int? season = Media.Kind == "movie" ? null : result.Individual ? Media.Season
-            : (result.Collection ? null : result.Season) ?? search.Season ?? Media.Season;
-        return (search with
+        int? season = Media.Kind == "movie" ? null : Media.Season;
+        return ((search with
         {
             Title = Media.Title,
             Names = Names.Concat(result.TitleNames).Append(result.Title).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
             Season = season,
             Episode = Media.Kind == "show" && season == Media.Season ? Media.Episode : null,
             Year = Media.Kind == "movie" ? Media.Parsed.Year : null
-        }, true);
+        }).WithPlayback(Media), true);
     }
 
     bool Compatible(SubtitleResult result)

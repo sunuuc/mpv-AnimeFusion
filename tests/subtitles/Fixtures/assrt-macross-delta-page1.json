@@ -1,0 +1,4301 @@
+{
+  "status": 0,
+  "sub": {
+    "subs": [
+      {
+        "id": 668257,
+        "native_name": "超時空要塞マクロス",
+        "videoname": "【机伤同萌】【超时空要塞麦克罗斯】+【你还记得爱吗/可曾记得爱】【TV 01-36 + MOVIE】【简日双语】",
+        "subtype": "SSA",
+        "lang": {
+          "desc": "简 日",
+          "langlist": {
+            "langjap": true,
+            "langchs": true
+          }
+        },
+        "filelist": [
+          {
+            "f": "[JSTM][Choujikuu Yousai Macross][01][BDRIP][960X720][X264-10bit_AAC][A4911126].ass"
+          },
+          {
+            "f": "[JSTM][Choujikuu Yousai Macross][02][BDRIP][960X720][X264-10bit_AAC][FECFE85C].ass"
+          },
+          {
+            "f": "[JSTM][Choujikuu Yousai Macross][03][BDRIP][960X720][X264-10bit_AAC][99438A91].ass"
+          },
+          {
+            "f": "[JSTM][Choujikuu Yousai Macross][04][BDRIP][960X720][X264-10bit_AAC][BFA13D7F].ass"
+          },
+          {
+            "f": "[JSTM][Choujikuu Yousai Macross][05][BDRIP][960X720][X264-10bit_AAC][D6D6305E].ass"
+          },
+          {
+            "f": "[JSTM][Choujikuu Yousai Macross][06][BDRIP][960X720][X264-10bit_AAC][FBD4F77D].ass"
+          },
+          {
+            "f": "[JSTM][Choujikuu Yousai Macross][07][BDRIP][960X720][X264-10bit_AAC][B655C224].ass"
+          },
+          {
+            "f": "[JSTM][Choujikuu Yousai Macross][08][BDRIP][960X720][X264-10bit_AAC][8A08967C].ass"
+          },
+          {
+            "f": "[JSTM][Choujikuu Yousai Macross][09][BDRIP][960X720][X264-10bit_AAC][70593562].ass"
+          },
+          {
+            "f": "[JSTM][Choujikuu Yousai Macross][10][BDRIP][960X720][X264-10bit_AAC][CFE60E1B].ass"
+          },
+          {
+            "f": "[JSTM][Choujikuu Yousai Macross][11][BDRIP][960X720][X264-10bit_AAC][BB3B8B03].ass"
+          },
+          {
+            "f": "[JSTM][Choujikuu Yousai Macross][12][BDRIP][960X720][X264-10bit_AAC][1AED4D81].ass"
+          },
+          {
+            "f": "[JSTM][Choujikuu Yousai Macross][13][BDRIP][960X720][X264-10bit_AAC][C53BFEEC].ass"
+          },
+          {
+            "f": "[JSTM][Choujikuu Yousai Macross][14][BDRIP][960X720][X264-10bit_AAC][F2F17E58].ass"
+          },
+          {
+            "f": "[JSTM][Choujikuu Yousai Macross][15][BDRIP][960X720][X264-10bit_AAC][B5FCD371].ass"
+          },
+          {
+            "f": "[JSTM][Choujikuu Yousai Macross][16][BDRIP][960X720][X264-10bit_AAC][C3AEE3C8].ass"
+          },
+          {
+            "f": "[JSTM][Choujikuu Yousai Macross][17][BDRIP][960X720][X264-10bit_AAC][A4928F88].ass"
+          },
+          {
+            "f": "[JSTM][Choujikuu Yousai Macross][18][BDRIP][960X720][X264-10bit_AAC][08ED9828].ass"
+          },
+          {
+            "f": "[JSTM][Choujikuu Yousai Macross][19][BDRIP][960X720][X264-10bit_AAC][F40F5818].ass"
+          },
+          {
+            "f": "[JSTM][Choujikuu Yousai Macross][20][BDRIP][960X720][X264-10bit_AAC][C8E5599E].ass"
+          },
+          {
+            "f": "[JSTM][Choujikuu Yousai Macross][21][BDRIP][960X720][X264-10bit_AAC][66D9D919].ass"
+          },
+          {
+            "f": "[JSTM][Choujikuu Yousai Macross][22][BDRIP][960X720][X264-10bit_AAC][52744AED].ass"
+          },
+          {
+            "f": "[JSTM][Choujikuu Yousai Macross][23][BDRIP][960X720][X264-10bit_AAC][81C00DF7].ass"
+          },
+          {
+            "f": "[JSTM][Choujikuu Yousai Macross][24][BDRIP][960X720][X264-10bit_AAC][29482DC4].ass"
+          },
+          {
+            "f": "[JSTM][Choujikuu Yousai Macross][25][BDRIP][960X720][X264-10bit_AAC][5911A606].ass"
+          },
+          {
+            "f": "[JSTM][Choujikuu Yousai Macross][26][BDRIP][960X720][X264-10bit_AAC][A847CA1B].ass"
+          },
+          {
+            "f": "[JSTM][Choujikuu Yousai Macross][27][BDRIP][960X720][X264-10bit_AAC][A1338522].ass"
+          },
+          {
+            "f": "[JSTM][Choujikuu Yousai Macross][28][BDRIP][960X720][X264-10bit_AAC][354201A5].ass"
+          },
+          {
+            "f": "[JSTM][Choujikuu Yousai Macross][29][BDRIP][960X720][X264-10bit_AAC][1DCB807F].ass"
+          },
+          {
+            "f": "[JSTM][Choujikuu Yousai Macross][30][BDRIP][960X720][X264-10bit_AAC][CDA1621D].ass"
+          },
+          {
+            "f": "[JSTM][Choujikuu Yousai Macross][31][BDRIP][960X720][X264-10bit_AAC][EDEF92ED].ass"
+          },
+          {
+            "f": "[JSTM][Choujikuu Yousai Macross][32][BDRIP][960X720][X264-10bit_AAC][F4778B96].ass"
+          },
+          {
+            "f": "[JSTM][Choujikuu Yousai Macross][33][BDRIP][960X720][X264-10bit_AAC][B234B0E4].ass"
+          },
+          {
+            "f": "[JSTM][Choujikuu Yousai Macross][34][BDRIP][960X720][X264-10bit_AAC][CECCC5BF].ass"
+          },
+          {
+            "f": "[JSTM][Choujikuu Yousai Macross][35][BDRIP][960X720][X264-10bit_AAC][7278771E].ass"
+          },
+          {
+            "f": "[JSTM][Choujikuu Yousai Macross][36][BDRIP][960X720][X264-10bit_AAC][CE605E9C].ass"
+          },
+          {
+            "f": "[JSTM][Choujikuu Yousai Macross][MOVIE][BDRIP][1328X720][X264-10bit_AAC][0923E48D].ass"
+          },
+          {
+            "f": "说明.txt"
+          }
+        ]
+      },
+      {
+        "id": 665044,
+        "native_name": "マクロスF/Macross Frontier / 超时空要塞F TV+剧场版",
+        "videoname": "不知道",
+        "subtype": "SSA",
+        "lang": {
+          "desc": "简",
+          "langlist": {
+            "langchs": true
+          }
+        },
+        "filelist": [
+          {
+            "f": "超时空要塞F 12.cn.ass"
+          },
+          {
+            "f": "超时空要塞F 25.jp.ass"
+          },
+          {
+            "f": "超时空要塞F 24.cn.ass"
+          },
+          {
+            "f": "超时空要塞F 02.jp.ass"
+          },
+          {
+            "f": "超时空要塞F 14.cn.ass"
+          },
+          {
+            "f": "超时空要塞F 21.cn.ass"
+          },
+          {
+            "f": "超时空要塞F 15.jp.ass"
+          },
+          {
+            "f": "超时空要塞F 16.jp.ass"
+          },
+          {
+            "f": "超时空要塞F 08.cn.ass"
+          },
+          {
+            "f": "超时空要塞F 22.cn.ass"
+          },
+          {
+            "f": "超时空要塞F 10.jp.ass"
+          },
+          {
+            "f": "超时空要塞F 18.cn.ass"
+          },
+          {
+            "f": "超时空要塞F 20.cn.ass"
+          },
+          {
+            "f": "超时空要塞F 23.cn.ass"
+          },
+          {
+            "f": "超时空要塞F 01.jp.ass"
+          },
+          {
+            "f": "超时空要塞F 02.cn.ass"
+          },
+          {
+            "f": "超时空要塞F 06.jp.ass"
+          },
+          {
+            "f": "超时空要塞F 09.jp.ass"
+          },
+          {
+            "f": "超时空要塞F 13.jp.ass"
+          },
+          {
+            "f": "超时空要塞F 11.cn.ass"
+          },
+          {
+            "f": "超时空要塞F 14.jp.ass"
+          },
+          {
+            "f": "超时空要塞F 01.cn.ass"
+          },
+          {
+            "f": "超时空要塞F 20.jp.ass"
+          },
+          {
+            "f": "超时空要塞F 17.jp.ass"
+          },
+          {
+            "f": "超时空要塞F 06.cn.ass"
+          },
+          {
+            "f": "超时空要塞F 16.cn.ass"
+          },
+          {
+            "f": "超时空要塞F 05.jp.ass"
+          },
+          {
+            "f": "超时空要塞F 25.cn.ass"
+          },
+          {
+            "f": "超时空要塞F 10.cn.ass"
+          },
+          {
+            "f": "超时空要塞F 09.cn.ass"
+          },
+          {
+            "f": "超时空要塞F 23.jp.ass"
+          },
+          {
+            "f": "超时空要塞F 08.jp.ass"
+          },
+          {
+            "f": "超时空要塞F 11.jp.ass"
+          },
+          {
+            "f": "超时空要塞F 17.cn.ass"
+          },
+          {
+            "f": "超时空要塞F 22.jp.ass"
+          },
+          {
+            "f": "超时空要塞F 19.cn.ass"
+          },
+          {
+            "f": "超时空要塞F 24.jp.ass"
+          },
+          {
+            "f": "超时空要塞F 19.jp.ass"
+          },
+          {
+            "f": "超时空要塞F 21.jp.ass"
+          },
+          {
+            "f": "超时空要塞F 04.cn.ass"
+          },
+          {
+            "f": "超时空要塞F 03.cn.ass"
+          },
+          {
+            "f": "超时空要塞F 04.jp.ass"
+          },
+          {
+            "f": "超时空要塞F 18.jp.ass"
+          },
+          {
+            "f": "超时空要塞F 12.jp.ass"
+          },
+          {
+            "f": "超时空要塞F 15.cn.ass"
+          },
+          {
+            "f": "超时空要塞F 07.jp.ass"
+          },
+          {
+            "f": "超时空要塞F 03.jp.ass"
+          },
+          {
+            "f": "超时空要塞F 07.cn.ass"
+          },
+          {
+            "f": "超时空要塞F 13.cn.ass"
+          },
+          {
+            "f": "超时空要塞F 05.cn.ass"
+          },
+          {
+            "f": "[KPDM&EDEN][Macross_Frontier][05][BDrip][OCR_by_zouyue].sc.ass"
+          },
+          {
+            "f": "[KPDM&EDEN][Macross_Frontier][15][BDrip][OCR_by_zouyue].sc.ass"
+          },
+          {
+            "f": "[KPDM&EDEN][Macross_Frontier][20][BDrip][OCR_by_zouyue].sc.ass"
+          },
+          {
+            "f": "[KPDM&EDEN][Macross_Frontier][17][BDrip][OCR_by_zouyue].sc.ass"
+          },
+          {
+            "f": "[KPDM&EDEN][Macross_Frontier][01][Yack_Deculture_Ver.][BDrip][OCR_by_zouyue].sc.ass"
+          },
+          {
+            "f": "[KPDM&EDEN][Macross_Frontier][03][BDrip][OCR_by_zouyue].sc.ass"
+          },
+          {
+            "f": "[KPDM&EDEN][Macross_Frontier][16][BDrip][OCR_by_zouyue].sc.ass"
+          },
+          {
+            "f": "[KPDM&EDEN][Macross_Frontier][12][BDrip][OCR_by_zouyue].sc.ass"
+          },
+          {
+            "f": "[KPDM&EDEN][Macross_Frontier][08][BDrip][OCR_by_zouyue].sc.ass"
+          },
+          {
+            "f": "[KPDM&EDEN][Macross_Frontier][02][BDrip][OCR_by_zouyue].sc.ass"
+          },
+          {
+            "f": "[KPDM&EDEN][Macross_Frontier][09][BDrip][OCR_by_zouyue].sc.ass"
+          },
+          {
+            "f": "[KPDM&EDEN][Macross_Frontier][10][BDrip][OCR_by_zouyue].sc.ass"
+          },
+          {
+            "f": "[KPDM&EDEN][Macross_Frontier][22][BDrip][OCR_by_zouyue].sc.ass"
+          },
+          {
+            "f": "[KPDM&EDEN][Macross_Frontier][24][BDrip][OCR_by_zouyue].sc.ass"
+          },
+          {
+            "f": "[KPDM&EDEN][Macross_Frontier][04][BDrip][OCR_by_zouyue].sc.ass"
+          },
+          {
+            "f": "[KPDM&EDEN][Macross_Frontier][23][BDrip][OCR_by_zouyue].sc.ass"
+          },
+          {
+            "f": "[KPDM&EDEN][Macross_Frontier][19][BDrip][OCR_by_zouyue].sc.ass"
+          },
+          {
+            "f": "[KPDM&EDEN][Macross_Frontier][25][BDrip][OCR_by_zouyue].sc.ass"
+          },
+          {
+            "f": "[KPDM&EDEN][Macross_Frontier][13][BDrip][OCR_by_zouyue].sc.ass"
+          },
+          {
+            "f": "[KPDM&EDEN][Macross_Frontier][11][BDrip][OCR_by_zouyue].sc.ass"
+          },
+          {
+            "f": "[KPDM&EDEN][Macross_Frontier][18][BDrip][OCR_by_zouyue].sc.ass"
+          },
+          {
+            "f": "[KPDM&EDEN][Macross_Frontier][07][BDrip][OCR_by_zouyue].sc.ass"
+          },
+          {
+            "f": "[KPDM&EDEN][Macross_Frontier][21][BDrip][OCR_by_zouyue].sc.ass"
+          },
+          {
+            "f": "[KPDM&EDEN][Macross_Frontier][14][BDrip][OCR_by_zouyue].sc.ass"
+          },
+          {
+            "f": "[KPDM&EDEN][Macross_Frontier][06][BDrip][OCR_by_zouyue].sc.ass"
+          },
+          {
+            "f": "[KTKJ][Macross Frontier][BDRip][21][1920X1080][H264_AAC][389E98FD].ass"
+          },
+          {
+            "f": "[KTKJ][Macross Frontier][BDRip][01_Deculture][1920X1080][H264_AAC][0AD58B6C].ass"
+          },
+          {
+            "f": "[KTKJ][Macross Frontier][BDRip][14][1920X1080][H264_AAC][98ABD183].ass"
+          },
+          {
+            "f": "[KTKJ][Macross Frontier][BDRip][06][1920X1080][H264_AAC][DDC5651A].ass"
+          },
+          {
+            "f": "[KTKJ][Macross Frontier][BDRip][08][1920X1080][H264_AAC][5BC893A2].ass"
+          },
+          {
+            "f": "[KTKJ][Macross Frontier][BDRip][10][With_Commentary][1920X1080][H264_AAC][0CF9E2DB].ass"
+          },
+          {
+            "f": "[KTKJ][Macross Frontier][BDRip][12][With_Commentary][1920X1080][H264_AAC][4CB26D73].ass"
+          },
+          {
+            "f": "[KTKJ][Macross Frontier][BDRip][13][1920X1080][H264_AAC][84C7B6D0].ass"
+          },
+          {
+            "f": "[KTKJ][Macross Frontier][BDRip][22][1920X1080][H264_AAC][9D9CB85D].ass"
+          },
+          {
+            "f": "[KTKJ][Macross Frontier][BDRip][17][1920X1080][H264_AAC][F9E1CE20].ass"
+          },
+          {
+            "f": "[KTKJ][Macross Frontier][BDRip][11][1920X1080][H264_AAC][E0B63191].ass"
+          },
+          {
+            "f": "[KTKJ][Macross Frontier][BDRip][05][1920X1080][H264_AAC][BB540EAB].ass"
+          },
+          {
+            "f": "[KTKJ][Macross Frontier][BDRip][01_Yack_Deculture][With_Commentary][1920X1080][H264_AAC][EDE7ADDB].ass"
+          },
+          {
+            "f": "[KTKJ][Macross Frontier][BDRip][24][1920X1080][H264_AAC][7430C878].ass"
+          },
+          {
+            "f": "[KTKJ][Macross Frontier][BDRip][01_TV_Series][1920X1080][H264_AAC][A4293E32].ass"
+          },
+          {
+            "f": "[KTKJ][Macross Frontier][BDRip][18][With_Commentary][1920X1080][H264_AAC][D1474804].ass"
+          },
+          {
+            "f": "[KTKJ][Macross Frontier][BDRip][20][1920X1080][H264_AAC][BC1B7221].ass"
+          },
+          {
+            "f": "[KTKJ][Macross Frontier][BDRip][25][With_Commentary][1920X1080][H264_AAC][7E719684].ass"
+          },
+          {
+            "f": "[KTKJ][Macross Frontier][BDRip][04][1920X1080][H264_AAC][EB173ACC].ass"
+          },
+          {
+            "f": "[KTKJ][Macross Frontier][BDRip][09][1920X1080][H264_AAC][905C6C9E].ass"
+          },
+          {
+            "f": "[KTKJ][Macross Frontier][BDRip][15][1920X1080][H264_AAC][5D720FDF].ass"
+          },
+          {
+            "f": "[KTKJ][Macross Frontier][BDRip][02][1920X1080][H264_AAC][035904A5].ass"
+          },
+          {
+            "f": "[KTKJ][Macross Frontier][BDRip][16][With_Commentary][1920X1080][H264_AAC][3A63F8DF].ass"
+          },
+          {
+            "f": "[KTKJ][Macross Frontier][BDRip][19][1920X1080][H264_AAC][3D5DC6E4].ass"
+          },
+          {
+            "f": "[KTKJ][Macross Frontier][BDRip][03][1920X1080][H264_AAC][1E6E24BD].ass"
+          },
+          {
+            "f": "[KTKJ][Macross Frontier][BDRip][07][With_Commentary][1920X1080][H264_AAC][7275037E].ass"
+          },
+          {
+            "f": "[KTKJ][Macross Frontier][BDRip][23][1920X1080][H264_AAC][154A23D3].ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][25][BDRip][1920x1080][x264_FLACx2][GB_BIG5][0FEB487E].tc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][04][BDRip][1920x1080][x264_FLAC][GB_BIG5][5FB69520].tc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][02][BDRip][1920x1080][x264_FLAC][GB_BIG5][47647448].tc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][18][BDRip][1920x1080][x264_FLACx2][GB_BIG5][30140188].sc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][23][BDRip][1920x1080][x264_FLAC][GB_BIG5][9729F908].tc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][11][BDRip][1920x1080][x264_FLAC][GB_BIG5][A936421C].tc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][08v2][BDRip][1920x1080][x264_FLAC][GB_BIG5][3C0D80D2].sc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][08v2][BDRip][1920x1080][x264_FLAC][GB_BIG5][3C0D80D2].tc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][06][BDRip][1920x1080][x264_FLAC][GB_BIG5][2124F1F0].tc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][07][BDRip][1920x1080][x264_FLACx2][GB_BIG5][84357197].tc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][24][BDRip][1920x1080][x264_FLAC][GB_BIG5][D234FED9].tc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][12][BDRip][1920x1080][x264_FLACx2][GB_BIG5][B90EB950].sc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][05][BDRip][1920x1080][x264_FLAC][GB_BIG5][DCB73870].sc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][10][BDRip][1920x1080][x264_FLACx2][GB_BIG5][ACE773F4].tc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][24][BDRip][1920x1080][x264_FLAC][GB_BIG5][D234FED9].sc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][01][BDRip][Yack_Deculture][1920x1080][x264_AACx2][GB_BIG5][84217F0D].sc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][15][BDRip][1920x1080][x264_FLAC][GB_BIG5][B820CBDF].sc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][07][BDRip][1920x1080][x264_FLACx2][GB_BIG5][84357197].sc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][19][BDRip][1920x1080][x264_FLAC][GB_BIG5][2DFD0B52].sc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][01][BDRip][Deculture][1920x1080][x264_AAC][GB_BIG5][29EF25F3].tc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][22][BDRip][1920x1080][x264_FLAC][GB_BIG5][0C06DF86].sc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][16][BDRip][1920x1080][x264_FLACx2][GB_BIG5][E31F294A].tc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][20][BDRip][1920x1080][x264_FLACx2][GB_BIG5][4386AD90].tc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][01][BDRip][Deculture][1920x1080][x264_AAC][GB_BIG5][29EF25F3].sc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][12][BDRip][1920x1080][x264_FLACx2][GB_BIG5][B90EB950].tc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][03][BDRip][1920x1080][x264_FLAC][GB_BIG5][A84FA1A8].tc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][04][BDRip][1920x1080][x264_FLAC][GB_BIG5][5FB69520].sc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][17][BDRip][1920x1080][x264_FLAC][GB_BIG5][88C65BA9].tc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][02][BDRip][1920x1080][x264_FLAC][GB_BIG5][47647448].sc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][14][BDRip][1920x1080][x264_FLAC][GB_BIG5][36AE909E].tc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][01][BDRip][1920x1080][x264_AAC][GB_BIG5][636A719B].sc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][23][BDRip][1920x1080][x264_FLAC][GB_BIG5][9729F908].sc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][21][BDRip][1920x1080][x264_FLAC][GB_BIG5][8CBD5FF6].tc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][03][BDRip][1920x1080][x264_FLAC][GB_BIG5][A84FA1A8].sc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][25][BDRip][1920x1080][x264_FLACx2][GB_BIG5][0FEB487E].sc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][01][BDRip][1920x1080][x264_AAC][GB_BIG5][636A719B].tc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][06][BDRip][1920x1080][x264_FLAC][GB_BIG5][2124F1F0].sc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][18][BDRip][1920x1080][x264_FLACx2][GB_BIG5][30140188].tc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][09][BDRip][1920x1080][x264_FLAC][GB_BIG5][DF69A427].tc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][16][BDRip][1920x1080][x264_FLACx2][GB_BIG5][E31F294A].sc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][14][BDRip][1920x1080][x264_FLAC][GB_BIG5][36AE909E].sc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][21][BDRip][1920x1080][x264_FLAC][GB_BIG5][8CBD5FF6].sc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][05][BDRip][1920x1080][x264_FLAC][GB_BIG5][DCB73870].tc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][11][BDRip][1920x1080][x264_FLAC][GB_BIG5][A936421C].sc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][10][BDRip][1920x1080][x264_FLACx2][GB_BIG5][ACE773F4].sc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][13][BDRip][1920x1080][x264_FLAC][GB_BIG5][B0A0CC80].tc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][13][BDRip][1920x1080][x264_FLAC][GB_BIG5][B0A0CC80].sc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][09][BDRip][1920x1080][x264_FLAC][GB_BIG5][DF69A427].sc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][01][BDRip][Yack_Deculture][1920x1080][x264_AACx2][GB_BIG5][84217F0D].tc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][20][BDRip][1920x1080][x264_FLACx2][GB_BIG5][4386AD90].sc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][15][BDRip][1920x1080][x264_FLAC][GB_BIG5][B820CBDF].tc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][17][BDRip][1920x1080][x264_FLAC][GB_BIG5][88C65BA9].sc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][22][BDRip][1920x1080][x264_FLAC][GB_BIG5][0C06DF86].tc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier][19][BDRip][1920x1080][x264_FLAC][GB_BIG5][2DFD0B52].tc.ass"
+          },
+          {
+            "f": "[POPGO][Macross Frontier][14][720P][BluRay][x264_AC3][BA1678AB]_Track3.ass"
+          },
+          {
+            "f": "[POPGO][Macross Frontier][01][720P][BluRay][Yack Deculture Edition][x264_AC3x2][6702890B]_Track4.ass"
+          },
+          {
+            "f": "[POPGO][Macross Frontier][21][720P][BluRay][x264_AC3][7853C53E]_Track3.ass"
+          },
+          {
+            "f": "[POPGO][Macross Frontier][23][720P][BluRay][x264_AC3][6F18D2D1]_Track3.ass"
+          },
+          {
+            "f": "[POPGO][Macross Frontier][13][720P][BluRay][x264_AC3][7714EFC0]_Track4.ass"
+          },
+          {
+            "f": "[POPGO][Macross Frontier][22][720P][BluRay][x264_AC3][6F36F258]_Track3.ass"
+          },
+          {
+            "f": "[POPGO][Macross Frontier][24][720P][BluRay][x264_AC3][9D3990CA]_Track3.ass"
+          },
+          {
+            "f": "[POPGO][Macross Frontier][12][720P][BluRay][x264_AC3x2][29AB19CF]_Track4.ass"
+          },
+          {
+            "f": "[POPGO][Macross Frontier][01][720P][BluRay][Deculture Edition][x264_AC3][9AD5C4CE]_Track3.ass"
+          },
+          {
+            "f": "[POPGO][Macross Frontier][20][720P][BluRay][x264_AC3x2][E599112A]_Track4.ass"
+          },
+          {
+            "f": "[POPGO][Macross Frontier][03][720P][BluRay][x264_AC3][14E6A7DE]_Track3.ass"
+          },
+          {
+            "f": "[POPGO][Macross Frontier][05][720P][BluRay][x264_AC3][553B421F]_Track3.ass"
+          },
+          {
+            "f": "[POPGO][Macross Frontier][25][720P][BluRay][Full_Length][x264_AC3x2][452E71C7]_Track4.ass"
+          },
+          {
+            "f": "[POPGO][Macross Frontier][09][720P][BluRay][x264_AC3][29163A92]_Track3.ass"
+          },
+          {
+            "f": "[POPGO][Macross Frontier][06][720P][BluRay][x264_AC3][6AB11E21]_Track3.ass"
+          },
+          {
+            "f": "[POPGO][Macross Frontier][12][720P][BluRay][x264_AC3x2][29AB19CF]_Track5.ass"
+          },
+          {
+            "f": "[POPGO][Macross Frontier][10][720P][BluRay][x264_AC3x2][28582537]_Track4.ass"
+          },
+          {
+            "f": "[POPGO][Macross Frontier][13][720P][BluRay][x264_AC3][7714EFC0]_Track3.ass"
+          },
+          {
+            "f": "[POPGO][Macross Frontier][15][720P][BluRay][x264_AC3][22F0A8E0]_Track3.ass"
+          },
+          {
+            "f": "[POPGO][Macross Frontier][16][720P][BluRay][x264_AC3x2][B783E854]_Track4.ass"
+          },
+          {
+            "f": "[POPGO][Macross Frontier][18][720P][BluRay][x264_AC3x2][CE68EB21]_Track4.ass"
+          },
+          {
+            "f": "[POPGO][Macross Frontier][01][720P][BluRay][TV Size][x264_AC3][CBBBF64E]_Track3.ass"
+          },
+          {
+            "f": "[POPGO][Macross Frontier][08][720P][BluRay][x264_AC3][96F8F7E7]_Track3.ass"
+          },
+          {
+            "f": "[POPGO][Macross Frontier][11][720P][BluRay][x264_AC3][3B8ED7A9]_Track3.ass"
+          },
+          {
+            "f": "[POPGO][Macross Frontier][04][720P][BluRay][x264_AC3x2][7E4E1D7D]_Track4.ass"
+          },
+          {
+            "f": "[POPGO][Macross Frontier][17][720P][BluRay][x264_AC3][DEA2E98A]_Track3.ass"
+          },
+          {
+            "f": "[POPGO][Macross Frontier][19][720P][BluRay][x264_AC3][77311207]_Track3.ass"
+          },
+          {
+            "f": "[POPGO][Macross Frontier][07][720P][BluRay][x264_AC3x2][82E1CA78]_Track4.ass"
+          },
+          {
+            "f": "[POPGO][Macross Frontier][17][720P][BluRay][x264_AC3][V2][C9A84524]_Track3.ass"
+          },
+          {
+            "f": "[POPGO][Macross Frontier][02][720P][BluRay][x264_AC3][923FA857]_Track3.ass"
+          },
+          {
+            "f": "[POPGO][FREEWIND][Macross_Frontier_The_Movie-The_False_Songstress][Full_HD-BDRIP][AVC_DTS].tc.ass"
+          },
+          {
+            "f": "[bwfjc&gaoshu][Gekijouban Macross Frontier -The_False_Songstress-][Movie][BDRip][1080P][X264_DTS].cht.ass"
+          },
+          {
+            "f": "[KPDM&EDEN][Macross_Frontier_The_False_Songstress][BDRip][OCR_by_zouyue].sc.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier_Movie~the_false_songstress~][BDRip][1920x1080][GB_BIG5][H.264_DTS5.1][094731A9].cht.ass"
+          },
+          {
+            "f": "[SGS][Macross_Frontier_Movie~the_false_songstress~][BDRip][1920x1080][GB_BIG5][H.264_DTS5.1][094731A9].chs.ass"
+          },
+          {
+            "f": "[POPGO][Macross_Frontier_The_False_Songstress][SP8][BluRay][1080P][x264_FLAC][GB][DA1A094D]_track3.ass"
+          },
+          {
+            "f": "[POPGO][Macross_Frontier_The_False_Songstress][SP4][BluRay][1080P][x264_FLAC][GB][7B40A911]_track3.ass"
+          },
+          {
+            "f": "[POPGO][Macross_Frontier_The_False_Songstress][BluRay][1080P][x264_flacX2][5CC7B364]_track4.ass"
+          },
+          {
+            "f": "[POPGO][Macross_Frontier_The_False_Songstress][SP3][BluRay][1080P][x264_FLAC][GB][CE28BE23]_track3.ass"
+          },
+          {
+            "f": "[POPGO][Macross_Frontier_The_False_Songstress][SP2][BluRay][1080P][x264_FLAC][GB][6279BD26]_track3.ass"
+          },
+          {
+            "f": "[POPGO][Macross_Frontier_The_False_Songstress][SP7][BluRay][1080P][x264_FLAC][GB][FC274860]_track3.ass"
+          },
+          {
+            "f": "[POPGO][Macross_Frontier_The_False_Songstress][SP6][BluRay][1080P][x264_FLAC][GB][331A095A]_track3.ass"
+          },
+          {
+            "f": "[POPGO][Macross_Frontier_The_False_Songstress][SP1][BluRay][1080P][x264_FLAC][GB][BE07B22C]_track3.ass"
+          },
+          {
+            "f": "[POPGO][Macross_Frontier_The_False_Songstress][BluRay][1080P][x264_flacX2][5CC7B364]_track5.ass"
+          },
+          {
+            "f": "[POPGO][Macross_Frontier_The_False_Songstress][SP5][BluRay][1080P][x264_FLAC][GB][06334F1F]_track3.ass"
+          },
+          {
+            "f": "[POPGO][Macross_Frontier_The_False_Songstress][BluRay][720P][x264_aac][465E4FCD]_track3.ass"
+          },
+          {
+            "f": "[QTS].Macross.Frontier.Galaxy.Tour.FINAL.in.Budokan.(BD.H264.1920x1080.24fps.AC3.5.1ch).srt"
+          },
+          {
+            "f": "[QTS].Macross.Frontier.Galaxy.Tour.FINAL.in.Budokan.-.ENCORE.(BD.H264.1920x1080.24fps.AC3.5.1ch).srt"
+          },
+          {
+            "f": "[POPGO][Macross_Frontier_MUSIC_CLIP][BluRay][720P][x264_aac_AC3][GB][4499491F]_track4.ass"
+          },
+          {
+            "f": "[bwfjc] [Macross Frontier MUSIC CLIP Collection - Nyankuri] [BDRIP 720P MP4].ass"
+          },
+          {
+            "f": "[POPGO][FREEWIND][Macross_Frontier_The_Movie-The_Wings_of_Goodbye][Full_HD-BDRIP][AVC_DTS].sc.ass"
+          },
+          {
+            "f": "[POPGO][FREEWIND][Macross_Frontier_The_Movie-The_Wings_of_Goodbye][Full_HD-BDRIP][AVC_DTS].tc.ass"
+          },
+          {
+            "f": "[诸神字幕组][超时空要塞F-恋离飞翼][x264_DTS_5.1ch][1920x1080][简繁日][BDRip].cht&jpn.ass"
+          },
+          {
+            "f": "[诸神字幕组][超时空要塞F-恋离飞翼][x264_DTS_5.1ch][1920x1080][简繁日][BDRip].jpn.ass"
+          },
+          {
+            "f": "[诸神字幕组][超时空要塞F-恋离飞翼][x264_DTS_5.1ch][1920x1080][简繁日][BDRip].chs&jpn.ass"
+          },
+          {
+            "f": "[dmfans][Macross Frontier][Sayonara_no_Tsubasa][BDrip].BIG5.ass"
+          },
+          {
+            "f": "[dmfans][Macross Frontier][Sayonara_no_Tsubasa][BDrip].GB.ass"
+          },
+          {
+            "f": "[bwfjc&gaoshu] [Gekijouban Macross Frontier -Sayonara No Tsubasa].cht.ass"
+          },
+          {
+            "f": "[KPDM&EDEN][Macross_Frontier_The_Wings_of_Goodbye_Ver.][BDrip][OCR_by_zouyue].sc.ass"
+          },
+          {
+            "f": "[KPDM&EDEN][Macross_Frontier_The_Wings_of_Goodbye][BDrip][OCR_by_zouyue].sc.ass"
+          },
+          {
+            "f": "劇場版マクロスF ~サヨナラノツバサ~.ass"
+          },
+          {
+            "f": "外挂字幕使用说明.txt"
+          },
+          {
+            "f": "[Macross Delta Zettai Live!!!!!!][JPN+ENG][BDRIP][1080P][H264_FLACx2_DTS-HDMA][繁化姬].Mabors-Sub&KTXP.zh-Hant.ass"
+          },
+          {
+            "f": "[Macross Delta Zettai Live!!!!!!][JPN+ENG][BDRIP][1080P][H264_FLACx2_DTS-HDMA].Mabors-Sub&KTXP.zh-Hans.ass"
+          },
+          {
+            "f": "[Macross Frontier Toki no Meikyuu][JPN+ENG][BDRIP][1080P][H264_FLACx2_DTS-HDMA].Mabors-Sub&KTXP.zh-Hans.ass"
+          },
+          {
+            "f": "[Macross Frontier Toki no Meikyuu][JPN+ENG][BDRIP][1080P][H264_FLACx2_DTS-HDMA][繁化姬].Mabors-Sub&KTXP.zh-Hant.ass"
+          },
+          {
+            "f": "[Mabors-Sub&KTXP][Macross Delta- ZETTAI LIVE!!!!!! _ Macross Frontier- Labyrinth of Time][full sound track][MOVIE][BD][1080P][CHS].ass"
+          }
+        ]
+      },
+      {
+        "id": 662240,
+        "native_name": "超时空要塞 / SDF Macross / 超時空要塞マクロス",
+        "videoname": "SDF Macross",
+        "subtype": "SSA",
+        "lang": {
+          "desc": "简",
+          "langlist": {
+            "langchs": true
+          }
+        },
+        "filelist": [
+          {
+            "f": "SDF Macross - 01 [BDRip 960x720 x264 FLAC].chs.ass"
+          },
+          {
+            "f": "SDF Macross - 02 [BDRip 960x720 x264 FLAC].chs.ass"
+          },
+          {
+            "f": "SDF Macross - 03 [BDRip 960x720 x264 FLAC].chs.ass"
+          },
+          {
+            "f": "SDF Macross - 04 [BDRip 960x720 x264 FLAC].chs.ass"
+          },
+          {
+            "f": "SDF Macross - 05 [BDRip 960x720 x264 FLAC].chs.ass"
+          },
+          {
+            "f": "SDF Macross - 06 [BDRip 960x720 x264 FLAC].chs.ass"
+          },
+          {
+            "f": "SDF Macross - 07 [BDRip 960x720 x264 FLAC].chs.ass"
+          },
+          {
+            "f": "SDF Macross - 08 [BDRip 960x720 x264 FLAC].chs.ass"
+          },
+          {
+            "f": "SDF Macross - 09 [BDRip 960x720 x264 FLAC].chs.ass"
+          },
+          {
+            "f": "SDF Macross - 10 [BDRip 960x720 x264 FLAC].chs.ass"
+          },
+          {
+            "f": "SDF Macross - 11 [BDRip 960x720 x264 FLAC].chs.ass"
+          },
+          {
+            "f": "SDF Macross - 12 [BDRip 960x720 x264 FLAC].chs.ass"
+          },
+          {
+            "f": "SDF Macross - 13 [BDRip 960x720 x264 FLAC].chs.ass"
+          },
+          {
+            "f": "SDF Macross - 14 [BDRip 960x720 x264 FLAC].chs.ass"
+          },
+          {
+            "f": "SDF Macross - 15 [BDRip 960x720 x264 FLAC].chs.ass"
+          },
+          {
+            "f": "SDF Macross - 16 [BDRip 960x720 x264 FLAC].chs.ass"
+          },
+          {
+            "f": "SDF Macross - 17 [BDRip 960x720 x264 FLAC].chs.ass"
+          },
+          {
+            "f": "SDF Macross - 18 [BDRip 960x720 x264 FLAC].chs.ass"
+          },
+          {
+            "f": "SDF Macross - 19 [BDRip 960x720 x264 FLAC].chs.ass"
+          },
+          {
+            "f": "SDF Macross - 20 [BDRip 960x720 x264 FLAC].chs.ass"
+          },
+          {
+            "f": "SDF Macross - 21 [BDRip 960x720 x264 FLAC].chs.ass"
+          },
+          {
+            "f": "SDF Macross - 22 [BDRip 960x720 x264 FLAC].chs.ass"
+          },
+          {
+            "f": "SDF Macross - 23 [BDRip 960x720 x264 FLAC].chs.ass"
+          },
+          {
+            "f": "SDF Macross - 24 [BDRip 960x720 x264 FLAC].chs.ass"
+          },
+          {
+            "f": "SDF Macross - 25 [BDRip 960x720 x264 FLAC].chs.ass"
+          },
+          {
+            "f": "SDF Macross - 26 [BDRip 960x720 x264 FLAC].chs.ass"
+          },
+          {
+            "f": "SDF Macross - 27 [BDRip 960x720 x264 FLAC].chs.ass"
+          },
+          {
+            "f": "SDF Macross - 28 [BDRip 960x720 x264 FLAC].chs.ass"
+          },
+          {
+            "f": "SDF Macross - 29 [BDRip 960x720 x264 FLAC].chs.ass"
+          },
+          {
+            "f": "SDF Macross - 30 [BDRip 960x720 x264 FLAC].chs.ass"
+          },
+          {
+            "f": "SDF Macross - 31 [BDRip 960x720 x264 FLAC].chs.ass"
+          },
+          {
+            "f": "SDF Macross - 32 [BDRip 960x720 x264 FLAC].chs.ass"
+          },
+          {
+            "f": "SDF Macross - 33 [BDRip 960x720 x264 FLAC].chs.ass"
+          },
+          {
+            "f": "SDF Macross - 34 [BDRip 960x720 x264 FLAC].chs.ass"
+          },
+          {
+            "f": "SDF Macross - 35 [BDRip 960x720 x264 FLAC].chs.ass"
+          },
+          {
+            "f": "SDF Macross - 36 [BDRip 960x720 x264 FLAC].chs.ass"
+          },
+          {
+            "f": "SDF Macross - Music Clips [BDRip 960x720 x264 FLAC].chs.ass"
+          }
+        ]
+      },
+      {
+        "id": 660604,
+        "native_name": "劇場版マクロスΔ 絶対LIVE!!!!!! & マクロスF ~時の迷宮~/超時空要塞Δ 絕對LIVE!!!!!! & 超時空要塞F ~時之迷宮~/超時空要塞Δ 絕對LIVE!!!!!! & 超時空要塞F ~時之迷宮~/超时空要塞Δ 绝对LIVE & 超时空要塞F 时之迷宫/超時空要塞Δ 絕對LIVE!!!!!! & 超時空要塞F ~時之迷宮~",
+        "videoname": "Macross Delta Movie 2 ~Zettai Live!!!!!!~ & Macross Frontier ~Toki no Meikyuu~",
+        "subtype": "SSA",
+        "lang": {
+          "desc": "繁",
+          "langlist": {
+            "langcht": true
+          }
+        },
+        "filelist": [
+          {
+            "f": "Macross Delta Movie 2 ~Zettai Live!!!!!!~ [BDRIP 1080p x265 10bit ,DTS-HDMA PCMx2].ass"
+          },
+          {
+            "f": "Macross Frontier ~Toki no Meikyuu~ [BDRIP 1080p x265 10bit ,DTS-HDMA PCMx2] v2.ass"
+          }
+        ]
+      },
+      {
+        "id": 660607,
+        "native_name": "劇場版マクロスΔ 絶対LIVE!!!!!! & マクロスF ~時の迷宮~/超時空要塞Δ 絕對LIVE!!!!!! & 超時空要塞F ~時之迷宮~/超时空要塞Δ 绝对LIVE & 超时空要塞F 时之迷宫/超時空要塞Δ 絕對LIVE!!!!!! & 超時直要",
+        "videoname": "Macross Delta Movie 2 ~Zettai Live!!!!!!~ & Macross Frontier ~Toki no Meikyuu~",
+        "subtype": "SSA",
+        "lang": {
+          "desc": "繁",
+          "langlist": {
+            "langcht": true
+          }
+        },
+        "filelist": [
+          {
+            "f": "Macross Delta Movie 2 ~Zettai Live!!!!!!~ [BDRIP 1080p x265 10bit ,DTS-HDMA PCMx2].ass"
+          },
+          {
+            "f": "Macross Frontier ~Toki no Meikyuu~ [BDRIP 1080p x265 10bit ,DTS-HDMA PCMx2] v2.ass"
+          }
+        ]
+      },
+      {
+        "id": 643675,
+        "native_name": "立喰師列伝/立食师列传/Tachiguishi Retsuden/立食师列传/立食师列传/立食师列传",
+        "videoname": "[Tachiguishi_Retsuden][Movie][DVDRIP][1080p][AVC AAC].mp4",
+        "subtype": "SSA",
+        "lang": {
+          "desc": "简 日",
+          "langlist": {
+            "langjap": true,
+            "langchs": true
+          }
+        },
+        "filelist": [
+          {
+            "f": "[Tachiguishi_Retsuden][Movie][DVDRIP][1080p][AVC AAC].jp&chs.ass"
+          },
+          {
+            "f": "README.txt"
+          }
+        ]
+      },
+      {
+        "id": 642805,
+        "native_name": "超时空要塞plus",
+        "videoname": "[NEO·QSW]Macross Plus Movie Edition[BDRIP 1080P]",
+        "subtype": "SSA",
+        "lang": {
+          "desc": "",
+          "langlist": {}
+        },
+        "filelist": [
+          {
+            "f": "[NEO·QSW]Macross Plus Movie Edition[BDRIP 1080P].ass"
+          }
+        ]
+      },
+      {
+        "id": 640047,
+        "native_name": "",
+        "videoname": "【20200731】日本动画OPED的K值（总计925份）",
+        "subtype": "SSA",
+        "lang": {
+          "desc": "英 日",
+          "langlist": {
+            "langjap": true,
+            "langeng": true
+          }
+        },
+        "filelist": [
+          {
+            "f": "12岁。小小的胸口心跳加速 ED.ass"
+          },
+          {
+            "f": "12岁。小小的胸口心跳加速 OP.ass"
+          },
+          {
+            "f": "12岁。小小的胸口心跳加速 第2季 ED.ass"
+          },
+          {
+            "f": "12岁。小小的胸口心跳加速 第2季 OP.ass"
+          },
+          {
+            "f": "3D彼女 ED.ass"
+          },
+          {
+            "f": "3D彼女 OP.ass"
+          },
+          {
+            "f": "3月的狮子 ED.ass"
+          },
+          {
+            "f": "3月的狮子 ED02.ass"
+          },
+          {
+            "f": "3月的狮子 OP.ass"
+          },
+          {
+            "f": "3月的狮子 OP02.ass"
+          },
+          {
+            "f": "3月的狮子 第2季 - ED.ass"
+          },
+          {
+            "f": "3月的狮子 第2季 - ED2.ass"
+          },
+          {
+            "f": "3月的狮子 第2季 - OP.ass"
+          },
+          {
+            "f": "3月的狮子 第2季 - OP2.ass"
+          },
+          {
+            "f": "91Days OP.ass"
+          },
+          {
+            "f": "ACCA13区监察课 ED.ass"
+          },
+          {
+            "f": "ACCA13区监察课 OP.ass"
+          },
+          {
+            "f": "Alice or Alice ED.ass"
+          },
+          {
+            "f": "Alice or Alice OP.ass"
+          },
+          {
+            "f": "Ange Vierge（圣洁天使） ED.ass"
+          },
+          {
+            "f": "Ange Vierge（圣洁天使） OP.ass"
+          },
+          {
+            "f": "Anne Happy ED.ass"
+          },
+          {
+            "f": "Anne Happy OP.ass"
+          },
+          {
+            "f": "BanG Dream! ED.ass"
+          },
+          {
+            "f": "BanG Dream! OP.ass"
+          },
+          {
+            "f": "Banana Fish（战栗杀机） ED.ass"
+          },
+          {
+            "f": "Banana Fish（战栗杀机） ED2.ass"
+          },
+          {
+            "f": "Banana Fish（战栗杀机） OP.ass"
+          },
+          {
+            "f": "Banana Fish（战栗杀机） OP2.ass"
+          },
+          {
+            "f": "Bang Dream! 第1季 OP.ass"
+          },
+          {
+            "f": "Bang Dream! 第2季 OP1.ass"
+          },
+          {
+            "f": "Bang Dream! 第2季 OP2.ass"
+          },
+          {
+            "f": "Bang Dream! 第3季 OP.ass"
+          },
+          {
+            "f": "Beatless 没有心跳的少女 ED 02.ass"
+          },
+          {
+            "f": "Beatless 没有心跳的少女 ED.ass"
+          },
+          {
+            "f": "Beatless 没有心跳的少女 OP 02.ass"
+          },
+          {
+            "f": "Beatless 没有心跳的少女 OP.ass"
+          },
+          {
+            "f": "COP CRAFT OP.ass"
+          },
+          {
+            "f": "Caligula 卡里古拉 ED.ass"
+          },
+          {
+            "f": "Caligula 卡里古拉 OP.ass"
+          },
+          {
+            "f": "Carole & Tuesday ED.ass"
+          },
+          {
+            "f": "Carole & Tuesday OP.ass"
+          },
+          {
+            "f": "Charlotte ED1.ass"
+          },
+          {
+            "f": "Charlotte OP.ass"
+          },
+          {
+            "f": "ChäoS;Child（混沌之子） ED.ass"
+          },
+          {
+            "f": "ChäoS;Child（混沌之子） OP.ass"
+          },
+          {
+            "f": "Comic Girls ED.ass"
+          },
+          {
+            "f": "Comic Girls OP.ass"
+          },
+          {
+            "f": "DARLING in the FRANXX OP1.ass"
+          },
+          {
+            "f": "DARLING in the FRANXX OP2.ass"
+          },
+          {
+            "f": "Darling in the FranXX ED.ass"
+          },
+          {
+            "f": "Darling in the FranXX ED2.ass"
+          },
+          {
+            "f": "Darling in the FranXX ED3.ass"
+          },
+          {
+            "f": "Darling in the FranXX OP.ass"
+          },
+          {
+            "f": "Darling in the FranXX OPv2.ass"
+          },
+          {
+            "f": "Days ED.ass"
+          },
+          {
+            "f": "Days OP.ass"
+          },
+          {
+            "f": "Fairy Gone ED.ass"
+          },
+          {
+            "f": "Fairy Gone OP.ass"
+          },
+          {
+            "f": "Fate stay night Heaven's Feel 第1章 ED.ass"
+          },
+          {
+            "f": "Fate／Apocrypha ED.ass"
+          },
+          {
+            "f": "Fate／Apocrypha OP.ass"
+          },
+          {
+            "f": "Fate／Apocrypha OP2.ass"
+          },
+          {
+            "f": "Fate／Extra Last Encore ED.ass"
+          },
+          {
+            "f": "Fate／Extra Last Encore OP.ass"
+          },
+          {
+            "f": "Fate／Stay night - Unlimited Blade Works ED.ass"
+          },
+          {
+            "f": "Fate／Stay night - Unlimited Blade Works ED2.ass"
+          },
+          {
+            "f": "Fate／Stay night - Unlimited Blade Works OP.ass"
+          },
+          {
+            "f": "Fate／Stay night - Unlimited Blade Works OP2.ass"
+          },
+          {
+            "f": "Flip Flappers（轻拍翻转小魔女） ED.ass"
+          },
+          {
+            "f": "Flip Flappers（轻拍翻转小魔女） OP.ass"
+          },
+          {
+            "f": "Free! 第3季 ED.ass"
+          },
+          {
+            "f": "Free! 第3季 OP.ass"
+          },
+          {
+            "f": "GATE 奇幻自卫队 第2季 ED.ass"
+          },
+          {
+            "f": "GATE 奇幻自卫队 第2季 OP.ass"
+          },
+          {
+            "f": "Gamers!（电玩咖！） ED.ass"
+          },
+          {
+            "f": "Gamers!（电玩咖！） ED02.ass"
+          },
+          {
+            "f": "Gamers!（电玩咖！） OP.ass"
+          },
+          {
+            "f": "Hand Shakers ED.ass"
+          },
+          {
+            "f": "Hand Shakers OP.ass"
+          },
+          {
+            "f": "Happy Sugar Life ED.ass"
+          },
+          {
+            "f": "Happy Sugar Life OP.ass"
+          },
+          {
+            "f": "ISLAND OP1.ass"
+          },
+          {
+            "f": "ISLAND OP2.ass"
+          },
+          {
+            "f": "ISLAND OP3.ass"
+          },
+          {
+            "f": "ISLAND（夏岛悬疑） ED.ass"
+          },
+          {
+            "f": "ISLAND（夏岛悬疑） ED2.ass"
+          },
+          {
+            "f": "ISLAND（夏岛悬疑） OP.ass"
+          },
+          {
+            "f": "ISLAND（夏岛悬疑） OP2.ass"
+          },
+          {
+            "f": "JOJO的奇妙冒险 ED01.ass"
+          },
+          {
+            "f": "JOJO的奇妙冒险 OP01.ass"
+          },
+          {
+            "f": "JOJO的奇妙冒险 OP02.ass"
+          },
+          {
+            "f": "Joker Game（代号D机关） ED.ass"
+          },
+          {
+            "f": "Joker Game（代号D机关） OP.ass"
+          },
+          {
+            "f": "Just Because! ED.ass"
+          },
+          {
+            "f": "Just Because! OP.ass"
+          },
+          {
+            "f": "Little Busters! OP.ass"
+          },
+          {
+            "f": "Lost Song 失落的歌谣 ED.ass"
+          },
+          {
+            "f": "Lost Song 失落的歌谣 OP.ass"
+          },
+          {
+            "f": "Love Live! School Idol Project ED.ass"
+          },
+          {
+            "f": "Love Live! School Idol Project OP.ass"
+          },
+          {
+            "f": "Love Live! School idol project 第2季 ED.ass"
+          },
+          {
+            "f": "Love Live! School idol project 第2季 OP.ass"
+          },
+          {
+            "f": "Love Live! Sunshine ED.ass"
+          },
+          {
+            "f": "Love Live! Sunshine ED02.ass"
+          },
+          {
+            "f": "Love Live! Sunshine OP.ass"
+          },
+          {
+            "f": "Love Live! Sunshine!! 第2季 ED.ass"
+          },
+          {
+            "f": "Love Live! Sunshine!! 第2季 OP.ass"
+          },
+          {
+            "f": "New Game! ED.ass"
+          },
+          {
+            "f": "New Game! OP.ass"
+          },
+          {
+            "f": "New Game!! 第2季 ED.ass"
+          },
+          {
+            "f": "New Game!! 第2季 OP.ass"
+          },
+          {
+            "f": "ReLIFE ED01.ass"
+          },
+          {
+            "f": "ReLIFE ED02.ass"
+          },
+          {
+            "f": "ReLIFE ED03.ass"
+          },
+          {
+            "f": "ReLIFE ED04.ass"
+          },
+          {
+            "f": "ReLIFE ED05.ass"
+          },
+          {
+            "f": "ReLIFE ED06.ass"
+          },
+          {
+            "f": "ReLIFE ED07.ass"
+          },
+          {
+            "f": "ReLIFE ED08.ass"
+          },
+          {
+            "f": "ReLIFE ED09.ass"
+          },
+          {
+            "f": "ReLIFE ED10.ass"
+          },
+          {
+            "f": "ReLIFE ED11.ass"
+          },
+          {
+            "f": "ReLIFE ED12.ass"
+          },
+          {
+            "f": "ReLIFE OP.ass"
+          },
+          {
+            "f": "Regalia 三圣星 ED.ass"
+          },
+          {
+            "f": "Regalia 三圣星 OP.ass"
+          },
+          {
+            "f": "Rewrite ED.ass"
+          },
+          {
+            "f": "Rewrite ED02.ass"
+          },
+          {
+            "f": "Rewrite OP.ass"
+          },
+          {
+            "f": "Rewrite OP02.ass"
+          },
+          {
+            "f": "Rewrite 第2季 ED.ass"
+          },
+          {
+            "f": "Rewrite 第2季 OP.ass"
+          },
+          {
+            "f": "Re：CREATORS OP2.ass"
+          },
+          {
+            "f": "Re：Creators ED.ass"
+          },
+          {
+            "f": "Re：Creators ED02.ass"
+          },
+          {
+            "f": "Re：Creators OP.ass"
+          },
+          {
+            "f": "Re：Creators OP02.ass"
+          },
+          {
+            "f": "Re：从零开始的异世界生活 ED.ass"
+          },
+          {
+            "f": "Re：从零开始的异世界生活 ED02.ass"
+          },
+          {
+            "f": "Re：从零开始的异世界生活 ED2.ass"
+          },
+          {
+            "f": "Re：从零开始的异世界生活 IN 07.ass"
+          },
+          {
+            "f": "Re：从零开始的异世界生活 IN 08.ass"
+          },
+          {
+            "f": "Re：从零开始的异世界生活 IN 14.ass"
+          },
+          {
+            "f": "Re：从零开始的异世界生活 IN 18.ass"
+          },
+          {
+            "f": "Re：从零开始的异世界生活 OP.ass"
+          },
+          {
+            "f": "Re：从零开始的异世界生活 OP02.ass"
+          },
+          {
+            "f": "RobiHachi ED.ass"
+          },
+          {
+            "f": "RobiHachi OP.ass"
+          },
+          {
+            "f": "Schoolgirl Strikers - Animation Channel ED.ass"
+          },
+          {
+            "f": "Schoolgirl Strikers - Animation Channel OP.ass"
+          },
+          {
+            "f": "Show By Rock!! # ED.ass"
+          },
+          {
+            "f": "Show By Rock!! # OP.ass"
+          },
+          {
+            "f": "Show By Rock!! Short!! OP.ass"
+          },
+          {
+            "f": "Slow Start ED.ass"
+          },
+          {
+            "f": "Slow Start OP.ass"
+          },
+          {
+            "f": "Super Lovers ED.ass"
+          },
+          {
+            "f": "Super Lovers OP.ass"
+          },
+          {
+            "f": "Super Lovers 第2季 ED.ass"
+          },
+          {
+            "f": "Super Lovers 第2季 OP.ass"
+          },
+          {
+            "f": "TRICKSTER 来自江户川乱步「少年侦探团」 ED.ass"
+          },
+          {
+            "f": "TRICKSTER 来自江户川乱步「少年侦探团」 OP.ass"
+          },
+          {
+            "f": "Urahara ED.ass"
+          },
+          {
+            "f": "Urahara OP.ass"
+          },
+          {
+            "f": "Urara迷路帖 ED.ass"
+          },
+          {
+            "f": "Urara迷路帖 OP.ass"
+          },
+          {
+            "f": "ViVid Strike! ED.ass"
+          },
+          {
+            "f": "ViVid Strike! OP.ass"
+          },
+          {
+            "f": "WWW.迷糊餐厅 ED.ass"
+          },
+          {
+            "f": "WWW.迷糊餐厅 OP.ass"
+          },
+          {
+            "f": "citrus～柑橘味香气～ ED.ass"
+          },
+          {
+            "f": "citrus～柑橘味香气～ OP.ass"
+          },
+          {
+            "f": "sin 七大罪 ED.ass"
+          },
+          {
+            "f": "sin 七大罪 OP.ass"
+          },
+          {
+            "f": "一人之下 ED.ass"
+          },
+          {
+            "f": "一人之下 OP.ass"
+          },
+          {
+            "f": "一弦定音！ ED.ass"
+          },
+          {
+            "f": "一弦定音！ OP.ass"
+          },
+          {
+            "f": "一拳超人 第2季 ED.ass"
+          },
+          {
+            "f": "一拳超人 第2季 OP.ass"
+          },
+          {
+            "f": "七大罪 圣战的预兆 ED.ass"
+          },
+          {
+            "f": "七大罪 圣战的预兆 OP.ass"
+          },
+          {
+            "f": "七大罪 戒律的复活 ED.ass"
+          },
+          {
+            "f": "七大罪 戒律的复活 ED2.ass"
+          },
+          {
+            "f": "七大罪 戒律的复活 OP.ass"
+          },
+          {
+            "f": "七大罪 戒律的复活 OP2.ass"
+          },
+          {
+            "f": "三人行必有我妹 ED.ass"
+          },
+          {
+            "f": "三人行必有我妹 OP.ass"
+          },
+          {
+            "f": "三者三叶 ED.ass"
+          },
+          {
+            "f": "三者三叶 OP.ass"
+          },
+          {
+            "f": "三颗星彩色冒险 ED.ass"
+          },
+          {
+            "f": "三颗星彩色冒险 OP.ass"
+          },
+          {
+            "f": "不愉快的怪物庵 ED.ass"
+          },
+          {
+            "f": "不愉快的怪物庵 OP.ass"
+          },
+          {
+            "f": "不正经的魔术讲师与禁忌教典 ED.ass"
+          },
+          {
+            "f": "不正经的魔术讲师与禁忌教典 OP.ass"
+          },
+          {
+            "f": "东京食尸鬼 ED.ass"
+          },
+          {
+            "f": "东京食尸鬼 OP.ass"
+          },
+          {
+            "f": "东京食尸鬼 第2季 ED.ass"
+          },
+          {
+            "f": "东京食尸鬼 第2季 OP.ass"
+          },
+          {
+            "f": "为我而生 ED.ass"
+          },
+          {
+            "f": "为我而生 OP.ass"
+          },
+          {
+            "f": "为美好的世界献上祝福！ ED.ass"
+          },
+          {
+            "f": "为美好的世界献上祝福！ OP.ass"
+          },
+          {
+            "f": "为美好的世界献上祝福！ 第2季 ED.ass"
+          },
+          {
+            "f": "为美好的世界献上祝福！ 第2季 OP.ass"
+          },
+          {
+            "f": "乌冬面之国的金色毛球 ED.ass"
+          },
+          {
+            "f": "乌冬面之国的金色毛球 OP.ass"
+          },
+          {
+            "f": "五等分的花嫁 OP.ass"
+          },
+          {
+            "f": "亚人酱有话要说 ED.ass"
+          },
+          {
+            "f": "亚人酱有话要说 OP.ass"
+          },
+          {
+            "f": "亚尔斯兰战记 风尘乱舞 ED.ass"
+          },
+          {
+            "f": "亚尔斯兰战记 风尘乱舞 OP.ass"
+          },
+          {
+            "f": "人渣的本愿 ED.ass"
+          },
+          {
+            "f": "人渣的本愿 OP.ass"
+          },
+          {
+            "f": "人马少女的烦恼 ED 日文版.ass"
+          },
+          {
+            "f": "人马少女的烦恼 ED 英文版.ass"
+          },
+          {
+            "f": "人马少女的烦恼 ED.ass"
+          },
+          {
+            "f": "人马少女的烦恼 OP.ass"
+          },
+          {
+            "f": "从前有座灵剑山 ED.ass"
+          },
+          {
+            "f": "从前有座灵剑山 OP.ass"
+          },
+          {
+            "f": "从零开始的魔法书 ED.ass"
+          },
+          {
+            "f": "从零开始的魔法书 OP.ass"
+          },
+          {
+            "f": "任性 High Spec ED.ass"
+          },
+          {
+            "f": "佐贺偶像是传奇 ED.ass"
+          },
+          {
+            "f": "佐贺偶像是传奇 OP.ass"
+          },
+          {
+            "f": "你的名字 OP.ass"
+          },
+          {
+            "f": "你的名字。 ED.ass"
+          },
+          {
+            "f": "侧车搭档 ED.ass"
+          },
+          {
+            "f": "侧车搭档 OP.ass"
+          },
+          {
+            "f": "信长的忍者 OP.ass"
+          },
+          {
+            "f": "信长老师的年幼妻子 ED.ass"
+          },
+          {
+            "f": "信长老师的年幼妻子 OP.ass"
+          },
+          {
+            "f": "假面骑士01 OP.ass"
+          },
+          {
+            "f": "偶像事变 ED.ass"
+          },
+          {
+            "f": "偶像事变 OP.ass"
+          },
+          {
+            "f": "偶像活动Stars! ED.ass"
+          },
+          {
+            "f": "偶像活动Stars! OP.ass"
+          },
+          {
+            "f": "全金属狂潮 第4季 ED.ass"
+          },
+          {
+            "f": "全金属狂潮 第4季 OP.ass"
+          },
+          {
+            "f": "全金属狂潮4 OP.ass"
+          },
+          {
+            "f": "八月的棒球甜心 OP.ass"
+          },
+          {
+            "f": "六花的勇者 ED01.ass"
+          },
+          {
+            "f": "六花的勇者 ED02.ass"
+          },
+          {
+            "f": "六花的勇者 ED03.ass"
+          },
+          {
+            "f": "六花的勇者 OP01.ass"
+          },
+          {
+            "f": "六花的勇者 OP02.ass"
+          },
+          {
+            "f": "关于我女友是个一本正经的处女碧池这件事（关我碧事） ED.ass"
+          },
+          {
+            "f": "关于我女友是个一本正经的处女碧池这件事（关我碧事） OP.ass"
+          },
+          {
+            "f": "冰上的尤里 ED.ass"
+          },
+          {
+            "f": "冰上的尤里 OP.ass"
+          },
+          {
+            "f": "出包王女 Darkness ED.ass"
+          },
+          {
+            "f": "出包王女 Darkness II ED.ass"
+          },
+          {
+            "f": "出包王女 Darkness II OP.ass"
+          },
+          {
+            "f": "出包王女 Darkness OP.ass"
+          },
+          {
+            "f": "出包王女 ED01.ass"
+          },
+          {
+            "f": "出包王女 ED02.ass"
+          },
+          {
+            "f": "出包王女 OP.ass"
+          },
+          {
+            "f": "出包王女 [OVA] ED.ass"
+          },
+          {
+            "f": "出包王女 [OVA] OP.ass"
+          },
+          {
+            "f": "刀剑神域 Alicization ED.ass"
+          },
+          {
+            "f": "刀剑神域 Alicization ED1.ass"
+          },
+          {
+            "f": "刀剑神域 Alicization ED2.ass"
+          },
+          {
+            "f": "刀剑神域 Alicization OP.ass"
+          },
+          {
+            "f": "刀剑神域 Alicization OP1.ass"
+          },
+          {
+            "f": "刀剑神域 Alicization OP2.ass"
+          },
+          {
+            "f": "刀剑神域 GGO外传 OP.ass"
+          },
+          {
+            "f": "刀剑神域 OP1.ass"
+          },
+          {
+            "f": "刀剑神域外传 Gun Gale Online ED.ass"
+          },
+          {
+            "f": "刀剑神域外传 Gun Gale Online OP.ass"
+          },
+          {
+            "f": "初恋怪兽 ED.ass"
+          },
+          {
+            "f": "初恋怪兽 OP.ass"
+          },
+          {
+            "f": "刻刻 ED.ass"
+          },
+          {
+            "f": "刻刻 OP.ass"
+          },
+          {
+            "f": "剑姬神圣谭 在地下城寻求邂逅是否搞错了什么 外传 ED.ass"
+          },
+          {
+            "f": "剑姬神圣谭 在地下城寻求邂逅是否搞错了什么 外传 OP.ass"
+          },
+          {
+            "f": "剧俺物语！！  ED.ass"
+          },
+          {
+            "f": "剧俺物语！！ OP.ass"
+          },
+          {
+            "f": "动画同好会 ED.ass"
+          },
+          {
+            "f": "动画同好会 OP.ass"
+          },
+          {
+            "f": "十二大战 ED.ass"
+          },
+          {
+            "f": "十二大战 OP.ass"
+          },
+          {
+            "f": "千绪的通学路 ED.ass"
+          },
+          {
+            "f": "千绪的通学路 OP.ass"
+          },
+          {
+            "f": "半田君传说 ED.ass"
+          },
+          {
+            "f": "半田君传说 OP.ass"
+          },
+          {
+            "f": "南镰仓高校女子自行车部 ED.ass"
+          },
+          {
+            "f": "南镰仓高校女子自行车部 OP.ass"
+          },
+          {
+            "f": "博人传 火影忍者新时代 ED01.ass"
+          },
+          {
+            "f": "博人传 火影忍者新时代 ED02.ass"
+          },
+          {
+            "f": "博人传 火影忍者新时代 ED03.ass"
+          },
+          {
+            "f": "博人传 火影忍者新时代 ED04.ass"
+          },
+          {
+            "f": "博人传 火影忍者新时代 ED05.ass"
+          },
+          {
+            "f": "博人传 火影忍者新时代 ED06.ass"
+          },
+          {
+            "f": "博人传 火影忍者新时代 ED07.ass"
+          },
+          {
+            "f": "博人传 火影忍者新时代 OP01.ass"
+          },
+          {
+            "f": "博人传 火影忍者新时代 OP02.ass"
+          },
+          {
+            "f": "博人传 火影忍者新时代 OP03.ass"
+          },
+          {
+            "f": "博人传 火影忍者新时代 OP04.ass"
+          },
+          {
+            "f": "博多豚骨拉面 OP.ass"
+          },
+          {
+            "f": "卡片战斗先导者G 超越之门篇 ED.ass"
+          },
+          {
+            "f": "卡片战斗先导者G 超越之门篇 OP.ass"
+          },
+          {
+            "f": "卡里古拉 OP.ass"
+          },
+          {
+            "f": "原书·原书使 ED.ass"
+          },
+          {
+            "f": "原书·原书使 OP.ass"
+          },
+          {
+            "f": "双星之阴阳师 ED01.ass"
+          },
+          {
+            "f": "双星之阴阳师 ED02.ass"
+          },
+          {
+            "f": "双星之阴阳师 ED03.ass"
+          },
+          {
+            "f": "双星之阴阳师 ED04.ass"
+          },
+          {
+            "f": "双星之阴阳师 OP01.ass"
+          },
+          {
+            "f": "双星之阴阳师 OP02.ass"
+          },
+          {
+            "f": "双星之阴阳师 OP03.ass"
+          },
+          {
+            "f": "双星之阴阳师 OP04.ass"
+          },
+          {
+            "f": "发条精灵战记 天镜的极北之星 ED.ass"
+          },
+          {
+            "f": "发条精灵战记 天镜的极北之星 OP.ass"
+          },
+          {
+            "f": "只有我不存在的城市（只有我不在的街道） ED.ass"
+          },
+          {
+            "f": "只有我不存在的城市（只有我不在的街道） OP.ass"
+          },
+          {
+            "f": "只要贝尔哲布布大小姐喜欢就好 ED.ass"
+          },
+          {
+            "f": "只要贝尔哲布布大小姐喜欢就好 OP.ass"
+          },
+          {
+            "f": "向山进发 第3季 ED.ass"
+          },
+          {
+            "f": "向山进发 第3季 OP.ass"
+          },
+          {
+            "f": "吸血鬼仆人 ED.ass"
+          },
+          {
+            "f": "吸血鬼仆人 OP.ass"
+          },
+          {
+            "f": "吹响吧！上低音号 ED.ass"
+          },
+          {
+            "f": "吹响吧！上低音号 OP.ass"
+          },
+          {
+            "f": "吹响吧！上低音号 第2季 ED.ass"
+          },
+          {
+            "f": "吹响吧！上低音号 第2季 OP.ass"
+          },
+          {
+            "f": "命运九重奏 ED.ass"
+          },
+          {
+            "f": "命运九重奏 OP.ass"
+          },
+          {
+            "f": "命运石之门 0 ED.ass"
+          },
+          {
+            "f": "命运石之门 0 OP.ass"
+          },
+          {
+            "f": "命运石之门 0 OP1.ass"
+          },
+          {
+            "f": "命运石之门 0 OP2.ass"
+          },
+          {
+            "f": "哥布林杀手 ED.ass"
+          },
+          {
+            "f": "哥布林杀手 OP.ass"
+          },
+          {
+            "f": "四月是你的谎言 ED01.ass"
+          },
+          {
+            "f": "四月是你的谎言 ED02.ass"
+          },
+          {
+            "f": "四月是你的谎言 OP01.ass"
+          },
+          {
+            "f": "四月是你的谎言 OP02.ass"
+          },
+          {
+            "f": "因为太怕痛就全点防御力了 OP.ass"
+          },
+          {
+            "f": "在下坂本，有何贵干？ ED.ass"
+          },
+          {
+            "f": "在下坂本，有何贵干？ OP.ass"
+          },
+          {
+            "f": "在世界尽头咏唱恋曲的少女YU-NO ED.ass"
+          },
+          {
+            "f": "在世界尽头咏唱恋曲的少女YU-NO OP.ass"
+          },
+          {
+            "f": "在地下城寻求邂逅是否搞错了什么 ED.ass"
+          },
+          {
+            "f": "在地下城寻求邂逅是否搞错了什么 OP.ass"
+          },
+          {
+            "f": "埃罗芒阿老师 ED EP8.ass"
+          },
+          {
+            "f": "埃罗芒阿老师 ED.ass"
+          },
+          {
+            "f": "埃罗芒阿老师 OP.ass"
+          },
+          {
+            "f": "夏目友人帐 第5季 ED.ass"
+          },
+          {
+            "f": "夏目友人帐 第5季 OP.ass"
+          },
+          {
+            "f": "夏目友人帐 第6季 ED.ass"
+          },
+          {
+            "f": "夏目友人帐 第6季 OP.ass"
+          },
+          {
+            "f": "夏雪密会 ED.ass"
+          },
+          {
+            "f": "夏雪密会 OP.ass"
+          },
+          {
+            "f": "多田君不谈恋爱 ED.ass"
+          },
+          {
+            "f": "多田君不谈恋爱 OP.ass"
+          },
+          {
+            "f": "天使的3P! ED.ass"
+          },
+          {
+            "f": "天使的3P! OP.ass"
+          },
+          {
+            "f": "天使降临到我身边！OP.ass"
+          },
+          {
+            "f": "天气之子 Grand Escape MV.ass"
+          },
+          {
+            "f": "天狼 OP.ass"
+          },
+          {
+            "f": "天狼 Sirius the Jaeger ED.ass"
+          },
+          {
+            "f": "天狼 Sirius the Jaeger OP.ass"
+          },
+          {
+            "f": "天真与闪电 ED.ass"
+          },
+          {
+            "f": "天真与闪电 OP.ass"
+          },
+          {
+            "f": "天空与海洋之间 ED.ass"
+          },
+          {
+            "f": "天空与海洋之间 OP.ass"
+          },
+          {
+            "f": "失忆煽动WIXOSS ED.ass"
+          },
+          {
+            "f": "失忆煽动WIXOSS OP.ass"
+          },
+          {
+            "f": "失忆融合WIXOSS ED.ass"
+          },
+          {
+            "f": "失忆融合WIXOSS OP.ass"
+          },
+          {
+            "f": "奇诺之旅（2017） ED.ass"
+          },
+          {
+            "f": "奇诺之旅（2017） OP.ass"
+          },
+          {
+            "f": "女高中生的虚度日常 ED.ass"
+          },
+          {
+            "f": "女高中生的虚度日常 OP.ass"
+          },
+          {
+            "f": "她和她的猫 ED.ass"
+          },
+          {
+            "f": "如果有妹妹就好了。 ED.ass"
+          },
+          {
+            "f": "如果有妹妹就好了。 OP.ass"
+          },
+          {
+            "f": "妖怪旅馆营业 ED.ass"
+          },
+          {
+            "f": "妖怪旅馆营业 OP.ass"
+          },
+          {
+            "f": "妖怪旅馆营业 OP2.ass"
+          },
+          {
+            "f": "妖精森林的小不点 OP.ass"
+          },
+          {
+            "f": "妖精的尾巴ED01.ass"
+          },
+          {
+            "f": "妖精的尾巴ED02.ass"
+          },
+          {
+            "f": "妖精的尾巴ED03.ass"
+          },
+          {
+            "f": "妖精的尾巴ED04.ass"
+          },
+          {
+            "f": "妖精的尾巴ED05.ass"
+          },
+          {
+            "f": "妖精的尾巴ED06.ass"
+          },
+          {
+            "f": "妖精的尾巴ED07.ass"
+          },
+          {
+            "f": "妖精的尾巴ED08.ass"
+          },
+          {
+            "f": "妖精的尾巴ED09.ass"
+          },
+          {
+            "f": "妖精的尾巴ED10.ass"
+          },
+          {
+            "f": "妖精的尾巴ED11.ass"
+          },
+          {
+            "f": "妖精的尾巴ED12.ass"
+          },
+          {
+            "f": "妖精的尾巴ED13.ass"
+          },
+          {
+            "f": "妖精的尾巴ED14.ass"
+          },
+          {
+            "f": "妖精的尾巴OP01.ass"
+          },
+          {
+            "f": "妖精的尾巴OP02.ass"
+          },
+          {
+            "f": "妖精的尾巴OP03.ass"
+          },
+          {
+            "f": "妖精的尾巴OP04.ass"
+          },
+          {
+            "f": "妖精的尾巴OP05.ass"
+          },
+          {
+            "f": "妖精的尾巴OP06.ass"
+          },
+          {
+            "f": "妖精的尾巴OP07.ass"
+          },
+          {
+            "f": "妖精的尾巴OP08.ass"
+          },
+          {
+            "f": "妖精的尾巴OP09.ass"
+          },
+          {
+            "f": "妖精的尾巴OP10.ass"
+          },
+          {
+            "f": "妖精的尾巴OP11.ass"
+          },
+          {
+            "f": "妖精的尾巴OP12.ass"
+          },
+          {
+            "f": "妖精的尾巴OP13.ass"
+          },
+          {
+            "f": "妖精的尾巴OP14.ass"
+          },
+          {
+            "f": "妖精的尾巴（2014） ED1.ass"
+          },
+          {
+            "f": "妖精的尾巴（2014） ED2.ass"
+          },
+          {
+            "f": "妖精的尾巴（2014） ED3.ass"
+          },
+          {
+            "f": "妖精的尾巴（2014） ED4.ass"
+          },
+          {
+            "f": "妖精的尾巴（2014） ED5.ass"
+          },
+          {
+            "f": "妖精的尾巴（2014） ED6.ass"
+          },
+          {
+            "f": "妖精的尾巴（2014） ED7.ass"
+          },
+          {
+            "f": "妖精的尾巴（2014） ED8.ass"
+          },
+          {
+            "f": "妖精的尾巴（2014） OP01.ass"
+          },
+          {
+            "f": "妖精的尾巴（2014） OP02.ass"
+          },
+          {
+            "f": "妖精的尾巴（2014） OP03.ass"
+          },
+          {
+            "f": "妖精的尾巴（2014） OP04.ass"
+          },
+          {
+            "f": "妖精的尾巴（2014） OP05.ass"
+          },
+          {
+            "f": "妖精的尾巴（2014） OP06.ass"
+          },
+          {
+            "f": "妖精的尾巴（2014） OP07.ass"
+          },
+          {
+            "f": "妖精的尾巴（2014） OP08.ass"
+          },
+          {
+            "f": "妖精的尾巴（2018） ED1.ass"
+          },
+          {
+            "f": "妖精的尾巴（2018） OP1.ass"
+          },
+          {
+            "f": "学战都市 Asterisk ED.ass"
+          },
+          {
+            "f": "学战都市 Asterisk OP.ass"
+          },
+          {
+            "f": "学战都市 Asterisk 第2季 ED.ass"
+          },
+          {
+            "f": "学战都市 Asterisk 第2季 OP.ass"
+          },
+          {
+            "f": "宅男腐女恋爱真难 ED.ass"
+          },
+          {
+            "f": "宅男腐女恋爱真难 OP.ass"
+          },
+          {
+            "f": "宅饮 ED.ass"
+          },
+          {
+            "f": "宅饮 OP.ass"
+          },
+          {
+            "f": "宇宙巡警露露子 ED.ass"
+          },
+          {
+            "f": "宇宙巡警露露子 OP.ass"
+          },
+          {
+            "f": "宇宙警探 ED.ass"
+          },
+          {
+            "f": "宇宙警探 OP.ass"
+          },
+          {
+            "f": "宝石之国 ED.ass"
+          },
+          {
+            "f": "宝石之国 OP.ass"
+          },
+          {
+            "f": "实验品家庭 ED.ass"
+          },
+          {
+            "f": "实验品家庭 OP.ass"
+          },
+          {
+            "f": "寄宿学校的朱丽叶 ED.ass"
+          },
+          {
+            "f": "寄宿学校的朱丽叶 OP.ass"
+          },
+          {
+            "f": "小林家的龙女仆 ED.ass"
+          },
+          {
+            "f": "小林家的龙女仆 OP.ass"
+          },
+          {
+            "f": "小魔女学园 ED 02.ass"
+          },
+          {
+            "f": "小魔女学园 ED.ass"
+          },
+          {
+            "f": "小魔女学园 OP 02.ass"
+          },
+          {
+            "f": "小魔女学园 OP.ass"
+          },
+          {
+            "f": "少女终末旅行 ED.ass"
+          },
+          {
+            "f": "少女终末旅行 OP.ass"
+          },
+          {
+            "f": "少女编号 ED.ass"
+          },
+          {
+            "f": "少女编号 OP.ass"
+          },
+          {
+            "f": "少年女仆 ED.ass"
+          },
+          {
+            "f": "少年女仆 OP.ass"
+          },
+          {
+            "f": "川柳少女 ED.ass"
+          },
+          {
+            "f": "川柳少女 OP.ass"
+          },
+          {
+            "f": "工作细胞 ED.ass"
+          },
+          {
+            "f": "工作细胞 OP.ass"
+          },
+          {
+            "f": "巴哈姆特之怒 VIRGIN SOUL ED.ass"
+          },
+          {
+            "f": "巴哈姆特之怒 VIRGIN SOUL ED2.ass"
+          },
+          {
+            "f": "巴哈姆特之怒 VIRGIN SOUL OP.ass"
+          },
+          {
+            "f": "巴哈姆特之怒 VIRGIN SOUL OP2.ass"
+          },
+          {
+            "f": "带着智能手机闯荡异世界 ED.ass"
+          },
+          {
+            "f": "带着智能手机闯荡异世界 OP.ass"
+          },
+          {
+            "f": "干物妹小埋 ED.ass"
+          },
+          {
+            "f": "干物妹小埋 OP.ass"
+          },
+          {
+            "f": "干物妹小埋 第2季 ED.ass"
+          },
+          {
+            "f": "干物妹小埋 第2季 OP.ass"
+          },
+          {
+            "f": "干物妹！小埋 R ED.ass"
+          },
+          {
+            "f": "平凡职业成就世界最强 OP.ass"
+          },
+          {
+            "f": "幸运逻辑 ED.ass"
+          },
+          {
+            "f": "幸运逻辑 OP.ass"
+          },
+          {
+            "f": "幼女战记 ED.ass"
+          },
+          {
+            "f": "幼女战记 OP.ass"
+          },
+          {
+            "f": "异世界食堂 ED.ass"
+          },
+          {
+            "f": "异世界食堂 OP.ass"
+          },
+          {
+            "f": "异世界魔王与召唤少女的奴隶魔术 ED.ass"
+          },
+          {
+            "f": "异世界魔王与召唤少女的奴隶魔术 EDv2.ass"
+          },
+          {
+            "f": "异世界魔王与召唤少女的奴隶魔术 OP.ass"
+          },
+          {
+            "f": "弹丸论破3 未来篇 ED.ass"
+          },
+          {
+            "f": "弹丸论破3 未来篇 OP.ass"
+          },
+          {
+            "f": "弹丸论破3 绝望篇 ED.ass"
+          },
+          {
+            "f": "弹丸论破3 绝望篇 OP.ass"
+          },
+          {
+            "f": "强风吹拂 ED.ass"
+          },
+          {
+            "f": "强风吹拂 OP.ass"
+          },
+          {
+            "f": "心灵代码 ED01.ass"
+          },
+          {
+            "f": "心灵代码 ED02.ass"
+          },
+          {
+            "f": "心灵代码 ED03.ass"
+          },
+          {
+            "f": "心灵代码 OP01.ass"
+          },
+          {
+            "f": "心灵代码 OP02.ass"
+          },
+          {
+            "f": "怪怪守护神 ED.ass"
+          },
+          {
+            "f": "怪怪守护神 OP.ass"
+          },
+          {
+            "f": "怪物猎人物语 RIDE ON OP.ass"
+          },
+          {
+            "f": "恋如雨止 ED.ass"
+          },
+          {
+            "f": "恋如雨止 OP.ass"
+          },
+          {
+            "f": "恋愛暴君 ED.ass"
+          },
+          {
+            "f": "恋愛暴君 OP.ass"
+          },
+          {
+            "f": "恋爱与谎言 ED.ass"
+          },
+          {
+            "f": "恋爱与谎言 OP.ass"
+          },
+          {
+            "f": "恋爱小行星 OP.ass"
+          },
+          {
+            "f": "恶魔战线 ED.ass"
+          },
+          {
+            "f": "恶魔战线 OP.ass"
+          },
+          {
+            "f": "恶魔高校D×D HERO ED.ass"
+          },
+          {
+            "f": "恶魔高校D×D HERO OP.ass"
+          },
+          {
+            "f": "我们无法一起学习 ED.ass"
+          },
+          {
+            "f": "我们无法一起学习 OP.ass"
+          },
+          {
+            "f": "我喜欢的是妹妹但又不是妹妹 OP.ass"
+          },
+          {
+            "f": "我太受欢迎了该怎么办 ED.ass"
+          },
+          {
+            "f": "我太受欢迎了该怎么办 OP.ass"
+          },
+          {
+            "f": "我家女仆有够烦！ ED.ass"
+          },
+          {
+            "f": "我家女仆有够烦！ OP.ass"
+          },
+          {
+            "f": "我家的女仆有够烦！ OP.ass"
+          },
+          {
+            "f": "我的老婆是学生会长 第2季 ED.ass"
+          },
+          {
+            "f": "我的老婆是学生会长 第2季 OP.ass"
+          },
+          {
+            "f": "我的英雄学院 ED.ass"
+          },
+          {
+            "f": "我的英雄学院 OP.ass"
+          },
+          {
+            "f": "我的英雄学院 第2季 ED.ass"
+          },
+          {
+            "f": "我的英雄学院 第2季 ED02.ass"
+          },
+          {
+            "f": "我的英雄学院 第2季 OP.ass"
+          },
+          {
+            "f": "我的英雄学院 第2季 OP02.ass"
+          },
+          {
+            "f": "我的英雄学院 第3季 Season ED.ass"
+          },
+          {
+            "f": "我的英雄学院 第3季 Season ED02.ass"
+          },
+          {
+            "f": "我的英雄学院 第3季 Season OP.ass"
+          },
+          {
+            "f": "我的英雄学院 第3季 Season OP02.ass"
+          },
+          {
+            "f": "我的青春恋爱物语果然有问题。续 - ED.ass"
+          },
+          {
+            "f": "我的青春恋爱物语果然有问题。续 - OP.ass"
+          },
+          {
+            "f": "我，不是说了能力要平均值么！ OP.ass"
+          },
+          {
+            "f": "战斗之魂 双重驱动 ED.ass"
+          },
+          {
+            "f": "战斗之魂 双重驱动 OP.ass"
+          },
+          {
+            "f": "房东妹子青春期 OP.ass"
+          },
+          {
+            "f": "打工吧！魔王大人 ED.ass"
+          },
+          {
+            "f": "打工吧！魔王大人 OP.ass"
+          },
+          {
+            "f": "拾又之国 ED.ass"
+          },
+          {
+            "f": "拾又之国 OP.ass"
+          },
+          {
+            "f": "捏造陷阱 NTR ED.ass"
+          },
+          {
+            "f": "捏造陷阱 NTR OP.ass"
+          },
+          {
+            "f": "摇曳庄的幽奈小姐 ED.ass"
+          },
+          {
+            "f": "摇曳庄的幽奈小姐 OP.ass"
+          },
+          {
+            "f": "擅长捉弄的高木同学 ED.ass"
+          },
+          {
+            "f": "擅长捉弄的高木同学 ED2.ass"
+          },
+          {
+            "f": "擅长捉弄的高木同学 ED3.ass"
+          },
+          {
+            "f": "擅长捉弄的高木同学 OP.ass"
+          },
+          {
+            "f": "政宗君的复仇 ED.ass"
+          },
+          {
+            "f": "政宗君的复仇 OP.ass"
+          },
+          {
+            "f": "敦君与女朋友 OP.ass"
+          },
+          {
+            "f": "文豪野犬 ED.ass"
+          },
+          {
+            "f": "文豪野犬 OP.ass"
+          },
+          {
+            "f": "文豪野犬 第3季 ED.ass"
+          },
+          {
+            "f": "文豪野犬 第3季 Season OP.ass"
+          },
+          {
+            "f": "斯特拉的魔法 ED.ass"
+          },
+          {
+            "f": "斯特拉的魔法 OP.ass"
+          },
+          {
+            "f": "无彩限的怪灵世界 - ED.ass"
+          },
+          {
+            "f": "无彩限的怪灵世界 - OP.ass"
+          },
+          {
+            "f": "无畏魔女 ED.ass"
+          },
+          {
+            "f": "无畏魔女 OP.ass"
+          },
+          {
+            "f": "时空使徒 ED.ass"
+          },
+          {
+            "f": "时空使徒 OP.ass"
+          },
+          {
+            "f": "时钟机关之星 ED.ass"
+          },
+          {
+            "f": "时钟机关之星 OP.ass"
+          },
+          {
+            "f": "时间支配者 ED.ass"
+          },
+          {
+            "f": "时间支配者 OP.ass"
+          },
+          {
+            "f": "星之梦 小小星球的梦境 ED.ass"
+          },
+          {
+            "f": "星梦手记 ED.ass"
+          },
+          {
+            "f": "星梦手记 OP.ass"
+          },
+          {
+            "f": "春原庄的管理人 ED.ass"
+          },
+          {
+            "f": "春原庄的管理人 OP.ass"
+          },
+          {
+            "f": "春夏推理事件簿 ED.ass"
+          },
+          {
+            "f": "春夏推理事件簿 OP.ass"
+          },
+          {
+            "f": "昭和元禄落语心中 OP.ass"
+          },
+          {
+            "f": "昴宿七星 ED.ass"
+          },
+          {
+            "f": "昴宿七星 OP.ass"
+          },
+          {
+            "f": "暖暖日记 2016 OP.ass"
+          },
+          {
+            "f": "暗杀教室 第2季 ED1.ass"
+          },
+          {
+            "f": "暗杀教室 第2季 ED2.ass"
+          },
+          {
+            "f": "暗杀教室 第2季 OP.ass"
+          },
+          {
+            "f": "暗杀教室 第2季 OP2.ass"
+          },
+          {
+            "f": "更多 出包王女 ED.ass"
+          },
+          {
+            "f": "更多 出包王女 OP.ass"
+          },
+          {
+            "f": "最弱无败神装机龙 ED.ass"
+          },
+          {
+            "f": "最弱无败神装机龙 OP.ass"
+          },
+          {
+            "f": "最终休止符 无止境的螺旋物语 ED.ass"
+          },
+          {
+            "f": "最终休止符 无止境的螺旋物语 OP.ass"
+          },
+          {
+            "f": "月色真美 ED.ass"
+          },
+          {
+            "f": "月色真美 OP.ass"
+          },
+          {
+            "f": "末日时在做什么？有没有空？可以来拯救吗？desu ka ED.ass"
+          },
+          {
+            "f": "末日时在做什么？有没有空？可以来拯救吗？desu ka OP.ass"
+          },
+          {
+            "f": "机动强袭室第八组 第2季 ED.ass"
+          },
+          {
+            "f": "机动强袭室第八组 第2季 OP.ass"
+          },
+          {
+            "f": "机动战士高达UC 独角兽 RE 0096 ED.ass"
+          },
+          {
+            "f": "机动战士高达UC 独角兽 RE 0096 OP.ass"
+          },
+          {
+            "f": "杀戮的天使 ED.ass"
+          },
+          {
+            "f": "杀戮的天使 OP.ass"
+          },
+          {
+            "f": "来玩游戏吧（游戏3人娘） ED.ass"
+          },
+          {
+            "f": "来玩游戏吧（游戏3人娘） OP.ass"
+          },
+          {
+            "f": "来自多彩世界的明天 ED.ass"
+          },
+          {
+            "f": "来自多彩世界的明天 OP.ass"
+          },
+          {
+            "f": "来自深渊 ED.ass"
+          },
+          {
+            "f": "来自深渊 OP.ass"
+          },
+          {
+            "f": "桧曾根与玛索丹（飞龙女孩） ED.ass"
+          },
+          {
+            "f": "桧曾根与玛索丹（飞龙女孩） OP.ass"
+          },
+          {
+            "f": "梅露可物语：无精打采的少年与瓶中少女 ED.ass"
+          },
+          {
+            "f": "梅露可物语：无精打采的少年与瓶中少女 OP.ass"
+          },
+          {
+            "f": "棒球伙伴 ED.ass"
+          },
+          {
+            "f": "棒球伙伴 OP.ass"
+          },
+          {
+            "f": "樱花任务 ED.ass"
+          },
+          {
+            "f": "樱花任务 ED02.ass"
+          },
+          {
+            "f": "樱花任务 OP.ass"
+          },
+          {
+            "f": "樱花任务 OP02.ass"
+          },
+          {
+            "f": "橘色奇迹 ED.ass"
+          },
+          {
+            "f": "橘色奇迹 OP.ass"
+          },
+          {
+            "f": "欢迎来到实力至上主义的教室 ED.ass"
+          },
+          {
+            "f": "欢迎来到实力至上主义的教室 OP.ass"
+          },
+          {
+            "f": "正解的卡多（正确的KADO） ED.ass"
+          },
+          {
+            "f": "正解的卡多（正确的KADO） OP.ass"
+          },
+          {
+            "f": "此花亭奇谭 ED.ass"
+          },
+          {
+            "f": "此花亭奇谭 OP.ass"
+          },
+          {
+            "f": "武装少女 Machiavellism ED.ass"
+          },
+          {
+            "f": "武装少女 Machiavellism OP.ass"
+          },
+          {
+            "f": "比宇宙更远的地方 ED.ass"
+          },
+          {
+            "f": "比宇宙更远的地方 OP.ass"
+          },
+          {
+            "f": "水果篮子（2019） ED.ass"
+          },
+          {
+            "f": "水果篮子（2019） OP.ass"
+          },
+          {
+            "f": "泥鲸之子们在沙地上歌唱 ED.ass"
+          },
+          {
+            "f": "泥鲸之子们在沙地上歌唱 OP.ass"
+          },
+          {
+            "f": "消灭都市 ED.ass"
+          },
+          {
+            "f": "消灭都市 OP.ass"
+          },
+          {
+            "f": "淫乱的青酱不能学习 ED.ass"
+          },
+          {
+            "f": "淫乱的青酱不能学习 OP.ass"
+          },
+          {
+            "f": "深夜的超自然公务员 ED.ass"
+          },
+          {
+            "f": "深夜的超自然公务员 OP.ass"
+          },
+          {
+            "f": "深夜！天才傻鹏 ED.ass"
+          },
+          {
+            "f": "清恋 ED.ass"
+          },
+          {
+            "f": "清恋 ED02.ass"
+          },
+          {
+            "f": "清恋 ED03.ass"
+          },
+          {
+            "f": "清恋 OP.ass"
+          },
+          {
+            "f": "游戏人生 Zero ED.ass"
+          },
+          {
+            "f": "潮与虎 第2季 ED.ass"
+          },
+          {
+            "f": "潮与虎 第2季 OP.ass"
+          },
+          {
+            "f": "火星异种 ED1.ass"
+          },
+          {
+            "f": "火星异种 ED2.ass"
+          },
+          {
+            "f": "火星异种 ED3.ass"
+          },
+          {
+            "f": "火星异种 OP1.ass"
+          },
+          {
+            "f": "火星异种 OP2.ass"
+          },
+          {
+            "f": "灰与幻想的格林姆迦尔 ED.ass"
+          },
+          {
+            "f": "灰与幻想的格林姆迦尔 OP.ass"
+          },
+          {
+            "f": "灵能百分百 ED.ass"
+          },
+          {
+            "f": "灵能百分百 OP.ass"
+          },
+          {
+            "f": "灼热的乒乓球娘 ED.ass"
+          },
+          {
+            "f": "灼热的乒乓球娘 OP.ass"
+          },
+          {
+            "f": "热诚传说X ED01.ass"
+          },
+          {
+            "f": "热诚传说X ED02.ass"
+          },
+          {
+            "f": "热诚传说X ED03.ass"
+          },
+          {
+            "f": "热诚传说X OP.ass"
+          },
+          {
+            "f": "热诚传说X 第2季 ED.ass"
+          },
+          {
+            "f": "热诚传说X 第2季 OP.ass"
+          },
+          {
+            "f": "熊巫女 ED.ass"
+          },
+          {
+            "f": "熊巫女 OP.ass"
+          },
+          {
+            "f": "爆肝工程师的异世界狂想曲 ED.ass"
+          },
+          {
+            "f": "爆肝工程师的异世界狂想曲 OP.ass"
+          },
+          {
+            "f": "爆音少女！！ ED.ass"
+          },
+          {
+            "f": "爆音少女！！ OP.ass"
+          },
+          {
+            "f": "爱丽丝与藏六 ED.ass"
+          },
+          {
+            "f": "爱丽丝与藏六 OP.ass"
+          },
+          {
+            "f": "爱吃拉面的小泉同学 ED.ass"
+          },
+          {
+            "f": "爱吃拉面的小泉同学 OP.ass"
+          },
+          {
+            "f": "牙斗兽娘 ED.ass"
+          },
+          {
+            "f": "牙斗兽娘 OP.ass"
+          },
+          {
+            "f": "犬屋敷 ED.ass"
+          },
+          {
+            "f": "犬屋敷 OP.ass"
+          },
+          {
+            "f": "狂赌之渊 ED.ass"
+          },
+          {
+            "f": "狂赌之渊 OP.ass"
+          },
+          {
+            "f": "猜谜王 ED.ass"
+          },
+          {
+            "f": "猜谜王 OP.ass"
+          },
+          {
+            "f": "猫咪日常 ED.ass"
+          },
+          {
+            "f": "珈百璃的堕落 ED.ass"
+          },
+          {
+            "f": "珈百璃的堕落 OP.ass"
+          },
+          {
+            "f": "田中君总是如此慵懒 ED.ass"
+          },
+          {
+            "f": "田中君总是如此慵懒 OP.ass"
+          },
+          {
+            "f": "甲铁城的卡巴内利 ED.ass"
+          },
+          {
+            "f": "甲铁城的卡巴内利 OP.ass"
+          },
+          {
+            "f": "电光超人古利特 ED.ass"
+          },
+          {
+            "f": "电光超人古利特 OP.ass"
+          },
+          {
+            "f": "男子啦啦队!! ED.ass"
+          },
+          {
+            "f": "男子啦啦队!! OP.ass"
+          },
+          {
+            "f": "疾走王子 ED.ass"
+          },
+          {
+            "f": "疾走王子 OP.ass"
+          },
+          {
+            "f": "百武装战记 ED.ass"
+          },
+          {
+            "f": "百武装战记 ED2.ass"
+          },
+          {
+            "f": "百武装战记 ED3.ass"
+          },
+          {
+            "f": "百武装战记 ED4.ass"
+          },
+          {
+            "f": "百武装战记 OP.ass"
+          },
+          {
+            "f": "百炼霸王与圣约女武神 ED.ass"
+          },
+          {
+            "f": "百炼霸王与圣约女武神 OP.ass"
+          },
+          {
+            "f": "皇帝圣印战记 ED.ass"
+          },
+          {
+            "f": "皇帝圣印战记 OP.ass"
+          },
+          {
+            "f": "石膏男孩 ED.ass"
+          },
+          {
+            "f": "碧蓝之海 OP.ass"
+          },
+          {
+            "f": "碧蓝幻想 ED.ass"
+          },
+          {
+            "f": "碧蓝幻想 OP.ass"
+          },
+          {
+            "f": "神圣之门 ED.ass"
+          },
+          {
+            "f": "神圣之门 OP.ass"
+          },
+          {
+            "f": "神怒之日 ED.ass"
+          },
+          {
+            "f": "神怒之日 OP.ass"
+          },
+          {
+            "f": "禁忌咒纹 ED.ass"
+          },
+          {
+            "f": "禁忌咒纹 OP.ass"
+          },
+          {
+            "f": "秋叶原之旅 ED.ass"
+          },
+          {
+            "f": "秋叶原之旅 ED02.ass"
+          },
+          {
+            "f": "秋叶原之旅 ED03.ass"
+          },
+          {
+            "f": "秋叶原之旅 ED04.ass"
+          },
+          {
+            "f": "秋叶原之旅 OP.ass"
+          },
+          {
+            "f": "竞女!!!!!!!! ED.ass"
+          },
+          {
+            "f": "竞女!!!!!!!! OP.ass"
+          },
+          {
+            "f": "笨女孩 OP.ass"
+          },
+          {
+            "f": "第一次的辣妹 ED.ass"
+          },
+          {
+            "f": "第一次的辣妹 OP.ass"
+          },
+          {
+            "f": "粗点心战争 第2季 ED.ass"
+          },
+          {
+            "f": "粗点心战争 第2季 EDv0.ass"
+          },
+          {
+            "f": "粗点心战争 第2季 OP.ass"
+          },
+          {
+            "f": "精灵宝可梦 日月 ED.ass"
+          },
+          {
+            "f": "精灵宝可梦 日月 OP01.ass"
+          },
+          {
+            "f": "精灵宝可梦 日月 OP02.ass"
+          },
+          {
+            "f": "紫罗兰永恒花园 ED.ass"
+          },
+          {
+            "f": "紫罗兰永恒花园 OP.ass"
+          },
+          {
+            "f": "红壳的潘多拉 ED.ass"
+          },
+          {
+            "f": "红壳的潘多拉 OP.ass"
+          },
+          {
+            "f": "线上游戏的老婆不可能是女生？ ED.ass"
+          },
+          {
+            "f": "线上游戏的老婆不可能是女生？ OP.ass"
+          },
+          {
+            "f": "终将成为你 ED.ass"
+          },
+          {
+            "f": "终将成为你 OP.ass"
+          },
+          {
+            "f": "终末的伊泽塔 ED.ass"
+          },
+          {
+            "f": "终末的伊泽塔 OP.ass"
+          },
+          {
+            "f": "维度战记 ED.ass"
+          },
+          {
+            "f": "维度战记 OP.ass"
+          },
+          {
+            "f": "编舟记 ED.ass"
+          },
+          {
+            "f": "编舟记 OP.ass"
+          },
+          {
+            "f": "网瘾禁区 OP.ass"
+          },
+          {
+            "f": "网络胜利组 ED.ass"
+          },
+          {
+            "f": "网络胜利组 OP.ass"
+          },
+          {
+            "f": "罗密欧与朱丽叶 ED.ass"
+          },
+          {
+            "f": "罗密欧与朱丽叶 ED2.ass"
+          },
+          {
+            "f": "罗密欧与朱丽叶 OP.ass"
+          },
+          {
+            "f": "羁绊者 ED.ass"
+          },
+          {
+            "f": "羁绊者 OP.ass"
+          },
+          {
+            "f": "美少女战士 Crystal S3 ED.ass"
+          },
+          {
+            "f": "美少女战士 Crystal S3 OP.ass"
+          },
+          {
+            "f": "老子是魔法少女 ED.ass"
+          },
+          {
+            "f": "老子是魔法少女 OP.ass"
+          },
+          {
+            "f": "至高指令 ED.ass"
+          },
+          {
+            "f": "至高指令 OP.ass"
+          },
+          {
+            "f": "舞动青春 ED.ass"
+          },
+          {
+            "f": "舞动青春 OP.ass"
+          },
+          {
+            "f": "舞武器·舞乱伎 ED.ass"
+          },
+          {
+            "f": "舞武器·舞乱伎 OP.ass"
+          },
+          {
+            "f": "苍之彼方的四重奏 ED.ass"
+          },
+          {
+            "f": "苍之彼方的四重奏 OP.ass"
+          },
+          {
+            "f": "若叶女孩 OP.ass"
+          },
+          {
+            "f": "英雄世纪 OP.ass"
+          },
+          {
+            "f": "茜色少女 ED.ass"
+          },
+          {
+            "f": "茜色少女 OP.ass"
+          },
+          {
+            "f": "落第骑士英雄谭 ED.ass"
+          },
+          {
+            "f": "落第骑士英雄谭 OP.ass"
+          },
+          {
+            "f": "蓝海少女 ED.ass"
+          },
+          {
+            "f": "蓝海少女 OP.ass"
+          },
+          {
+            "f": "蓝海少女 第2季 ED.ass"
+          },
+          {
+            "f": "蓝海少女 第2季 OP.ass"
+          },
+          {
+            "f": "血界战线 & Beyond ED.ass"
+          },
+          {
+            "f": "血界战线 & Beyond OP.ass"
+          },
+          {
+            "f": "行星与共 ED.ass"
+          },
+          {
+            "f": "行星与共 OP.ass"
+          },
+          {
+            "f": "解谜之音 ED.ass"
+          },
+          {
+            "f": "解谜之音 OP.ass"
+          },
+          {
+            "f": "请问您今天要来点兔子吗？ (EDEP12).ass"
+          },
+          {
+            "f": "请问您今天要来点兔子吗？ (EDEP12-NK).ass"
+          },
+          {
+            "f": "请问您今天要来点兔子吗？ ED.ass"
+          },
+          {
+            "f": "请问您今天要来点兔子吗？ OP.ass"
+          },
+          {
+            "f": "请问您今天要来点兔子吗？ 第2季 ED.ass"
+          },
+          {
+            "f": "请问您今天要来点兔子吗？ 第2季 EDEP12 (v2).ass"
+          },
+          {
+            "f": "请问您今天要来点兔子吗？ 第2季 EDEP12 (v3).ass"
+          },
+          {
+            "f": "请问您今天要来点兔子吗？ 第2季 EDEP12.ass"
+          },
+          {
+            "f": "请问您今天要来点兔子吗？ 第2季 OP.ass"
+          },
+          {
+            "f": "调教咖啡厅 ED.ass"
+          },
+          {
+            "f": "调教咖啡厅 OP.ass"
+          },
+          {
+            "f": "贤惠幼妻仙狐小姐 ED.ass"
+          },
+          {
+            "f": "贤惠幼妻仙狐小姐 OP.ass"
+          },
+          {
+            "f": "贤者之孙 ED.ass"
+          },
+          {
+            "f": "贤者之孙 OP.ass"
+          },
+          {
+            "f": "赤发白雪姬 ED.ass"
+          },
+          {
+            "f": "赤发白雪姬 OP.ass"
+          },
+          {
+            "f": "赤发白雪姬 第2季 ED.ass"
+          },
+          {
+            "f": "赤发白雪姬 第2季 OP.ass"
+          },
+          {
+            "f": "超时空要塞Δ ED.ass"
+          },
+          {
+            "f": "超时空要塞Δ OP.ass"
+          },
+          {
+            "f": "超自然9人组 ED.ass"
+          },
+          {
+            "f": "超自然9人组 OP.ass"
+          },
+          {
+            "f": "路人女主的养成方法 ED.ass"
+          },
+          {
+            "f": "路人女主的养成方法 IN EP12v1.ass"
+          },
+          {
+            "f": "路人女主的养成方法 IN EP12v2.ass"
+          },
+          {
+            "f": "路人女主的养成方法 IN EP9.ass"
+          },
+          {
+            "f": "路人女主的养成方法 OP.ass"
+          },
+          {
+            "f": "路人女主的养成方法 第2季 ED.ass"
+          },
+          {
+            "f": "路人女主的养成方法 第2季 OP.ass"
+          },
+          {
+            "f": "跳水男孩 ED.ass"
+          },
+          {
+            "f": "跳水男孩 OP.ass"
+          },
+          {
+            "f": "踏切时间 OP.ass"
+          },
+          {
+            "f": "轻羽飞扬 OP.ass"
+          },
+          {
+            "f": "轻羽飞扬!（羽球战争!） ED.ass"
+          },
+          {
+            "f": "轻羽飞扬!（羽球战争!） OP.ass"
+          },
+          {
+            "f": "这个美术社大有问题！ ED.ass"
+          },
+          {
+            "f": "这个美术社大有问题！ OP.ass"
+          },
+          {
+            "f": "进击的巨人 第2季 ED.ass"
+          },
+          {
+            "f": "进击的巨人 第2季 OP.ass"
+          },
+          {
+            "f": "进击的巨人 第3季 OP.ass"
+          },
+          {
+            "f": "进击的巨人 第3季 Part 2 ED.ass"
+          },
+          {
+            "f": "进击的巨人 第3季 Part 2 OP.ass"
+          },
+          {
+            "f": "迷家 ED.ass"
+          },
+          {
+            "f": "迷家 OP.ass"
+          },
+          {
+            "f": "遥的接球 ED.ass"
+          },
+          {
+            "f": "遥的接球 OP.ass"
+          },
+          {
+            "f": "邪神与厨二病少女 OP.ass"
+          },
+          {
+            "f": "邪神与厨二病少女 第二季 ED.ass"
+          },
+          {
+            "f": "邪神与厨二病少女 第二季 OP.ass"
+          },
+          {
+            "f": "邻家索菲 ED.ass"
+          },
+          {
+            "f": "邻家索菲 OP.ass"
+          },
+          {
+            "f": "重启咲良田 ED.ass"
+          },
+          {
+            "f": "重启咲良田 OP.ass"
+          },
+          {
+            "f": "重神机潘多拉 ED.ass"
+          },
+          {
+            "f": "重神机潘多拉 OP.ass"
+          },
+          {
+            "f": "野良神 第2季 ED.ass"
+          },
+          {
+            "f": "野良神 第2季 OP.ass"
+          },
+          {
+            "f": "钢之炼金术师 03版 OP1.ass"
+          },
+          {
+            "f": "锁链战记 赫克瑟塔斯之光 ED.ass"
+          },
+          {
+            "f": "锁链战记 赫克瑟塔斯之光 OP.ass"
+          },
+          {
+            "f": "阿童木起源 ED.ass"
+          },
+          {
+            "f": "阿童木起源 OP.ass"
+          },
+          {
+            "f": "隔壁的吸血鬼美眉（邻家的吸血鬼小妹） ED.ass"
+          },
+          {
+            "f": "隔壁的吸血鬼美眉（邻家的吸血鬼小妹） OP.ass"
+          },
+          {
+            "f": "雏子的笔记 ED.ass"
+          },
+          {
+            "f": "雏子的笔记 OP.ass"
+          },
+          {
+            "f": "雏逻辑 来自幸运逻辑 ED.ass"
+          },
+          {
+            "f": "雏逻辑 来自幸运逻辑 OP.ass"
+          },
+          {
+            "f": "青之驱魔师 京都不净王篇 ED.ass"
+          },
+          {
+            "f": "青之驱魔师 京都不净王篇 OP.ass"
+          },
+          {
+            "f": "青春歌舞伎 ED.ass"
+          },
+          {
+            "f": "青春歌舞伎 OP.ass"
+          },
+          {
+            "f": "青春猪头少年不会梦到兔女郎学姐 ED.ass"
+          },
+          {
+            "f": "青春猪头少年不会梦到兔女郎学姐 OP.ass"
+          },
+          {
+            "f": "青鬼 OP.ass"
+          },
+          {
+            "f": "非人先生的新娘.ass"
+          },
+          {
+            "f": "面包带来和平！ OP.ass"
+          },
+          {
+            "f": "音乐少女 ED.ass"
+          },
+          {
+            "f": "音乐少女 OP.ass"
+          },
+          {
+            "f": "风夏 ED.ass"
+          },
+          {
+            "f": "风夏 OP.ass"
+          },
+          {
+            "f": "飞翔的魔女 ED.ass"
+          },
+          {
+            "f": "飞翔的魔女 OP.ass"
+          },
+          {
+            "f": "食戟之灵 ED.ass"
+          },
+          {
+            "f": "食戟之灵 ED2.ass"
+          },
+          {
+            "f": "食戟之灵 OP.ass"
+          },
+          {
+            "f": "食戟之灵 OP2.ass"
+          },
+          {
+            "f": "食戟之灵 第2季 ED.ass"
+          },
+          {
+            "f": "食戟之灵 第2季 OP.ass"
+          },
+          {
+            "f": "食戟之灵 第3季 ED.ass"
+          },
+          {
+            "f": "食戟之灵 第3季 OP.ass"
+          },
+          {
+            "f": "香蕉喵 ED.ass"
+          },
+          {
+            "f": "驱魔少年 Hallow ED.ass"
+          },
+          {
+            "f": "驱魔少年 Hallow OP.ass"
+          },
+          {
+            "f": "骑士&魔法 ED.ass"
+          },
+          {
+            "f": "骑士&魔法 OP.ass"
+          },
+          {
+            "f": "高分少女 ED.ass"
+          },
+          {
+            "f": "高分少女 OP.ass"
+          },
+          {
+            "f": "高校舰队（青春波纹） ED.ass"
+          },
+          {
+            "f": "高校舰队（青春波纹） OP.ass"
+          },
+          {
+            "f": "鬼斩 OP.ass"
+          },
+          {
+            "f": "鬼灭之刃 ED.ass"
+          },
+          {
+            "f": "鬼灭之刃 OP.ass"
+          },
+          {
+            "f": "魔偶马戏团 ED01.ass"
+          },
+          {
+            "f": "魔偶马戏团 OP01.ass"
+          },
+          {
+            "f": "魔卡少女樱 透明牌篇 ED.ass"
+          },
+          {
+            "f": "魔卡少女樱 透明牌篇 ED2.ass"
+          },
+          {
+            "f": "魔卡少女樱 透明牌篇 OP.ass"
+          },
+          {
+            "f": "魔卡少女樱 透明牌篇 OP2.ass"
+          },
+          {
+            "f": "魔法使的新娘 ED.ass"
+          },
+          {
+            "f": "魔法使的新娘 ED2.ass"
+          },
+          {
+            "f": "魔法使的新娘 OP.ass"
+          },
+          {
+            "f": "魔法使的新娘 OP2.ass"
+          },
+          {
+            "f": "魔法少女☆伊莉雅 3REI!! ED.ass"
+          },
+          {
+            "f": "魔法少女☆伊莉雅 3REI!! OP.ass"
+          },
+          {
+            "f": "魔法少女什么的已经够了啦。 OP.ass"
+          },
+          {
+            "f": "魔法少女网站 ED.ass"
+          },
+          {
+            "f": "魔法少女网站 ED02.ass"
+          },
+          {
+            "f": "魔法少女网站 OP.ass"
+          },
+          {
+            "f": "魔法少女育成计划 ED.ass"
+          },
+          {
+            "f": "魔法少女育成计划 OP.ass"
+          },
+          {
+            "f": "魔法禁书目录 第3季 ED1.ass"
+          },
+          {
+            "f": "魔法禁书目录 第3季 OP1.ass"
+          },
+          {
+            "f": "魔法禁书目录 第三季 OP.ass"
+          },
+          {
+            "f": "魔装学园 H×H ED.ass"
+          },
+          {
+            "f": "魔装学园 H×H OP.ass"
+          },
+          {
+            "f": "黃金神威 ED.ass"
+          },
+          {
+            "f": "黃金神威 OP.ass"
+          },
+          {
+            "f": "黃金神威 第2季 ED.ass"
+          },
+          {
+            "f": "黃金神威 第2季 OP.ass"
+          },
+          {
+            "f": "黑之宣告（死亡黑标） ED.ass"
+          },
+          {
+            "f": "黑之宣告（死亡黑标） OP.ass"
+          },
+          {
+            "f": "黑社会的超能力女儿 OP.ass"
+          },
+          {
+            "f": "黑社会的超能力女儿ED.ass"
+          },
+          {
+            "f": "黑色四叶草 ED01.ass"
+          },
+          {
+            "f": "黑色四叶草 ED02.ass"
+          },
+          {
+            "f": "黑色四叶草 ED03.ass"
+          },
+          {
+            "f": "黑色四叶草 ED04.ass"
+          },
+          {
+            "f": "黑色四叶草 ED05.ass"
+          },
+          {
+            "f": "黑色四叶草 OP01.ass"
+          },
+          {
+            "f": "黑色四叶草 OP02.ass"
+          },
+          {
+            "f": "黑色四叶草 OP03.ass"
+          },
+          {
+            "f": "黑色四叶草 OP04.ass"
+          },
+          {
+            "f": "黑色四叶草 OP05.ass"
+          },
+          {
+            "f": "黑色残骸 ED.ass"
+          },
+          {
+            "f": "黑色残骸 OP.ass"
+          },
+          {
+            "f": "龙王的工作 ED.ass"
+          },
+          {
+            "f": "龙王的工作 OP.ass"
+          }
+        ]
+      },
+      {
+        "id": 626649,
+        "native_name": "Macross 愛·おぼえていますか/超时空要塞 可曾记得爱",
+        "videoname": "[NEO·QSW] Macross Do You Remember Love [HEVC-10Bit AAC][V2]",
+        "subtype": "SSA",
+        "lang": {
+          "desc": "简",
+          "langlist": {
+            "langchs": true
+          }
+        },
+        "filelist": [
+          {
+            "f": "Macross ~ Do You Remember Love (1984) (BDRip 1920x1036p x265 HEVC DTS-HD MA, FLAC, AC3x2 5.1+2.0x3)Dual Audio.ass"
+          },
+          {
+            "f": "[NEOQSW] Macross Do You Remember Love [HEVC-10Bit AAC][V2].ass"
+          }
+        ]
+      },
+      {
+        "id": 622840,
+        "native_name": "劇場版マクロスΔ 激情のワルキューレ/超时空要塞Δ剧场版：激情的女武神",
+        "videoname": "Gekijouban Macross Delta -Gekijou no Walkure-[Movie](BDrip 1920x1080 HEVC-YUV420P10 FLACx2 DTS-MA)",
+        "subtype": "SSA",
+        "lang": {
+          "desc": "简 繁",
+          "langlist": {
+            "langchs": true,
+            "langcht": true
+          }
+        },
+        "filelist": [
+          {
+            "f": "[Mabors-Raws]Gekijouban Macross Delta -Gekijou no Walkure-[Movie](BDrip 1920x1080 HEVC-YUV420P10 FLACx2 DTS-MA JP&EN&GB&BIG5).sc.ass"
+          },
+          {
+            "f": "[Mabors-Raws]Gekijouban Macross Delta -Gekijou no Walkure-[Movie](BDrip 1920x1080 HEVC-YUV420P10 FLACx2 DTS-MA JP&EN&GB&BIG5).tc.ass"
+          },
+          {
+            "f": "[Mabors-Raws]Gekijouban Macross Delta -Gekijou no Walkure-[げきじょうばんでるた小劇場](BDrip 1920x1080 HEVC-YUV420P10 FLAC GB&BIG5).sc.ass"
+          },
+          {
+            "f": "[Mabors-Raws]Gekijouban Macross Delta -Gekijou no Walkure-[げきじょうばんでるた小劇場](BDrip 1920x1080 HEVC-YUV420P10 FLAC GB&BIG5).tc.ass"
+          },
+          {
+            "f": "[Mabors-Raws]Gekijouban Macross Delta -Gekijou no Walkure-[新作ピクチャードラマ](BDrip 1920x1080 HEVC-YUV420P10 FLAC GB&BIG5).sc.ass"
+          },
+          {
+            "f": "[Mabors-Raws]Gekijouban Macross Delta -Gekijou no Walkure-[新作ピクチャードラマ](BDrip 1920x1080 HEVC-YUV420P10 FLAC GB&BIG5).tc.ass"
+          }
+        ]
+      },
+      {
+        "id": 622839,
+        "native_name": "劇場版マクロスΔ 激情のワルキューレ/超时空要塞Δ剧场版：激情的女武神",
+        "videoname": "Gekijouban Macross Delta -Gekijou no Walkure-[Movie](BDrip 1920x1080 HEVC-YUV420P10 FLACx2 DTS-MA)",
+        "subtype": "SSA",
+        "lang": {
+          "desc": "简 繁",
+          "langlist": {
+            "langchs": true,
+            "langcht": true
+          }
+        },
+        "filelist": [
+          {
+            "f": "[Mabors-Sub]Gekijouban Macross Delta -Gekijou no Walkure-.tc.ass"
+          },
+          {
+            "f": "[Mabors-Sub]Gekijouban Macross Delta -Gekijou no Walkure-.sc.ass"
+          }
+        ]
+      },
+      {
+        "id": 608923,
+        "native_name": "超时空要塞Δ/超時空要塞Δ",
+        "videoname": "Macross Delta 1(Plus)-26 BDrip",
+        "subtype": "SSA",
+        "lang": {
+          "desc": "简",
+          "langlist": {
+            "langchs": true
+          }
+        },
+        "filelist": [
+          {
+            "f": "[SFEO-Raws] Macross Delta - 01_plus (BD 1080P x264 FLACx2).ass"
+          },
+          {
+            "f": "[SFEO-Raws] Macross Delta - 02 (BD 1080P x264 FLAC).ass"
+          },
+          {
+            "f": "[SFEO-Raws] Macross Delta - 03 (BD 1080P x264 FLAC).ass"
+          },
+          {
+            "f": "[SFEO-Raws] Macross Delta - 04 (BD 1080P x264 FLACx2).ass"
+          },
+          {
+            "f": "[SFEO-Raws] Macross Delta - 05 (BD 1080P x264 FLAC).ass"
+          },
+          {
+            "f": "[SFEO-Raws] Macross Delta - 06 (BD 1080P x264 FLAC).ass"
+          },
+          {
+            "f": "[SFEO-Raws] Macross Delta - 07 (BD 1080P x264 FLACx2).ass"
+          },
+          {
+            "f": "[SFEO-Raws] Macross Delta - 08 (BD 1080P x264 FLAC).ass"
+          },
+          {
+            "f": "[SFEO-Raws] Macross Delta - 09 (BD 1080P x264 FLAC).ass"
+          },
+          {
+            "f": "[SFEO-Raws] Macross Delta - 10 (BD 1080P x264 FLACx2).ass"
+          },
+          {
+            "f": "[SFEO-Raws] Macross Delta - 11 (BD 1080P x264 FLAC).ass"
+          },
+          {
+            "f": "[SFEO-Raws] Macross Delta - 12 (BD 1080P x264 FLAC).ass"
+          },
+          {
+            "f": "[SFEO-Raws] Macross Delta - 13 (BD 1080P x264 FLACx2).ass"
+          },
+          {
+            "f": "[SFEO-Raws] Macross Delta - 14 (BD 1080P x264 FLAC).ass"
+          },
+          {
+            "f": "[SFEO-Raws] Macross Delta - 15 (BD 1080P x264 FLAC).ass"
+          },
+          {
+            "f": "[SFEO-Raws] Macross Delta - 16 (BD 1080P x264 FLACx2).ass"
+          },
+          {
+            "f": "[SFEO-Raws] Macross Delta - 17 (BD 1080P x264 FLAC).ass"
+          },
+          {
+            "f": "[SFEO-Raws] Macross Delta - 18 (BD 1080P x264 FLAC).ass"
+          },
+          {
+            "f": "[SFEO-Raws] Macross Delta - 19 (BD 1080P x264 FLAC).ass"
+          },
+          {
+            "f": "[SFEO-Raws] Macross Delta - 20 (BD 1080P x264 FLAC).ass"
+          },
+          {
+            "f": "[SFEO-Raws] Macross Delta - 21 (BD 1080P x264 FLACx2).ass"
+          },
+          {
+            "f": "[SFEO-Raws] Macross Delta - 22 (BD 1080P x264 FLAC).ass"
+          },
+          {
+            "f": "[SFEO-Raws] Macross Delta - 23 (BD 1080P x264 FLAC).ass"
+          },
+          {
+            "f": "[SFEO-Raws] Macross Delta - 24 (BD 1080P x264 FLACx2).ass"
+          },
+          {
+            "f": "[SFEO-Raws] Macross Delta - 25 (BD 1080P x264 FLAC).ass"
+          },
+          {
+            "f": "[SFEO-Raws] Macross Delta - 26 (BD 1080P x264 FLACx2).ass"
+          }
+        ]
+      },
+      {
+        "id": 607283,
+        "native_name": "",
+        "videoname": "[异域-11番小队][超時空要塞マクロス系列 The Super Dimension Fortress Macross Series][字幕包全]",
+        "subtype": "SSA",
+        "lang": {
+          "desc": "",
+          "langlist": {}
+        },
+        "filelist": [
+          {
+            "f": "[异域-11番小队][超时空要塞][10bit][字幕包][DVDSUB&YY][ASS].rar"
+          },
+          {
+            "f": "[异域-11番小队][超时空要塞 7][10bit][字幕包][DVDSUB&YY][ASS].rar"
+          },
+          {
+            "f": "[异域-11番小队][超时空要塞 flashback2012][10bit][字幕包][风の大陆][ASS].rar"
+          },
+          {
+            "f": "[异域-11番小队][超时空要塞 PLUS][10bit][字幕包][DVDSUB&DAC][ASS].rar"
+          },
+          {
+            "f": "[异域-11番小队][超时空要塞 边界][10bit][字幕包][POPGO][ASS].rar"
+          },
+          {
+            "f": "[异域-11番小队][超时空要塞 零][10bit][字幕包][DVDSUB][ASS].rar"
+          },
+          {
+            "f": "[异域-11番小队][Macross II Lovers Again][BDRIP][720P][10bit].rar"
+          }
+        ]
+      },
+      {
+        "id": 605627,
+        "native_name": "マクロス7/超时空要塞7/Macross 7",
+        "videoname": "Kagura",
+        "subtype": "SSA",
+        "lang": {
+          "desc": "简",
+          "langlist": {
+            "langchs": true
+          }
+        },
+        "filelist": [
+          {
+            "f": "[Kagura][Macross_7][01][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][02][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][03][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][04][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][05][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][06][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][07][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][08][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][09][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][10][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][11][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][12][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][13][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][14][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][15][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][16][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][17][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][18][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][19][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][20][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][21][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][22][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][23][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][24][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][25][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][26][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][27][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][28][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][29][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][30][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][31][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][32][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][33][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][34][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][35][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][36][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][37][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][38][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][39][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][40][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][41][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][42][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][43][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][44][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][45][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][46][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][47][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][48][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][49][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][Encore1][On_Stage][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][Encore2][Docchi_ga_Suki_na_no？][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][Mihoueiwa][Saikyou_Onna_no_Kantai][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          },
+          {
+            "f": "[Kagura][Macross_7][Movie][Ginga_ga_Ore_o_Yondeiru!][BDRip][1440x1080][x264_Hi10P_FLAC].ass"
+          }
+        ]
+      },
+      {
+        "id": 459762,
+        "native_name": "超时空要塞Macross",
+        "videoname": "Choujikuu Yousai Macross 01-36 Fin+SP BDrip 1080p x264 Hi10P FLAC REV jsum",
+        "subtype": "不明",
+        "filelist": [
+          {
+            "f": "[Choujikuu Yousai Macross][01][BDRIP][1440x1080][H264(Hi10P)_FLAC].ssa"
+          },
+          {
+            "f": "[Choujikuu Yousai Macross][02][BDRIP][1440x1080][H264(Hi10P)_FLAC].ssa"
+          },
+          {
+            "f": "[Choujikuu Yousai Macross][03][BDRIP][1440x1080][H264(Hi10P)_FLAC].ssa"
+          },
+          {
+            "f": "[Choujikuu Yousai Macross][04][BDRIP][1440x1080][H264(Hi10P)_FLAC].ssa"
+          },
+          {
+            "f": "[Choujikuu Yousai Macross][05][BDRIP][1440x1080][H264(Hi10P)_FLAC].ssa"
+          },
+          {
+            "f": "[Choujikuu Yousai Macross][06][BDRIP][1440x1080][H264(Hi10P)_FLAC][REV].ssa"
+          },
+          {
+            "f": "[Choujikuu Yousai Macross][07][BDRIP][1440x1080][H264(Hi10P)_FLAC].ssa"
+          },
+          {
+            "f": "[Choujikuu Yousai Macross][08][BDRIP][1440x1080][H264(Hi10P)_FLAC].ssa"
+          },
+          {
+            "f": "[Choujikuu Yousai Macross][09][BDRIP][1440x1080][H264(Hi10P)_FLAC][REV].ssa"
+          },
+          {
+            "f": "[Choujikuu Yousai Macross][10][BDRIP][1440x1080][H264(Hi10P)_FLAC][REV].ssa"
+          },
+          {
+            "f": "[Choujikuu Yousai Macross][11][BDRIP][1440x1080][H264(Hi10P)_FLAC].ssa"
+          },
+          {
+            "f": "[Choujikuu Yousai Macross][12][BDRIP][1440x1080][H264(Hi10P)_FLAC].ssa"
+          },
+          {
+            "f": "[Choujikuu Yousai Macross][13][BDRIP][1440x1080][H264(Hi10P)_FLAC].ssa"
+          },
+          {
+            "f": "[Choujikuu Yousai Macross][14][BDRIP][1440x1080][H264(Hi10P)_FLAC].ssa"
+          },
+          {
+            "f": "[Choujikuu Yousai Macross][15][BDRIP][1440x1080][H264(Hi10P)_FLAC].ssa"
+          },
+          {
+            "f": "[Choujikuu Yousai Macross][16][BDRIP][1440x1080][H264(Hi10P)_FLAC].ssa"
+          },
+          {
+            "f": "[Choujikuu Yousai Macross][17][BDRIP][1440x1080][H264(Hi10P)_FLAC].ssa"
+          },
+          {
+            "f": "[Choujikuu Yousai Macross][18][BDRIP][1440x1080][H264(Hi10P)_FLAC][REV].ssa"
+          },
+          {
+            "f": "[Choujikuu Yousai Macross][19][BDRIP][1440x1080][H264(Hi10P)_FLAC].ssa"
+          },
+          {
+            "f": "[Choujikuu Yousai Macross][20][BDRIP][1440x1080][H264(Hi10P)_FLAC].ssa"
+          },
+          {
+            "f": "[Choujikuu Yousai Macross][21][BDRIP][1440x1080][H264(Hi10P)_FLAC].ssa"
+          },
+          {
+            "f": "[Choujikuu Yousai Macross][22][BDRIP][1440x1080][H264(Hi10P)_FLAC].ssa"
+          },
+          {
+            "f": "[Choujikuu Yousai Macross][23][BDRIP][1440x1080][H264(Hi10P)_FLAC].ssa"
+          },
+          {
+            "f": "[Choujikuu Yousai Macross][24][BDRIP][1440x1080][H264(Hi10P)_FLAC].ssa"
+          },
+          {
+            "f": "[Choujikuu Yousai Macross][25][BDRIP][1440x1080][H264(Hi10P)_FLAC].ssa"
+          },
+          {
+            "f": "[Choujikuu Yousai Macross][26][BDRIP][1440x1080][H264(Hi10P)_FLAC].ssa"
+          },
+          {
+            "f": "[Choujikuu Yousai Macross][27][BDRIP][1440x1080][H264(Hi10P)_FLAC].ssa"
+          },
+          {
+            "f": "[Choujikuu Yousai Macross][28][BDRIP][1440x1080][H264(Hi10P)_FLAC].ssa"
+          },
+          {
+            "f": "[Choujikuu Yousai Macross][29][BDRIP][1440x1080][H264(Hi10P)_FLAC].ssa"
+          },
+          {
+            "f": "[Choujikuu Yousai Macross][30][BDRIP][1440x1080][H264(Hi10P)_FLAC].ssa"
+          },
+          {
+            "f": "[Choujikuu Yousai Macross][31][BDRIP][1440x1080][H264(Hi10P)_FLAC].ssa"
+          },
+          {
+            "f": "[Choujikuu Yousai Macross][32][BDRIP][1440x1080][H264(Hi10P)_FLAC].ssa"
+          },
+          {
+            "f": "[Choujikuu Yousai Macross][33][BDRIP][1440x1080][H264(Hi10P)_FLAC][REV].ssa"
+          },
+          {
+            "f": "[Choujikuu Yousai Macross][34][BDRIP][1440x1080][H264(Hi10P)_FLAC].ssa"
+          },
+          {
+            "f": "[Choujikuu Yousai Macross][35][BDRIP][1440x1080][H264(Hi10P)_FLAC].ssa"
+          },
+          {
+            "f": "[Choujikuu Yousai Macross][36][BDRIP][1440x1080][H264(Hi10P)_FLAC].ssa"
+          },
+          {
+            "f": "[Choujikuu Yousai Macross][SP01][Music Clips(Pachinko Video)][BDRIP][1440x1080][H264(Hi10P)_FLAC].ass"
+          }
+        ]
+      }
+    ]
+  }
+}

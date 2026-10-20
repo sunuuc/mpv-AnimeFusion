@@ -24,11 +24,18 @@ public sealed class SubtitleDownload(HttpClient http, SubtitleLibrary library)
         {
             if (result.Individual)
                 return await DownloadIndividualAsync(query, result, progress, token).ConfigureAwait(false);
+            if (selected != null)
+                return await DownloadFileAsync(query, result, selected, files, progress, token).ConfigureAwait(false);
+            if (result.DownloadName.Length == 0 || result.DownloadUrl.Length == 0)
+                throw new SubtitleServiceException("没有可下载的字幕包。");
             if (query.Season == null && Supported(result.DownloadName))
             {
                 var movieFile = new SubtitleFile(result.Source, result.Id, 0, result.DownloadName, "");
                 if (library.Cached(query, result, movieFile) is { } cached)
-                { MpvNet.Diagnostics.Write("subtitle.download", "reused", new { source = result.Source.ToString(), result.Id }); return cached; }
+                {
+                    MpvNet.Diagnostics.Write("subtitle.download", "reused", new { source = result.Source.ToString(), result.Id });
+                    return cached;
+                }
                 string moviePath = library.FilePath(query, result, movieFile.Name);
                 await WriteAsync(moviePath, await FetchAsync(result.DownloadUrl, result.Source, 32 * 1024 * 1024, token, progress).ConfigureAwait(false), token).ConfigureAwait(false);
                 library.Save(query, result, movieFile, moviePath, true, true);
@@ -71,18 +78,69 @@ public sealed class SubtitleDownload(HttpClient http, SubtitleLibrary library)
             string pairedPath = SavedPath(query, result, pair);
             if (extension == ".sub") path = pairedPath;
         }
-        library.Complete(query, result);
-        return path;
+        return !result.Local || library.CurrentFile(query, result, [selected]) != null ? path : null;
+    }
+
+    async Task<string?> DownloadFileAsync(SubtitleQuery query, SubtitleResult result, SubtitleFile selected,
+        IReadOnlyList<SubtitleFile> files, IProgress<string>? progress, CancellationToken token)
+    {
+        if (selected.Source != result.Source || selected.ResultId != result.Id || !Supported(selected.Name))
+            throw new SubtitleServiceException("不支持这份字幕格式。");
+        string extension = Path.GetExtension(selected.Name).ToLowerInvariant();
+        SubtitleFile? pair = extension is ".idx" or ".sub" ? files.FirstOrDefault(file => file.Source == result.Source
+            && file.ResultId == result.Id && Path.ChangeExtension(file.Name, extension).Equals(selected.Name, StringComparison.OrdinalIgnoreCase)
+            && Path.GetExtension(file.Name).Equals(extension == ".idx" ? ".sub" : ".idx", StringComparison.OrdinalIgnoreCase)) : null;
+        if (extension == ".idx" && pair == null)
+            throw new SubtitleServiceException("这份 IDX 字幕缺少对应的 SUB 文件。");
+        // Fetch both parts before saving either. Write the SUB data before its IDX
+        // index, so a failed pair never leaves a new, unusable IDX in the library.
+        SubtitleFile[] requested = pair == null ? [selected] : extension == ".idx" ? [pair, selected] : [selected, pair];
+        var pending = requested.Select(file => (File: file, Cached: library.Cached(query, result, file),
+            Target: library.FilePath(query, result, file.Name))).ToArray();
+        var downloaded = new List<(SubtitleFile File, string Path, byte[] Bytes)>();
+        foreach (var item in pending)
+        {
+            token.ThrowIfCancellationRequested();
+            if (item.Cached != null) continue;
+            byte[] bytes = await FetchAsync(item.File.Url, result.Source, 32 * 1024 * 1024, token, progress).ConfigureAwait(false);
+            downloaded.Add((item.File, item.Target, bytes));
+        }
+        foreach (var item in downloaded)
+            await WriteAsync(item.Path, item.Bytes, token).ConfigureAwait(false);
+        foreach (var item in downloaded)
+            library.Save(query, result, item.File, item.Path, false);
+        string selectedPath = SavedPath(query, result, selected);
+        var saved = library.Results(query.Title).FirstOrDefault(item => item.Source == result.Source && item.Id == result.Id);
+        var savedFile = saved?.Files.FirstOrDefault(file => file.LocalPath.Equals(selectedPath, StringComparison.OrdinalIgnoreCase));
+        bool matches = saved != null && savedFile != null && library.CurrentFile(query, saved, [savedFile]) != null;
+        MpvNet.Diagnostics.Write("subtitle.download", downloaded.Count == 0 ? "reused" : "file-indexed",
+            new { source = result.Source.ToString(), result.Id, selected.FileId, count = downloaded.Count, matches });
+        string path = extension == ".sub" && pair != null ? SavedPath(query, result, pair) : selectedPath;
+        return matches ? path : null;
     }
 
     async Task<string?> DownloadIndividualAsync(SubtitleQuery query, SubtitleResult result, IProgress<string>? progress, CancellationToken token)
     {
+        string name = result.DownloadName;
+        string filename = name.EndsWith(".xz", StringComparison.OrdinalIgnoreCase) ? name[..^3] : name;
+        var sourceQuery = query with { Season = result.Season, Episode = result.Episode };
+        int? fileSeason = SubtitleLibrary.FileQuery(sourceQuery, result, filename).Season;
+        var title = Bangumi.BangumiMedia.Parse(result.Title);
+        int? titleSeason = SubtitleQuery.IsSpecial(result.Title) ? 0 : title.HasSeason ? title.Season : null;
+        if (result.Season >= 0 && (fileSeason != result.Season
+            || titleSeason != null && titleSeason != result.Season))
+        {
+            MpvNet.Diagnostics.Write("subtitle.download", "season-mismatch", new { source = result.Source.ToString(), result.Id,
+                result.Season, fileSeason, titleSeason });
+            throw new SubtitleServiceException("字幕季集信息不一致。");
+        }
         // An extracted track belongs to its release, even when the user searches
         // another episode. Save it there, and only load it for the current episode.
         // Unresolved coordinates remain in the unclassified shelf without loading.
         bool sameWork = SubtitleLibrary.IndividualMatches(query, result);
         var targetQuery = query with { Season = sameWork ? result.Season : -1, Episode = sameWork ? result.Episode : null };
-        bool matches = sameWork && query.Season == result.Season && query.Episode == result.Episode;
+        bool matches = sameWork && (query.Season == null ? fileSeason == null
+            : query.MatchesContent(filename, fileSeason, result.Episode));
         var package = library.Package(targetQuery, result);
         if (package?.Complete == true && package.Files.Count == 1)
         {
@@ -94,7 +152,6 @@ public sealed class SubtitleDownload(HttpClient http, SubtitleLibrary library)
                 return matches ? cached : null;
             }
         }
-        string name = result.DownloadName;
         byte[] bytes = await FetchAsync(result.DownloadUrl, result.Source, 32 * 1024 * 1024, token, progress).ConfigureAwait(false);
         if (name.EndsWith(".xz", StringComparison.OrdinalIgnoreCase))
         {
@@ -122,14 +179,15 @@ public sealed class SubtitleDownload(HttpClient http, SubtitleLibrary library)
             // in its extracted track. Check only Script Info, never dialogue text.
             string info = Regex.Match(text, @"\A\[Script Info\][^\S\r\n]*\r?\n(?<info>.*?)(?=^\[|\z)",
                 RegexOptions.Singleline | RegexOptions.Multiline | RegexOptions.IgnoreCase).Groups["info"].Value;
-            string title = Regex.Match(info, @"^Title:[^\S\r\n]*(?<title>[^\r\n]+)",
+            string contentTitle = Regex.Match(info, @"^Title:[^\S\r\n]*(?<title>[^\r\n]+)",
                 RegexOptions.Multiline | RegexOptions.IgnoreCase).Groups["title"].Value.Trim();
-            var content = Bangumi.BangumiMedia.FromPlayback(title, title);
+            var content = Bangumi.BangumiMedia.FromPlayback(contentTitle, contentTitle);
+            int? contentSeason = SubtitleQuery.IsSpecial(contentTitle) ? 0 : content.HasSeason ? content.Season : null;
             if (content.Ambiguous || result.Episode != null && content.EpisodeNumber != null && result.Episode != content.EpisodeNumber
-                || result.Season >= 0 && content.HasSeason && result.Season != content.Season)
+                || result.Season >= 0 && contentSeason != null && result.Season != contentSeason)
             {
                 MpvNet.Diagnostics.Write("subtitle.download", "episode-mismatch", new { source = result.Source.ToString(), result.Id,
-                    result.Season, result.Episode, contentSeason = content.HasSeason ? (int?)content.Season : null,
+                    result.Season, result.Episode, contentSeason,
                     contentEpisode = content.EpisodeNumber, content.Ambiguous });
                 throw new SubtitleServiceException("字幕季集信息不一致。");
             }
@@ -193,7 +251,8 @@ public sealed class SubtitleDownload(HttpClient http, SubtitleLibrary library)
                 token.ThrowIfCancellationRequested();
                 string? name = names.Name(entry);
                 if (entry.IsDirectory || name == null || !Supported(name)) return;
-                var file = new SubtitleFile(result.Source, result.Id, 0, name, "");
+                var file = result.Files.FirstOrDefault(file => file.Name == name)
+                    ?? new SubtitleFile(result.Source, result.Id, 0, name, "");
                 string target = library.FilePath(query, result, file.Name);
                 if (library.Cached(query, result, file) == null)
                 {

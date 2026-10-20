@@ -343,18 +343,18 @@ public class GuiCommand
         { Terminal.WriteError(error); Msg.ShowError("强制使用字幕的设置无法保存。"); }
     }
 
-    void DeleteSubtitle(IList<string> args)
+    async void DeleteSubtitle(IList<string> args)
     {
         if (args.Count != 1) return;
         var playback = MpvNet.Windows.Subtitles.SubtitlePlayback.Current;
         var removal = playback.PrepareRemoval(args[0]);
         if (removal == null) return;
-        var window = new SubtitleDeleteWindow(removal.FileName);
+        var window = new SubtitleDeleteWindow(removal.Name);
         new WindowInteropHelper(window).Owner = MainForm.Instance!.Handle;
         if (window.ShowDialog() != true) return;
         try
         {
-            if (!playback.Remove(removal, window.DeleteLocal))
+            if (!await playback.RemoveAsync(removal, window.DeleteLocal))
             {
                 Diagnostics.Write("subtitle.delete", "stale", new { deleteLocal = window.DeleteLocal });
                 Msg.ShowError("删除失败");

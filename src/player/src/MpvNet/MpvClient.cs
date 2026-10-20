@@ -317,7 +317,7 @@ public class MpvClient
             mpv_format.MPV_FORMAT_FLAG, out IntPtr lpBuffer);
 
         if (err < 0)
-            HandleError(err, "error getting property: " + name);
+            HandlePropertyError(err, name, mpv_format.MPV_FORMAT_FLAG);
 
         return lpBuffer.ToInt32() != 0;
     }
@@ -336,8 +336,8 @@ public class MpvClient
         mpv_error err = mpv_get_property(Handle, GetUtf8Bytes(name),
             mpv_format.MPV_FORMAT_INT64, out IntPtr lpBuffer);
 
-        if (err < 0 && App.DebugMode)
-            HandleError(err, "error getting property: " + name);
+        if (err < 0)
+            HandlePropertyError(err, name, mpv_format.MPV_FORMAT_INT64);
 
         return lpBuffer.ToInt32();
     }
@@ -365,7 +365,7 @@ public class MpvClient
             mpv_format.MPV_FORMAT_INT64, out IntPtr lpBuffer);
 
         if (err < 0)
-            HandleError(err, "error getting property: " + name);
+            HandlePropertyError(err, name, mpv_format.MPV_FORMAT_INT64);
 
         return lpBuffer.ToInt64();
     }
@@ -375,8 +375,8 @@ public class MpvClient
         mpv_error err = mpv_get_property(Handle, GetUtf8Bytes(name),
             mpv_format.MPV_FORMAT_DOUBLE, out double value);
 
-        if (err < 0 && handleError && App.DebugMode)
-            HandleError(err, "error getting property: " + name);
+        if (err < 0)
+            HandlePropertyError(err, name, mpv_format.MPV_FORMAT_DOUBLE, handleError);
 
         return value;
     }
@@ -390,7 +390,9 @@ public class MpvClient
             HandleError(err, $"error setting property: {name} = {value}");
     }
 
-    public string GetPropertyString(string name)
+    public string GetPropertyString(string name) => GetPropertyString(name, true);
+
+    public string GetPropertyString(string name, bool handleError)
     {
         if (Handle == IntPtr.Zero)
             return "";
@@ -405,8 +407,8 @@ public class MpvClient
             return ret;
         }
 
-        if (err < 0 && App.DebugMode)
-            HandleError(err, "error getting property: " + name);
+        if (err < 0)
+            HandlePropertyError(err, name, mpv_format.MPV_FORMAT_STRING, handleError);
 
         return "";
     }
@@ -433,7 +435,7 @@ public class MpvClient
 
         if (err < 0)
         {
-            HandleError(err, "error getting property: " + name);
+            HandlePropertyError(err, name, mpv_format.MPV_FORMAT_NODE);
             return [];
         }
 
@@ -472,7 +474,7 @@ public class MpvClient
         }
 
         if (err < 0)
-            HandleError(err, "error getting property: " + name);
+            HandlePropertyError(err, name, mpv_format.MPV_FORMAT_OSD_STRING);
 
         return "";
     }
@@ -570,6 +572,13 @@ public class MpvClient
             if (PropChangeActions.ContainsKey(name))
                 PropChangeActions[name].Add(action);
         }
+    }
+
+    static void HandlePropertyError(mpv_error err, string name, mpv_format format, bool handleError = true)
+    {
+        Diagnostics.Write("player.property", "read-failed", new { name, format = format.ToString(), error = (int)err });
+        if (handleError && App.DebugMode)
+            HandleError(err, "error getting property: " + name);
     }
 
     static void HandleError(mpv_error err, string msg)

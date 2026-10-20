@@ -85,19 +85,26 @@ static class Program
         library.SetPinned(first.Title, imported, false);
         Check(library.Tracks(first).All(track => !track.Pinned), "Unpin restores ordinary version selection");
         library.SetPinned(first.Title, imported, true);
-        Check(library.Remove(first.Title, imported, false).SequenceEqual([imported]) && File.Exists(imported) && File.Exists(original), "Default deletion removes only its library record and retains local and source files");
-        Check(library.Tracks(first).Count == 1 && library.Tracks(Media("Library Fixture S01E02")).Single().Pinned, "Deleting one row preserves other episodes and their set pin");
-        string second = library.Tracks(Media("Library Fixture S01E02")).Single().Path;
-        var deletedSecond = library.Remove(first.Title, second, true);
-        Check(!File.Exists(second) && !File.Exists(Path.Combine(directory, names[1])) && File.Exists(Path.Combine(directory, names[2])),
-            "Confirmed local deletion removes both the selected managed subtitle and its original source, preserving another episode");
-        Check(deletedSecond.ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals([second, Path.Combine(directory, names[1])]),
-            "Deletion returns both subtitle paths so an explicitly loaded original track can also be removed");
+        string[] importedSet = library.Results(first.Title).Single().Files.Select(file => file.LocalPath).ToArray();
+        Check(library.Remove(first.Title, imported, false).ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals(importedSet)
+            && importedSet.All(File.Exists) && names.Take(4).All(name => File.Exists(Path.Combine(directory, name))),
+            "Default deletion removes the whole cross-season package records while retaining every managed and original file");
+        Check(library.Results(first.Title).Count == 0 && library.Tracks(first).Count == 0
+            && library.Tracks(Media("Library Fixture S01E02")).Count == 0 && library.Tracks(Media("Library Fixture S02E01")).Count == 0,
+            "Deleting a set removes its other episodes, languages and pin rather than leaving a partial package");
+        imported = library.Import(first, original);
+        var deletedSet = library.Remove(first.Title, imported, true);
+        string[] originalSet = names.Take(4).Select(name => Path.Combine(directory, name)).ToArray();
+        Check(importedSet.All(file => !File.Exists(file)) && originalSet.All(file => !File.Exists(file))
+            && names.Skip(4).All(name => File.Exists(Path.Combine(directory, name))),
+            "Confirmed set deletion removes every managed and original episode without touching another release or work");
+        Check(deletedSet.ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals(importedSet.Concat(originalSet)),
+            "Deletion returns every managed and original subtitle path in the set for native track removal");
 
         var movie = Media("Standalone Movie (2013)");
-        string stored = Path.Combine(library.SeasonDirectory(movie.Title, 0), "Assrt-fixture", "第一章.ass");
-        Directory.CreateDirectory(Path.GetDirectoryName(stored)!); File.WriteAllText(stored, "第一章");
         var storedResult = new SubtitleResult(SubtitleSource.Assrt, "fixture", "电影合集", "", "", []);
+        string stored = library.FilePath(new(movie.Title, 0, null, ""), storedResult, "第一章.ass");
+        Directory.CreateDirectory(Path.GetDirectoryName(stored)!); File.WriteAllText(stored, "第一章");
         string archive = library.ArchivePath(new(movie.Title, 0, null, ""), storedResult with { DownloadName = "原始字幕包.zip" });
         Directory.CreateDirectory(Path.GetDirectoryName(archive)!); File.WriteAllBytes(archive, Zip(["第一章.ass", "第二章.ass"]));
         string unrelatedArchive = library.ArchivePath(new(movie.Title, 0, null, ""), storedResult with { Id = "other", DownloadName = "其他字幕包.zip" });
@@ -105,25 +112,25 @@ static class Program
         library.Save(new(movie.Title, 0, null, ""), storedResult, new(SubtitleSource.Assrt, "fixture", 0, "第一章.ass", ""), stored, true);
         string otherMovie = Path.Combine(Path.GetDirectoryName(stored)!, "第二章.ass"); File.WriteAllText(otherMovie, "第二章");
         library.Save(new(movie.Title, 0, null, ""), storedResult, new(SubtitleSource.Assrt, "fixture", 0, "第二章.ass", ""), otherMovie, true);
-        Check(library.Tracks(movie).Count == 0, "A special shelf does not appear as a movie before explicit association");
+        Check(library.Tracks(movie).Count == 0, "An unclassified shelf does not appear as a movie before explicit association");
         string movieCopy = library.Import(movie, stored);
-        Check(movieCopy != stored && File.Exists(movieCopy) && File.Exists(stored), "An existing special shelf subtitle is copied into the explicitly selected movie shelf");
+        Check(movieCopy != stored && File.Exists(movieCopy) && File.Exists(stored), "An existing unclassified shelf subtitle is copied into the explicitly selected movie shelf");
         Check(library.Tracks(movie).Single().Path == movieCopy, "Associating a stored movie subtitle never attaches another movie from the same package");
         var movieResult = library.Results(movie.Title).Single();
         Check(library.CurrentFile(new(movie.Title, null, null, ""), movieResult, movieResult.Files)?.LocalPath == movieCopy,
             "A movie associated from a special shelf can also load from the local search result");
         library.SetPinned(movie.Title, movieCopy, true);
-        Check(library.Tracks(movie).Single().Pinned, "A movie subtitle can be pinned independently of an existing special shelf");
+        Check(library.Tracks(movie).Single().Pinned, "A movie subtitle can be pinned independently of an existing unclassified shelf");
         var shared = Media("Another Movie");
         library.Save(new(shared.Title, null, null, ""), storedResult, new(SubtitleSource.Assrt, "fixture", 0, "第一章.ass", ""), movieCopy, true);
         try { library.Remove(movie.Title, movieCopy, true); throw new Exception("Shared deletion should fail"); }
         catch (SubtitleServiceException) { Check(File.Exists(movieCopy) && library.Tracks(movie).Count == 1, "Physical deletion refuses a file still referenced by another work without dropping its record"); }
         library.Remove(shared.Title, movieCopy, false); var deletedMovie = library.Remove(movie.Title, movieCopy, true);
         Check(!File.Exists(movieCopy) && !File.Exists(stored) && !File.Exists(archive) && File.Exists(unrelatedArchive)
-            && File.Exists(otherMovie) && library.Tracks(movie).Count == 0 && library.Results(movie.Title).Single().Files.Count == 1,
-            "Deleting an associated subtitle removes its original file, source index and package without deleting other extracted subtitles or packages");
-        Check(deletedMovie.ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals([movieCopy, stored]),
-            "Subtitle track removal includes the associated original but excludes the deleted archive");
+            && !File.Exists(otherMovie) && library.Tracks(movie).Count == 0 && library.Results(movie.Title).Count == 0,
+            "Deleting the same source package removes its movie and unclassified shelves and original archive while preserving a different package");
+        Check(deletedMovie.ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals([movieCopy, stored, otherMovie]),
+            "Subtitle track removal includes the whole associated package and original but excludes the archive");
 
         string pairs = Path.Combine(Root, "pair-source"); Directory.CreateDirectory(pairs);
         string idx = Path.Combine(pairs, "Pair Fixture.idx"), sub = Path.ChangeExtension(idx, ".sub");
@@ -166,23 +173,17 @@ static class Program
         library.Save(new(sharedMovie.Title, 0, null, ""), sharedResult, new(SubtitleSource.Assrt, sharedResult.Id, 0, "Shared Source.srt", ""),
             sharedSeasonCopy, true, imported: true, originalPath: sharedOriginal,
             originalHash: Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(sharedOriginal))));
-        try { library.Remove(sharedMovie.Title, sharedCopy, true); throw new Exception("A shared source must not be deleted"); }
-        catch (SubtitleServiceException error)
-        {
-            Check(error.Message.Contains("仍被") && File.Exists(sharedOriginal) && File.Exists(sharedCopy) && File.Exists(sharedSeasonCopy),
-                "Shared original source references in another shelf of the same work prevent physical deletion");
-        }
-        library.Remove(sharedMovie.Title, sharedSeasonCopy, false);
         var anotherSharedMovie = Media("Other Shared Movie"); string anotherSharedCopy = library.Import(anotherSharedMovie, sharedOriginal);
         try { library.Remove(sharedMovie.Title, sharedCopy, true); throw new Exception("An original used by another work must not be deleted"); }
         catch (SubtitleServiceException)
         {
-            Check(File.Exists(sharedOriginal) && File.Exists(sharedCopy) && File.Exists(anotherSharedCopy),
-                "An external original used by another work is protected even when the managed copies differ");
+            Check(File.Exists(sharedOriginal) && File.Exists(sharedCopy) && File.Exists(sharedSeasonCopy) && File.Exists(anotherSharedCopy),
+                "An external original used by another work protects the entire cross-shelf set before any file is deleted");
         }
         library.Remove(anotherSharedMovie.Title, anotherSharedCopy, false);
         new SubtitleLibrary(library.Root).Remove(sharedMovie.Title, sharedCopy, true);
-        Check(!File.Exists(sharedOriginal) && !File.Exists(sharedCopy), "Original source identity survives reopening and deletes once no other subtitle references it");
+        Check(!File.Exists(sharedOriginal) && !File.Exists(sharedCopy) && !File.Exists(sharedSeasonCopy) && File.Exists(anotherSharedCopy),
+            "Once other-work records are removed, the whole source set deletes while its unreferenced copy outside the set remains");
 
         string invalidOriginal = Path.Combine(directory, "Invalid Original.srt"); File.WriteAllText(invalidOriginal, "subtitle");
         var invalidMovie = Media("Invalid Original"); string invalidCopy = library.Import(invalidMovie, invalidOriginal);
@@ -326,10 +327,359 @@ static class Program
                 "Cancellation before subtitle transfer completes cannot publish a partial movie package");
         }
     }
+    static async Task SpecialArchiveChecks()
+    {
+        var query = new SubtitleQuery("魔力充电娘", 1, 2, "");
+        var result = new SubtitleResult(SubtitleSource.Assrt, "regular-and-ova", "充电娘", "中文", "", [])
+        {
+            Season = 1, DownloadName = "充电娘.zip", DownloadUrl = "https://download.example/regular-and-ova.zip"
+        };
+        string[] names = Enumerable.Range(1, 6).Select(episode => $"充电娘/OVA/充电娘 OVA {episode:00}.ass")
+            .Concat(Enumerable.Range(1, 12).Select(episode => $"充电娘/充电娘 {episode:00}.ass")).ToArray();
+        var library = new SubtitleLibrary(Store("regular-and-ova").Root);
+        var handler = new Handler((request, _) =>
+        {
+            Check(request.RequestUri!.AbsolutePath == "/regular-and-ova.zip", "Regular and OVA subtitles come from one complete package request");
+            return new(HttpStatusCode.OK) { Content = new ByteArrayContent(Zip(names)) };
+        });
+        using var http = new HttpClient(handler);
+        var download = new SubtitleDownload(http, library);
+        string? selected = await download.DownloadAsync(query, result, null, [], null, default);
+        Check(selected != null && selected.EndsWith(Path.Combine("充电娘", "充电娘 02.ass"))
+            && selected.StartsWith(library.SeasonDirectory(query.Title, 1) + Path.DirectorySeparatorChar),
+            "A package whose OVA entries precede the regular episodes selects regular episode two despite the shorter archive work name");
+        var saved = library.Results(query.Title).Single();
+        Check(saved.Files.Count == 18 && saved.Files.Count(file => file.Season == 1) == 12
+            && saved.Files.Count(file => file.Season == 0) == 6,
+            "The complete package saves twelve regular episodes in season one and six OVA episodes in season zero");
+        Check(saved.Files.Where(file => file.Season == 1).Select(file => file.Episode).Order().SequenceEqual(Enumerable.Range(1, 12).Select(episode => (double?)episode))
+            && saved.Files.Where(file => file.Season == 0).Select(file => file.Episode).Order().SequenceEqual(Enumerable.Range(1, 6).Select(episode => (double?)episode)),
+            "Separate regular and OVA shelves retain their own episode numbering");
+        Check(saved.Files.Where(file => file.Season == 0).All(file => file.LocalPath.StartsWith(library.SeasonDirectory(query.Title, 0) + Path.DirectorySeparatorChar))
+            && library.Tracks(MpvNet.Windows.Trakt.TraktMedia.Parse("魔力充电娘 S01E02", "", new Dictionary<string, string>())).Single().Path == selected,
+            "Playback restores only the regular episode while the OVA subtitles remain stored separately");
+        Check(library.CurrentFile(query, saved, saved.Files)?.LocalPath == selected,
+            "Reopening the complete local result still selects regular episode two");
+        Check(await download.DownloadAsync(query, result, null, [], null, default) == selected && handler.Count == 1,
+            "The corrected regular episode reuses the whole local package without another request");
+        Check(await download.DownloadAsync(query with { Season = 0 }, result, null, [], null, default) is { } special
+            && special.EndsWith(Path.Combine("充电娘", "OVA", "充电娘 OVA 02.ass"))
+            && special.StartsWith(library.SeasonDirectory(query.Title, 0) + Path.DirectorySeparatorChar) && handler.Count == 1,
+            "An explicit season-zero request selects the corresponding OVA from the same saved package");
+        Check(await download.DownloadAsync(query with { Season = 2 }, result, null, [], null, default) == null && handler.Count == 1,
+            "The saved regular and OVA package cannot supply the same episode number in another season");
+        Check(Directory.GetFiles(library.Root, "*.zip", SearchOption.AllDirectories).Length == 1
+            && File.Exists(library.ArchivePath(query, result)), "Regular and OVA shelves share one retained original archive");
+
+        string[] specialNames = ["Archive Fixture S00E02.ass", "S00/Archive Fixture 02.ass", "Archive Fixture OVA 02.ass",
+            "OVA/Archive Fixture 02.ass", "Archive Fixture OAD 02.ass", "Archive Fixture SP02.ass", "SP/Archive Fixture 02.ass",
+            "Archive Fixture Special 02.ass", "Special/Archive Fixture 02.ass", "特典/Archive Fixture 02.ass",
+            "充电娘OVA02.ass", "充电娘OAD02.ass", "充电娘SP02.ass"];
+        var fixtureQuery = new SubtitleQuery("Archive Fixture", 1, 2, "");
+        foreach (bool collection in new[] { false, true })
+        {
+            var fixtureResult = result with { Id = "explicit-special", Title = "Archive Fixture", Collection = collection, PackageNames = specialNames };
+            foreach (string name in specialNames)
+            {
+                Check(SubtitleLibrary.FileQuery(fixtureQuery, fixtureResult, name).Season == 0,
+                    "A special file or parent folder identifies season zero independently of the collection flag: " + name + "; collection=" + collection);
+                Check(library.CurrentFile(fixtureQuery, fixtureResult, [new(SubtitleSource.Assrt, fixtureResult.Id, 0, name, "")]) == null,
+                    "A marked special never substitutes the same-numbered regular episode: " + name + "; collection=" + collection);
+            }
+            const string secondSeason = "Archive Fixture S02E02.ass";
+            Check(SubtitleLibrary.FileQuery(fixtureQuery, fixtureResult, secondSeason).Season == 2
+                && library.CurrentFile(fixtureQuery, fixtureResult, [new(SubtitleSource.Assrt, fixtureResult.Id, 0, secondSeason, "")]) == null,
+                "An explicitly different regular season is also rejected independently of the collection flag");
+            foreach (string folder in new[] { "OVA", "S00" })
+            {
+                string conflict = folder + "/Archive Fixture S01E02.ass";
+                var file = new SubtitleFile(SubtitleSource.Assrt, fixtureResult.Id, 0, conflict, "");
+                Check(SubtitleLibrary.FileQuery(fixtureQuery, fixtureResult, conflict).Season == -1
+                    && library.CurrentFile(fixtureQuery, fixtureResult, [file]) == null
+                    && library.CurrentFile(fixtureQuery with { Season = 0 }, fixtureResult, [file]) == null,
+                    "A dedicated special folder conflicting with an explicit regular season remains unclassified: " + conflict + "; collection=" + collection);
+            }
+            const string sharedRoot = "TV+OVA/Archive Fixture S01E02.ass";
+            Check(fixtureQuery.MatchesFile(sharedRoot)
+                && SubtitleLibrary.FileQuery(fixtureQuery, fixtureResult, sharedRoot).Season == 1
+                && library.CurrentFile(fixtureQuery, fixtureResult, [new(SubtitleSource.Assrt, fixtureResult.Id, 0, sharedRoot, "")])?.Name == sharedRoot,
+                "A shared TV-and-OVA archive root does not override an explicitly regular leaf filename");
+            string[] sharedNames = ["TV+OVA/Archive Fixture/Archive Fixture 02.ass", "TV+OVA/Archive Fixture/OVA/Archive Fixture OVA 02.ass"];
+            var sharedResult = fixtureResult with { PackageNames = sharedNames };
+            var sharedFiles = sharedNames.Select(name => new SubtitleFile(SubtitleSource.Assrt, sharedResult.Id, 0, name, "")).ToArray();
+            Check(SubtitleLibrary.FileQuery(fixtureQuery, sharedResult, sharedNames[0]).Season == 1
+                && SubtitleLibrary.FileQuery(fixtureQuery, sharedResult, sharedNames[1]).Season == 0,
+                "A mixed wrapper retains an unmarked regular episode in season one and its dedicated OVA sibling in season zero; collection=" + collection);
+            Check(library.CurrentFile(fixtureQuery, sharedResult, sharedFiles)?.Name == sharedNames[0]
+                && library.CurrentFile(fixtureQuery with { Season = 0 }, sharedResult, sharedFiles)?.Name == sharedNames[1],
+                "Same-numbered regular and OVA files under a mixed wrapper select independently without requiring S01 in the regular filename; collection=" + collection);
+            const string onlySharedRegular = "TV+OVA/Archive Fixture 02.ass";
+            var sharedRegularResult = fixtureResult with { PackageNames = [onlySharedRegular] };
+            Check(SubtitleLibrary.FileQuery(fixtureQuery, sharedRegularResult, onlySharedRegular).Season == 1
+                && library.CurrentFile(fixtureQuery, sharedRegularResult, [new(SubtitleSource.Assrt, sharedRegularResult.Id, 0, onlySharedRegular, "")])?.Name == onlySharedRegular,
+                "A mixed wrapper containing only an unmarked regular file cannot turn it into a special; collection=" + collection);
+        }
+        foreach (string title in new[] { "Special A", "SPY", "Yumeiro Patissiere SP Professional" })
+        {
+            var ordinaryQuery = new SubtitleQuery(title, 1, 2, "");
+            string ordinaryFile = title + " S01E02.ass";
+            var ordinaryResult = result with { Id = "ordinary-title", Title = title };
+            Check(ordinaryQuery.MatchesEpisode(ordinaryFile) && ordinaryQuery.MatchesFile(ordinaryFile)
+                && SubtitleLibrary.FileQuery(ordinaryQuery, ordinaryResult, ordinaryFile).Season == 1
+                && library.CurrentFile(ordinaryQuery, ordinaryResult, [new(SubtitleSource.Assrt, ordinaryResult.Id, 0, ordinaryFile, "")])?.Name == ordinaryFile,
+                "An ordinary work title is not mistaken for a special-episode marker: " + title);
+        }
+        var episodeResult = result with { Title = "Archive Fixture", PackageNames = ["Archive Fixture 02.ass", "OVA/Archive Fixture 13.ass"] };
+        Check(episodeResult.EpisodesFor(1).SequenceEqual([2]) && episodeResult.EpisodesFor(0).SequenceEqual([13])
+            && episodeResult.EpisodesFor(null).SequenceEqual([2, 13]),
+            "A special-only episode number is offered in season zero and All, never in the regular-season episode filter");
+        Check(SubtitleLibrary.FileQuery(query, result, "充电娘/充电娘 02.ass").Season == 1,
+            "An unmarked regular file in a non-collection archive retains the known current season without requiring a title alias");
+        Check(SubtitleLibrary.FileQuery(query with { Season = 0 }, result, "充电娘/充电娘 02.ass").Season == -1,
+            "A season-zero request cannot relabel an unmarked regular episode from a regular-season package as a special");
+
+        var onlyLibrary = new SubtitleLibrary(Store("only-specials").Root);
+        var onlyHandler = new Handler((_, _) => new(HttpStatusCode.OK) { Content = new ByteArrayContent(Zip(["OVA/Archive Fixture 02.ass"])) });
+        using var onlyHttp = new HttpClient(onlyHandler);
+        var onlyResult = result with { Id = "only-specials", Title = "Archive Fixture", DownloadName = "only-specials.zip" };
+        var onlyDownload = new SubtitleDownload(onlyHttp, onlyLibrary);
+        Check(await onlyDownload.DownloadAsync(fixtureQuery, onlyResult, null, [], null, default) == null,
+            "Downloading a special-only archive while playing a regular episode saves it without loading the OVA");
+        var onlySaved = onlyLibrary.Results(fixtureQuery.Title).Single();
+        Check(onlySaved.Files.Single().Season == 0
+            && onlyLibrary.CurrentFile(fixtureQuery, onlySaved, onlySaved.Files) == null
+            && onlyLibrary.Tracks(MpvNet.Windows.Trakt.TraktMedia.Parse("Archive Fixture S01E02", "", new Dictionary<string, string>())).Count == 0,
+            "Reopening a special-only local result cannot load it into the regular episode or subtitle menu");
+        Check(await onlyDownload.DownloadAsync(fixtureQuery, onlyResult, null, [], null, default) == null && onlyHandler.Count == 1,
+            "Repeated selection of the saved special-only archive keeps the regular episode empty without redownloading");
+    }
+    static async Task IndividualSpecialChecks()
+    {
+        static string Ass(string title) => "[Script Info]\nTitle: " + title
+            + "\nScriptType: v4.00+\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
+            + "Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,fixture\n";
+        var query = new SubtitleQuery("Archive Fixture", 1, 2, "");
+        foreach (var source in new[] { SubtitleSource.Amenzb, SubtitleSource.Tsukihime })
+        {
+            var result = new SubtitleResult(source, "individual-special", "Archive Fixture S01E02", "中文", "", [])
+            {
+                Individual = true, Season = 1, Episode = 2, DownloadName = "Archive Fixture S01E02.ass",
+                DownloadUrl = "https://download.example/individual.ass"
+            };
+            foreach (var mismatch in new[]
+            {
+                result with { DownloadName = "Archive Fixture OVA02.ass" },
+                result with { DownloadName = "Archive Fixture OVA02.ass.xz" },
+                result with { Title = "Archive Fixture OVA02" }
+            })
+            {
+                var library = new SubtitleLibrary(Path.Combine(Root, source + "-special-metadata-" + Guid.NewGuid().ToString("N")));
+                var handler = new Handler((_, _) => new(HttpStatusCode.OK) { Content = new StringContent(Ass("Archive Fixture S01E02")) });
+                using var http = new HttpClient(handler);
+                await Fails(() => new SubtitleDownload(http, library).DownloadAsync(query, mismatch, null, [], null, default), "季集信息不一致");
+                Check(handler.Count == 0 && library.Results(query.Title).Count == 0 && Directory.GetFiles(library.Root, "*", SearchOption.AllDirectories).Length == 0,
+                    source + " rejects a special marker contradicting the regular metadata before requesting or saving any subtitle: " + mismatch.Title + "; " + mismatch.DownloadName);
+            }
+            foreach (string title in new[] { "Archive Fixture OVA02", "Archive Fixture OAD02", "Archive Fixture SP02", "Archive Fixture S00E02" })
+            {
+                var library = new SubtitleLibrary(Path.Combine(Root, source + "-special-content-" + Guid.NewGuid().ToString("N")));
+                var handler = new Handler((_, _) => new(HttpStatusCode.OK) { Content = new StringContent(Ass(title)) });
+                using var http = new HttpClient(handler);
+                await Fails(() => new SubtitleDownload(http, library).DownloadAsync(query, result, null, [], null, default), "季集信息不一致");
+                Check(handler.Count == 1 && library.Results(query.Title).Count == 0 && Directory.GetFiles(library.Root, "*", SearchOption.AllDirectories).Length == 0,
+                    source + " rejects an ASS special title after one download without saving or exposing the mismatched regular episode: " + title);
+            }
+
+            var specialLibrary = new SubtitleLibrary(Path.Combine(Root, source + "-correct-special"));
+            var specialHandler = new Handler((_, _) => new(HttpStatusCode.OK) { Content = new StringContent(Ass("Archive Fixture S00E02")) });
+            using var specialHttp = new HttpClient(specialHandler);
+            var specialDownload = new SubtitleDownload(specialHttp, specialLibrary);
+            var specialResult = result with { Season = 0, Title = "Archive Fixture S00E02", DownloadName = "Archive Fixture S00E02.ass" };
+            var specialQuery = query with { Season = 0 };
+            string? selected = await specialDownload.DownloadAsync(specialQuery, specialResult, null, [], null, default);
+            Check(selected != null && selected.StartsWith(specialLibrary.SeasonDirectory(query.Title, 0) + Path.DirectorySeparatorChar)
+                && specialHandler.Count == 1, source + " downloads a correctly identified season-zero episode into its special shelf");
+            Check(await specialDownload.DownloadAsync(query, specialResult, null, [], null, default) == null && specialHandler.Count == 1
+                && await specialDownload.DownloadAsync(specialQuery, specialResult, null, [], null, default) == selected,
+                source + " reuses the correct special locally only for season zero and cannot load it into the same-numbered regular episode");
+            var local = specialLibrary.Results(query.Title).Single();
+            Check(specialLibrary.CurrentFile(query, local, local.Files) == null
+                && specialLibrary.CurrentFile(specialQuery, local, local.Files)?.LocalPath == selected,
+                source + " retains special-only selection when reopening its saved local result");
+
+            var attachedLibrary = new SubtitleLibrary(Path.Combine(Root, source + "-attached-ova"));
+            const string attachedTitle = "Archive Fixture Season 1 OVA 02";
+            var attachedHandler = new Handler((_, _) => new(HttpStatusCode.OK) { Content = new StringContent(Ass(attachedTitle)) });
+            using var attachedHttp = new HttpClient(attachedHandler);
+            var attachedDownload = new SubtitleDownload(attachedHttp, attachedLibrary);
+            var attachedResult = specialResult with { Id = "attached-ova", Title = attachedTitle };
+            string? attached = await attachedDownload.DownloadAsync(specialQuery, attachedResult, null, [], null, default);
+            Check(attached != null && attachedHandler.Count == 1,
+                source + " accepts a season-zero OVA whose release and ASS title identify the regular season it accompanies");
+            Check(await attachedDownload.DownloadAsync(query, attachedResult, null, [], null, default) == null && attachedHandler.Count == 1,
+                source + " never loads an accompanying Season 1 OVA title into the regular season-one episode");
+
+            var reverseLibrary = new SubtitleLibrary(Path.Combine(Root, source + "-regular-content-in-special"));
+            var reverseHandler = new Handler((_, _) => new(HttpStatusCode.OK) { Content = new StringContent(Ass("Archive Fixture S01E02")) });
+            using var reverseHttp = new HttpClient(reverseHandler);
+            await Fails(() => new SubtitleDownload(reverseHttp, reverseLibrary).DownloadAsync(specialQuery, specialResult, null, [], null, default), "季集信息不一致");
+            Check(reverseHandler.Count == 1 && reverseLibrary.Results(query.Title).Count == 0
+                && Directory.GetFiles(reverseLibrary.Root, "*", SearchOption.AllDirectories).Length == 0,
+                source + " rejects explicitly regular ASS content labelled as season zero without saving or loading it");
+
+            var rangeLibrary = new SubtitleLibrary(Path.Combine(Root, source + "-range-title"));
+            var rangeHandler = new Handler((_, _) => new(HttpStatusCode.OK) { Content = new StringContent(Ass("Archive Fixture S01E02")) });
+            using var rangeHttp = new HttpClient(rangeHandler);
+            var rangeResult = result with { Title = "Archive Fixture S01E01-E04", DownloadName = "track.ass" };
+            string? rangePath = await new SubtitleDownload(rangeHttp, rangeLibrary).DownloadAsync(query, rangeResult, null, [], null, default);
+            Check(rangePath != null && rangeHandler.Count == 1 && rangeLibrary.Results(query.Title).Single().Files.Single().Episode == 2,
+                source + " accepts an independently identified episode two from a multi-episode release title with a generic attachment filename");
+        }
+    }
+    static async Task ContentCoordinatesChecks()
+    {
+        static MpvNet.Windows.Trakt.TraktMedia Media(string title) => MpvNet.Windows.Trakt.TraktMedia.Parse(title, "", new Dictionary<string, string>());
+        var media = Media("Content Fixture (2007) S00E02 - OVA 1 「Scenery」");
+        var query = new SubtitleQuery(media.Title, media.Season, media.Episode, "").WithPlayback(media);
+        Check(media.DisplayTitle == "Content Fixture (2007) S00E02 - OVA 1 「Scenery」" && media.Episode == 2
+            && query.Episode == 2 && query.ContentType == "OVA" && query.ContentEpisode == 1,
+            "Subtitle content coordinates retain OVA one separately from the player's second special and preserve the original display title");
+        const string ovaOne = "[Group] Content Fixture OVA [01].ass";
+        Check(query.MatchesContent(ovaOne, 0, 1), "An OVA-one title matches the content number rather than the global S00E02 playback position");
+        foreach (string name in new[] { "[Group] Content Fixture SP [01].ass", "[Group] Content Fixture PV [01].ass",
+            "[Group] Content Fixture NCED [01].ass", "[Group] Content Fixture OVA [02].ass" })
+            Check(!query.MatchesContent(name, 0), "A distinct extra type or content number cannot substitute OVA one: " + name);
+        Check(query.MatchesContent("Content Fixture S00E02.ass", 0, 2)
+            && !query.MatchesContent("Content Fixture S00E01.ass", 0, 1),
+            "Explicit S00E filenames keep the player's global special numbering even when its episode title has an independent OVA number");
+        var regular = new SubtitleQuery(media.Title, 1, 2, "").WithPlayback(Media("Content Fixture S01E02"));
+        foreach (string type in new[] { "OVA", "OAD", "SP", "PV", "NCED", "NCOP" })
+            Check(!regular.MatchesContent($"[Group] Content Fixture {type} [02].ass"),
+                "A regular episode rejects the same numbered extra by native content classification: " + type);
+        Check(regular.MatchesContent("[Group] Content Fixture [02].ass", 1, 2), "A regular episode still accepts its unmarked ordinary subtitle");
+        var sp = new SubtitleQuery(media.Title, 0, 2, "").WithPlayback(Media("Content Fixture S00E02 - SP 1"));
+        Check(sp.ContentType == "SP" && sp.ContentEpisode == 1 && sp.MatchesContent("Content Fixture SP01.ass", 0, 1)
+            && !sp.MatchesContent(ovaOne, 0, 1), "Special-one and OVA-one content coordinates stay distinct in both directions");
+        var folderLibrary = new SubtitleLibrary(Path.Combine(Root, "folder-only-types"));
+        var folderResult = new SubtitleResult(SubtitleSource.Assrt, "folder-types", "Content Fixture", "", "", [])
+            { Collection = true, PackageNames = ["OVA/Content Fixture 01.ass", "SP/Content Fixture 01.ass"] };
+        foreach (string name in folderResult.PackageNames)
+        {
+            var file = new SubtitleFile(SubtitleSource.Assrt, folderResult.Id, 0, name, "");
+            string path = folderLibrary.FilePath(query, folderResult, name);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, "[Script Info]\n[Events]\n");
+            folderLibrary.Save(query, folderResult, file, path, true);
+        }
+        Check(folderLibrary.Tracks(Media("Content Fixture S00E01")).Count == 0
+            && folderLibrary.Tracks(Media("Content Fixture S00E02 - OVA 1")).Single().Path.Contains("\\OVA\\", StringComparison.Ordinal),
+            "Reopening preserves directory-only OVA and SP evidence, refusing ambiguous same-numbered extras until the content type is known");
+
+        const string root = "[VCB-Studio] Ichigo Mashimaro [Ma10p_720p]/";
+        const string suffix = "[Ma10p_720p][x265_flac].caso_sc.ass";
+        string[] names = new[] { root + "SPs/[VCB-Studio] Ichigo Mashimaro [NCED01][Ma10p_720p][x265_flac].ass",
+                root + "SPs/[VCB-Studio] Ichigo Mashimaro [PV01][Ma10p_720p][x265_flac].ass" }
+            .Concat(Enumerable.Range(2, 5).Select(number => root + $"SPs/[VCB-Studio] Ichigo Mashimaro [PV{number:00}]" + suffix))
+            .Append(root + "SPs/[VCB-Studio] Ichigo Mashimaro [SP01][Ma10p_720p][x265_flac].ass")
+            .Concat(Enumerable.Range(1, 2).Select(number => root + $"[VCB-Studio] Ichigo Mashimaro encore [{number:00}]" + suffix))
+            .Append(root + "[VCB-Studio] Ichigo Mashimaro OVA [01][Ma10p_720p][x265_flac_aac].caso_cv_sc.ass")
+            .Concat(Enumerable.Range(1, 3).Select(number => root + $"[VCB-Studio] Ichigo Mashimaro OVA [{number:00}][Ma10p_720p][x265_flac_aac].caso_sc.ass"))
+            .Concat(Enumerable.Range(1, 12).Select(number => root + $"[VCB-Studio] Ichigo Mashimaro [{number:00}]" + suffix)).ToArray();
+        var archiveMedia = Media("草莓棉花糖 (2007) S00E02 - OVA 1 「景色。」");
+        var work = new SubtitleWork(archiveMedia, ["草莓棉花糖", "Ichigo Mashimaro", "苺ましまろ"], null);
+        var result = new SubtitleResult(SubtitleSource.Assrt, "typed-collection", "草莓棉花糖 / Ichigo Mashimaro [TV+OVAs Fin]", "中文", "", [])
+        {
+            Season = 1, PackageNames = names, DownloadName = "typed-collection.zip", DownloadUrl = "https://download.example/typed-collection.zip"
+        };
+        var mapping = work.ForDownload(new("草莓棉花糖", null, null, ""), result);
+        Check(mapping.Current && mapping.Query.Season == 0 && mapping.Query.Episode == 2
+            && mapping.Query.ContentType == "OVA" && mapping.Query.ContentEpisode == 1,
+            "A mixed archive's season-one label cannot replace current special playback coordinates or clear its OVA-one content identity");
+        var library = new SubtitleLibrary(Path.Combine(Root, "typed-collection"));
+        var handler = new Handler((_, _) => new(HttpStatusCode.OK) { Content = new ByteArrayContent(Zip(names)) });
+        using var http = new HttpClient(handler);
+        var download = new SubtitleDownload(http, library);
+        string? selected = await download.DownloadAsync(mapping.Query, result, null, [], null, default);
+        Check(selected != null && selected.Contains("Ichigo Mashimaro OVA [01]", StringComparison.Ordinal),
+            "The reported archive selects OVA one rather than PV, SP, NCED, OVA two or the ordinary second episode");
+        var local = library.Results(archiveMedia.Title).Single();
+        Check(local.Files.Count == 26 && local.Files.Where(file => file.Name.Contains(" encore ", StringComparison.Ordinal)).All(file => file.Season == -1),
+            "A multi-title archive retains all files while the distinct encore title remains unclassified rather than joining regular episodes");
+        Check(local.Files.Count(file => file.Season == 0) == 12 && local.Files.Count(file => file.Season == 1) == 12,
+            "OVA, SP, PV and NCED native types enter the special shelf while ordinary episodes retain season one");
+        library.Remember(archiveMedia.Title, 0, selected!);
+        var reopened = new SubtitleLibrary(library.Root);
+        var reopenedLocal = reopened.Results(archiveMedia.Title).Single();
+        Check(reopened.CurrentFile(mapping.Query, reopenedLocal, reopenedLocal.Files)?.LocalPath is { } restored
+            && restored.Contains("Ichigo Mashimaro OVA [01]", StringComparison.Ordinal),
+            "Reopening the saved local archive restores OVA-one matching independently of the player's S00E02 numbering");
+        var tracks = reopened.Tracks(archiveMedia);
+        Check(tracks.Count == 2 && tracks.All(track => track.Path.Contains("Ichigo Mashimaro OVA [01]", StringComparison.Ordinal))
+            && tracks.Any(track => track.Preferred), "The restarted subtitle menu exposes only the two actual OVA-one variants and preserves the remembered selection");
+        var regularTracks = reopened.Tracks(Media("草莓棉花糖 S01E02"));
+        Check(regularTracks.Count == 1 && regularTracks[0].Path.Contains("Ichigo Mashimaro [02]", StringComparison.Ordinal)
+            && !regularTracks[0].Path.Contains(" encore ", StringComparison.Ordinal),
+            "Reopening ordinary episode two cannot include encore, OVA or another extra with the same numeric suffix");
+        Check(await download.DownloadAsync(mapping.Query, result, null, [], null, default) is { } reused
+            && reused.Contains("Ichigo Mashimaro OVA [01]", StringComparison.Ordinal) && handler.Count == 1,
+            "The complete typed archive reuses one retained package without another download");
+
+        foreach (var source in new[] { SubtitleSource.Amenzb, SubtitleSource.Tsukihime })
+        {
+            var individualLibrary = new SubtitleLibrary(Path.Combine(Root, source + "-content-coordinate"));
+            var individualHandler = new Handler((_, _) => new(HttpStatusCode.OK)
+            {
+                Content = new StringContent("[Script Info]\nTitle: Content Fixture OVA 01\n[Events]\n")
+            });
+            using var individualHttp = new HttpClient(individualHandler);
+            var individualDownload = new SubtitleDownload(individualHttp, individualLibrary);
+            var individual = new SubtitleResult(source, "content-ova", "Content Fixture OVA 01", "中文", "", [])
+            {
+                Individual = true, Season = 0, Episode = 1, DownloadName = "Content Fixture OVA 01.ass",
+                DownloadUrl = "https://download.example/content-ova.ass"
+            };
+            string? path = await individualDownload.DownloadAsync(query, individual, null, [], null, default);
+            Check(path != null && individualHandler.Count == 1,
+                source + " loads a single extracted OVA-one file for a current S00E02 whose episode title explicitly identifies OVA one");
+            var individualLocal = new SubtitleLibrary(individualLibrary.Root).Results(media.Title).Single();
+            Check(individualLocal.Files.Single().Episode == 1
+                && individualLibrary.CurrentFile(query, individualLocal, individualLocal.Files)?.LocalPath == path
+                && individualLibrary.Tracks(media).Single().Path == path,
+                source + " retains actual OVA-one coordinates in storage and restores it through local result and subtitle-menu selection");
+            var other = new SubtitleQuery(media.Title, 0, 3, "").WithPlayback(Media("Content Fixture S00E03 - OVA 2"));
+            Check(await individualDownload.DownloadAsync(other, individual, null, [], null, default) == null
+                && individualLibrary.Tracks(Media("Content Fixture S01E01")).Count == 0 && individualHandler.Count == 1,
+                source + " reuses saved bytes without substituting OVA one for OVA two or regular episode one");
+        }
+    }
+    static string RepositoryRoot()
+    {
+        foreach (string start in new[] { AppContext.BaseDirectory, Directory.GetCurrentDirectory() })
+            for (var directory = new DirectoryInfo(start); directory != null; directory = directory.Parent)
+                if (File.Exists(Path.Combine(directory.FullName, "release.json"))) return directory.FullName;
+        throw new InvalidOperationException("Repository source is required.");
+    }
     static async Task Main(string[] args)
     {
         try
         {
+            _checks += await SubtitlePreferenceChecks.RunAsync(Root);
+            _checks += SubtitleSetRemovalChecks.Run(Root);
+            if (args.Contains("--library-set-only"))
+            {
+                LibraryChecks();
+                Console.WriteLine($"Subtitle set and preference checks passed: {_checks}; isolated local files only.");
+                return;
+            }
+            _checks += await SubtitleSearchCrashChecks.RunAsync(RepositoryRoot(), Root);
+            if (args.Contains("--search-crash-only")) { Console.WriteLine($"Subtitle search crash checks passed: {_checks}; public fixture, no desktop interaction or network access."); return; }
+            _checks += await SubtitleFileDownloadChecks.RunAsync(Root);
+            if (args.Contains("--file-download-only")) { Console.WriteLine($"Subtitle file download checks passed: {_checks}; isolated mock downloads only."); return; }
+            await ContentCoordinatesChecks();
+            if (args.Contains("--content-coordinates-only")) { Console.WriteLine($"Subtitle content coordinate checks passed: {_checks}; isolated mock archives only."); return; }
+            await SpecialArchiveChecks();
+            await IndividualSpecialChecks();
+            if (args.Contains("--special-archive-only")) { Console.WriteLine($"Special archive subtitle checks passed: {_checks}; isolated mock downloads only."); return; }
             await MovieDownloadChecks();
             if (args.Contains("--movie-download-only")) { Console.WriteLine($"Movie subtitle download checks passed: {_checks}; isolated mock downloads only."); return; }
             LibraryChecks();
@@ -378,9 +728,7 @@ static class Program
                 Check(languageHandler.Count == 1, "Language filters never issue an additional service request");
             }
             Check(directLibrary.FilePath(directQuery,directResult,"episode.srt").StartsWith(Path.Combine(rootStore.Root,"Root fixture","第 1 季")),"Work and season folders are direct children of the configured subtitle root");
-            var repository = new DirectoryInfo(AppContext.BaseDirectory);
-            while (repository != null && !File.Exists(Path.Combine(repository.FullName, "release.json"))) repository = repository.Parent;
-            var templatePath=Path.Combine(repository?.FullName ?? throw new InvalidOperationException("Repository source is required."),
+            var templatePath=Path.Combine(RepositoryRoot(),
                 "src/player/src/MpvNet.Windows/WPF/SubtitleSearchWindow.xaml");
             var template=System.Xml.Linq.XDocument.Load(templatePath);
             var runs=template.Descendants().Where(e=>e.Name.LocalName=="Run" && (string?)e.Attribute("Text") is string t && t.StartsWith("{Binding"));
@@ -395,12 +743,18 @@ static class Program
             Check(template.Descendants().Single(e=>(string?)e.Attribute("Text")=="{Binding Details}").Attribute("TextWrapping")==null,
                 "Language, date and size stay on one metadata line");
             Check(!template.ToString().Contains("提供字幕"), "Footer source hint removed");
-            Check(template.Descendants().Count(e => e.Name.LocalName == "ListBox" && !e.Attributes().Any(a => a.Name.LocalName == "Name" && a.Value == "AliasesList")) == 1
-                && !template.ToString().Contains("FilesList") && !template.ToString().Contains("BackButton"), "Search results are the only selection level; no clickable episode files or back step");
-            Check(!template.ToString().Contains("LoadButton") && !template.ToString().Contains("下载并加载"), "No separate download button remains");
+            Check(template.Descendants().Count(e => e.Name.LocalName == "ListBox" && !e.Attributes().Any(a => a.Name.LocalName == "Name" && a.Value == "AliasesList")) == 2
+                && template.Descendants().Any(e => e.Attributes().Any(a => a.Name.LocalName == "Name" && a.Value == "FilesList"))
+                && template.Descendants().Any(e => (string?)e.Attribute("Click") == "Back_Click"),
+                "Search results lead to a separate file list with a return action");
+            Check(template.Descendants().Count(e => (string?)e.Attribute("Content") == "下载全部"
+                && (string?)e.Attribute("Click") == "DownloadAll_Click") == 1
+                && !template.ToString().Contains("下载并加载"), "The file page has one concise download-all action");
             string windowCode=File.ReadAllText(templatePath+".cs");
-            Check(template.ToString().Contains("PreviewMouseLeftButtonUp=\"Result_Click\"") && windowCode.Contains("await LoadAsync(result)")
-                && !windowCode.Contains("Result_Changed") && !windowCode.Contains("FilesList"), "Explicit result click downloads directly; automatic selection never downloads");
+            Check(template.ToString().Contains("PreviewMouseLeftButtonUp=\"Result_Click\"")
+                && template.ToString().Contains("PreviewMouseLeftButtonUp=\"File_Click\"")
+                && windowCode.Contains("await OpenFilesAsync(result)") && !windowCode.Contains("Result_Changed"),
+                "Explicit result selection opens files and explicit file selection downloads; automatic result selection never downloads");
             Check(windowCode.Contains("if (_closed) return") && windowCode.IndexOf("        Close();",windowCode.IndexOf("async Task LoadAsync",StringComparison.Ordinal),StringComparison.Ordinal)
                 <windowCode.IndexOf("await SubtitlePlayback.Current.DownloadAsync",StringComparison.Ordinal),"The search window closes before playback owns the download");
             Check(!windowCode.Contains("_download.DownloadAsync")&&!windowCode.Contains("NewRequest()"),"Window lifetime no longer owns or cancels the selected download");
@@ -676,7 +1030,10 @@ static class Program
             using(var detailHttp=new HttpClient(detailHandler))
             {
                 var detail=await new AssrtClient(detailHttp,detailStore).DetailAsync(new(SubtitleSource.Assrt,"7","Fixture","中文","",[]),default);
-                Check(detail.DownloadName=="season.rar"&&detail.DownloadUrl.EndsWith("/season.rar")&&detail.Files.Count==0,"Detail retains only the original package download, not episode URLs");
+                Check(detail.DownloadName=="season.rar"&&detail.DownloadUrl.EndsWith("/season.rar")
+                    &&detail.Files.Count==1&&detail.Files[0].Name=="single.ass"
+                    &&detail.Files[0].Url.EndsWith("/onthefly/single.ass"),
+                    "Detail retains the original package and its individually downloadable subtitle files");
                 Check(detail.Title=="作品/[字幕组]合集"&&detail.Format=="ASS"&&detail.Details=="简繁 · 2016-06-13 · 2 MB","Detail uses the same full title and compact metadata as search");
             }
             var wholeLibrary=new SubtitleLibrary(wholeStore.Root);

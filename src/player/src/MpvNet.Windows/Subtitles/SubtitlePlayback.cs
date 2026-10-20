@@ -17,6 +17,7 @@ public sealed class SubtitlePlayback(SubtitleLibrary library)
     string _path = "";
     TraktMedia _media = TraktMedia.Parse("", "", new Dictionary<string, string>());
     CancellationTokenSource? _download;
+    TaskCompletionSource? _downloadFinished;
     int _generation;
     CancellationTokenSource _metadataLifetime = new();
     readonly HashSet<string> _metadataRequested = [];
@@ -93,7 +94,7 @@ public sealed class SubtitlePlayback(SubtitleLibrary library)
                         if (!path.Equals(track.Path, StringComparison.OrdinalIgnoreCase))
                             Player.CommandV("sub-add", path, wasSelected ? "cached" : "auto", Path.GetFileName(path));
                         bool available = LocalTracks().Any(item => item.Path.Equals(path, StringComparison.OrdinalIgnoreCase));
-                        bool selected = Player.GetPropertyString("current-tracks/sub/external-filename").Equals(path, StringComparison.OrdinalIgnoreCase);
+                        bool selected = Player.GetPropertyString("current-tracks/sub/external-filename", handleError: false).Equals(path, StringComparison.OrdinalIgnoreCase);
                         foreach (var imported in LocalTracks().Where(item => item.Path.Equals(path, StringComparison.OrdinalIgnoreCase)))
                             _knownTracks.Add(TrackKey(imported));
                         if (available && (!wasSelected || selected))
@@ -212,23 +213,27 @@ public sealed class SubtitlePlayback(SubtitleLibrary library)
             Player.CommandV("show-text", message, finished ? "5000" : "600000");
         }
     }
-    public async Task DownloadAsync(SubtitleQuery query, SubtitleResult result, SubtitleStore store, SubtitleTitles titles)
+    public async Task DownloadAsync(SubtitleQuery query, SubtitleResult result, SubtitleStore store, SubtitleTitles titles,
+        SubtitleFile? selectedFile = null)
     {
         CancellationTokenSource request;
+        TaskCompletionSource finished;
         int generation;
         lock (_lock)
         {
             CancelDownload();
             request = _download = new(); generation = _generation;
+            finished = _downloadFinished = new(TaskCreationOptions.RunContinuationsAsynchronously);
         }
         using var api = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, AutomaticDecompression = System.Net.DecompressionMethods.All }) { Timeout = TimeSpan.FromSeconds(20) };
         using var filesClient = new HttpClient(new HttpClientHandler { AutomaticDecompression = System.Net.DecompressionMethods.All }) { Timeout = TimeSpan.FromSeconds(60) };
         try
         {
             MpvNet.Diagnostics.Write("subtitle.playback", "start", new { generation, source = result.Source.ToString(),
-                result.Id, result.Local, result.Individual, query.RequestSeason, query.RequestEpisode, query.Language });
-            Notice(generation, result.Local ? "正在加载字幕…" : result.Individual ? "正在获取字幕…" : "正在获取字幕包…");
-            if (!result.Local)
+                result.Id, result.Local, result.Individual, single = selectedFile != null,
+                query.RequestSeason, query.RequestEpisode, query.Language });
+            Notice(generation, result.Local ? "正在加载字幕…" : selectedFile != null || result.Individual ? "正在获取字幕…" : "正在获取字幕包…");
+            if (!result.Local && result.Files.Count == 0 && result.DownloadUrl.Length == 0)
             {
                 ISubtitleClient source = result.Source switch
                 {
@@ -242,7 +247,12 @@ public sealed class SubtitlePlayback(SubtitleLibrary library)
             request.Token.ThrowIfCancellationRequested();
             bool current;
             (query, current) = titles.CurrentWork().ForDownload(query, result);
-            var selected = Library.CurrentFile(query, result, result.Files);
+            MpvNet.Diagnostics.Write("subtitle.playback", "match", new { generation, current, query.Season, query.Episode,
+                query.ContentType, query.ContentEpisode, sourceSeason = result.Season, sourceEpisode = result.Episode,
+                result.Collection, result.Individual });
+            if (selectedFile != null && (selectedFile.Source != result.Source || selectedFile.ResultId != result.Id))
+                throw new SubtitleServiceException("字幕文件无效。");
+            var selected = selectedFile ?? (result.Local ? Library.CurrentFile(query, result, result.Files) : null);
             if (selected == null && result.Local)
                 throw new SubtitleServiceException("没有当前集的字幕。");
             var progress = new DownloadProgress(this, generation);
@@ -253,7 +263,8 @@ public sealed class SubtitlePlayback(SubtitleLibrary library)
             lock (_lock)
             {
                 MpvNet.Diagnostics.Write("subtitle.playback", "saved", new { generation, current, matched = path != null });
-                if (!_loaded || generation != _generation)
+                if (!_loaded || generation != _generation || Player.GetPropertyString("path") != _path
+                    || Player.GetPropertyString("media-title") != _title)
                 { MpvNet.Diagnostics.Write("subtitle.playback", "stale", new { generation }); return; }
                 if (path == null || !current) { Notice(generation, result.Individual ? "字幕已保存" : "字幕包已保存", true); return; }
                 Select(path);
@@ -271,8 +282,13 @@ public sealed class SubtitlePlayback(SubtitleLibrary library)
         }
         finally
         {
-            lock (_lock) if (_download == request) _download = null;
+            lock (_lock)
+            {
+                if (_download == request) _download = null;
+                if (_downloadFinished == finished) _downloadFinished = null;
+            }
             request.Dispose();
+            finished.TrySetResult();
         }
     }
     public void Select(string path)
@@ -283,32 +299,52 @@ public sealed class SubtitlePlayback(SubtitleLibrary library)
             Apply(path);
         }
     }
-    public sealed record Removal(string Title, string Path, int Generation)
-    { public string FileName => System.IO.Path.GetFileName(Path); }
+    public sealed record Removal(string Title, string Path, string Name, int Generation);
     public Removal? PrepareRemoval(string id)
     {
         lock (_lock)
         {
             if (!_loaded || Player.GetPropertyString("path") != _path || id == Player.GetPropertyString("secondary-sid")) return null;
             var track = LocalTracks().FirstOrDefault(track => track.Id == id);
-            return track != null && Library.Tracks(_media).Any(saved => saved.Path.Equals(track.Path, StringComparison.OrdinalIgnoreCase))
-                ? new(_media.Title, track.Path, _generation) : null;
+            var package = track == null ? null : Library.Results(_media.Title)
+                .FirstOrDefault(package => package.Files.Any(file => file.LocalPath.Equals(track.Path, StringComparison.OrdinalIgnoreCase)));
+            return track != null && package != null
+                && Library.Tracks(_media).Any(saved => saved.Path.Equals(track.Path, StringComparison.OrdinalIgnoreCase))
+                ? new(_media.Title, track.Path, package.Title, _generation) : null;
         }
     }
-    public bool Remove(Removal removal, bool deleteLocal)
+    public async Task<bool> RemoveAsync(Removal removal, bool deleteLocal)
     {
+        Task pending;
+        int generation;
         lock (_lock)
         {
             if (!_loaded || Player.GetPropertyString("path") != _path || removal.Generation != _generation || removal.Title != _media.Title) return false;
+            pending = _downloadFinished?.Task ?? Task.CompletedTask;
+            CancelDownload();
+            generation = _generation;
+        }
+        // Finish cancellation before removing the set, so an in-flight archive
+        // cannot restore files or records after the deletion has completed.
+        await pending.ConfigureAwait(false);
+        lock (_lock)
+        {
+            bool Current() => _loaded && generation == _generation && removal.Title == _media.Title
+                && Player.GetPropertyString("path") == _path && Player.GetPropertyString("media-title") == _title;
+            if (!Current()) return false;
             var paths = Library.Remove(removal.Title, removal.Path, deleteLocal).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (!Current()) return true;
             _applying = true;
             try
             {
                 foreach (var track in LocalTracks())
+                {
+                    if (!Current()) return true;
                     if (paths.Contains(track.Path) && track.Id != Player.GetPropertyString("secondary-sid")) Player.CommandV("sub-remove", track.Id);
+                }
             }
-            finally { KnowTracks(); _applying = false; }
-            UpdateMetadata();
+            finally { if (Current()) KnowTracks(); _applying = false; }
+            if (Current()) UpdateMetadata();
             return true;
         }
     }
@@ -331,7 +367,7 @@ public sealed class SubtitlePlayback(SubtitleLibrary library)
         {
             var tracks = Library.Tracks(_media);
             string selection = Player.GetPropertyString("sid");
-            string external = Player.GetPropertyString("current-tracks/sub/external-filename");
+            string external = Player.GetPropertyString("current-tracks/sub/external-filename", handleError: false);
             // Preserve explicit playback options. A same-name subtitle discovered
             // by mpv's sub-auto must not override the remembered library choice.
             bool supplied = Player.GetPropertyString("options/sub-files").Length > 0
@@ -359,7 +395,7 @@ public sealed class SubtitlePlayback(SubtitleLibrary library)
         lock (_lock)
         {
             if (!_loaded || _applying) return;
-            string path = Player.GetPropertyString("current-tracks/sub/external-filename");
+            string path = Player.GetPropertyString("current-tracks/sub/external-filename", handleError: false);
             if (!path.StartsWith(Library.Root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) return;
             try { Library.Remember(_media.Title, _media.Kind == "show" ? _media.Season : null, path); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Terminal.WriteError(error); }

@@ -13,6 +13,9 @@ public static class Terminal
     {
 #if ANIMEFUSION_DIAGNOSTICS
         Diagnostics.Write("terminal", module, obj is Exception ? null : new { text = obj + "" }, obj as Exception);
+        if (!App.IsTerminalAttached && !App.DebugMode)
+            return;
+
         string text = obj is Exception error ? error.GetType().Name : Diagnostics.Sanitize(obj + "");
 
         if (text == "")

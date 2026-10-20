@@ -117,7 +117,7 @@ namespace AnitomySharp
       {
         var foundIdx = !isBracketOpen ? FindFirstBracket(i, _filename.Length) : _filename.IndexOf(matchingBracket, i, StringComparison.Ordinal);
 
-        var range = new TokenRange(i, foundIdx == -1 ? _filename.Length : foundIdx - i);
+        var range = new TokenRange(i, (foundIdx == -1 ? _filename.Length : foundIdx) - i);
         if (range.Size > 0)
         {
           // Check if our range contains any known anime identifiers
@@ -277,7 +277,7 @@ namespace AnitomySharp
             continue;
           }
 
-          if (IsSingleCharacterToken(nextToken))
+          if (IsUnknownToken(prevToken) && IsSingleCharacterToken(nextToken))
           {
             AppendTokenTo(token, _tokens[prevToken]);
             AppendTokenTo(_tokens[nextToken], _tokens[prevToken]);

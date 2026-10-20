@@ -6,6 +6,7 @@ namespace MpvNet.Windows.Trakt;
 
 public sealed record TraktMedia(BangumiMedia Parsed, IReadOnlyDictionary<string, string> Ids)
 {
+    public string DisplayTitle { get; init; } = "";
     public string Title => Parsed.Title;
     public int Season => Parsed.Season;
     public int? Episode => Parsed.EpisodeNumber is double n && n == Math.Floor(n) && n >= 0 && n <= int.MaxValue ? (int)n : null;
@@ -24,7 +25,7 @@ public sealed record TraktMedia(BangumiMedia Parsed, IReadOnlyDictionary<string,
             if (value != null && Regex.IsMatch(value, provider == "imdb" ? @"\Att\d+\z" : @"\A\d+\z")) ids[provider] = value;
         }
         var parsed = BangumiMedia.FromPlayback(title, path);
-        return new(parsed, ids);
+        return new(parsed, ids) { DisplayTitle = title };
     }
 
     public static string Normalize(string title) => Regex.Replace(title.Normalize(NormalizationForm.FormKC).ToLowerInvariant(), @"[\s\p{P}\p{S}]+", "");

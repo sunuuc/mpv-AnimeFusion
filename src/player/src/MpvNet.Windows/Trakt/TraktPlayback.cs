@@ -117,7 +117,7 @@ public sealed class TraktPlayback
         var metadata = new Dictionary<string, string>();
         foreach (string provider in new[] { "imdb", "tmdb", "tvdb", "trakt" })
         {
-            string value = Player.GetPropertyString("metadata/by-key/" + provider + "_id");
+            string value = Player.GetPropertyString("metadata/by-key/" + provider + "_id", handleError: false);
             if (value.Length > 0) metadata[provider] = value;
         }
         lock (_lock) { Media = TraktMedia.Parse(title, title.Length > 0 ? Player.GetPropertyString("path") : "", metadata); _mediaTitle = title; _percent = 0; }

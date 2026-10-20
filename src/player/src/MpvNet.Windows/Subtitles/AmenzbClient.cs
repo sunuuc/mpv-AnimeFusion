@@ -158,9 +158,10 @@ public sealed class AmenzbClient(HttpClient http) : ISubtitleClient
                 PackageNames = [filename],
                 TitleNames = result.TitleNames.Append(result.Title).Concat(titles).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
                 Individual = true,
-                Season = parsed.Ambiguous ? -1 : result.Season ?? (parsed.HasSeason || parsed.EpisodeNumber != null ? parsed.Season : null),
-                Episode = parsed.Ambiguous || result.Season == -1 ? null : result.Episode ?? (parsed.EpisodeNumber is >= 0 and <= int.MaxValue and var episode
-                    && episode == Math.Truncate(episode) ? (int)episode : null)
+                Season = parsed.Ambiguous || result.Season == -1 ? -1 : SubtitleQuery.IsSpecial(title) ? 0
+                    : parsed.HasSeason ? parsed.Season : result.Season ?? (parsed.EpisodeNumber != null ? parsed.Season : null),
+                Episode = parsed.Ambiguous || result.Season == -1 ? null : parsed.EpisodeNumber is >= 0 and <= int.MaxValue and var episode
+                    && episode == Math.Truncate(episode) ? (int)episode : result.Episode
             };
         }
     }
@@ -199,7 +200,15 @@ public sealed class AmenzbClient(HttpClient http) : ISubtitleClient
                 : parsed.EpisodeNumber is >= 0 and <= int.MaxValue and var number && number == Math.Truncate(number) ? (int)number : null;
             // Explicit season/episode names take precedence over catalogue coordinates.
             // A range or a conflicting season without a named episode is not a single episode.
-            if (parsed.Ambiguous || parsed.HasSeason && season != parsed.Season && parsed.EpisodeNumber == null)
+            if (parsed.Ambiguous)
+            { season = -1; episode = null; }
+            else if (SubtitleQuery.IsSpecial(title))
+            {
+                season = 0;
+                if (parsed.EpisodeNumber is >= 0 and <= int.MaxValue and var specialEpisode && specialEpisode == Math.Truncate(specialEpisode))
+                    episode = (int)specialEpisode;
+            }
+            else if (parsed.HasSeason && season != parsed.Season && parsed.EpisodeNumber == null)
             { season = -1; episode = null; }
             else if (parsed.HasSeason && parsed.EpisodeNumber is >= 0 and <= int.MaxValue and var namedEpisode
                 && namedEpisode == Math.Truncate(namedEpisode))

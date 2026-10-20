@@ -118,7 +118,7 @@ public sealed class MalPlayback
         var metadata = new Dictionary<string, string>();
         foreach (string provider in new[] { "mal", "bangumi" })
         {
-            string value = Player.GetPropertyString("metadata/by-key/" + provider + "_id");
+            string value = Player.GetPropertyString("metadata/by-key/" + provider + "_id", handleError: false);
             if (value.Length > 0) metadata[provider] = value;
         }
         var media = MalMedia.Parse(title, title.Length > 0 ? Player.GetPropertyString("path") : "", metadata);

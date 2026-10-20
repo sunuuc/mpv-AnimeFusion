@@ -2,10 +2,10 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="clr-namespace:MpvNet.Windows.UI"
         x:Class="MpvNet.Windows.WPF.SubtitleDeleteWindow"
-        Title="删除字幕" Style="{StaticResource MatchWindow}" Width="500"
+        Title="删除整套字幕" Style="{StaticResource MatchWindow}" Width="500"
         SizeToContent="Height" ResizeMode="NoResize" WindowStartupLocation="CenterOwner">
     <StackPanel Margin="22">
-        <TextBlock Text="确认从这部作品的字幕列表中删除？" FontWeight="SemiBold" TextWrapping="Wrap" />
+        <TextBlock Text="确认删除这整套字幕？" FontWeight="SemiBold" TextWrapping="Wrap" />
         <TextBlock Text="{Binding FileName}" TextWrapping="Wrap" Margin="0,12,0,16" />
         <CheckBox x:Name="DeleteFile" Content="同时删除本地文件" IsChecked="False"
                   Foreground="{Binding Foreground, Source={x:Static ui:Theme.Current}}" />

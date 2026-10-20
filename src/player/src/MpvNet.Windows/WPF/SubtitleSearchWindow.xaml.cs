@@ -10,6 +10,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Threading;
 using System.Windows.Data;
 using MpvNet.Windows.Native;
 using MpvNet.Windows.Subtitles;
@@ -29,6 +30,13 @@ public partial class SubtitleSearchWindow : Window
     readonly TraktMedia _media;
     readonly SubtitleTitles _titles;
     readonly ObservableCollection<SubtitleResult> _results = new();
+    readonly ObservableCollection<SubtitleFile> _files = new();
+    readonly Dictionary<(SubtitleSource Source, string Id), SubtitleResult> _detailResults = new();
+    SubtitleResult? _fileResult;
+    CancellationTokenSource? _detailsLifetime;
+    int _detailsGeneration;
+    double _resultsOffset;
+    bool _downloading;
     SubtitleSearch _search;
     CancellationTokenSource _searchLifetime;
     SubtitleSearchResult? _searchResult;
@@ -62,6 +70,7 @@ public partial class SubtitleSearchWindow : Window
         var results = CollectionViewSource.GetDefaultView(_results);
         results.Filter = FilterResult;
         ResultsCollection.Collection = results;
+        FilesList.ItemsSource = _files;
         Player.StartFile += Media_Changed;
         Player.Shutdown += Media_Changed;
     }
@@ -78,6 +87,11 @@ public partial class SubtitleSearchWindow : Window
     protected override void OnClosing(CancelEventArgs e)
     {
         AliasesPopup.IsOpen = false;
+        if (_detailsLifetime != null)
+        {
+            if (_ready && !_canClose) RestoreSearchPage();
+            else CancelDetails();
+        }
         if (_ready && !_canClose)
         {
             e.Cancel = true;
@@ -128,6 +142,7 @@ public partial class SubtitleSearchWindow : Window
     {
         _closed = true;
         Player.StartFile -= Media_Changed; Player.Shutdown -= Media_Changed;
+        CancelDetails();
         _search.Dispose(); _searchLifetime.Cancel(); _lifetime.Cancel();
         _api.Dispose();
     }
@@ -310,7 +325,7 @@ public partial class SubtitleSearchWindow : Window
             if (existing == null) _results.Add(item);
             else if (existing.Local)
             {
-                var updated = item with { Local = true, Files = existing.Files, Season = existing.Season, AvailableSeasons = existing.AvailableSeasons,
+                var updated = item with { Local = true, Complete = existing.Complete, Files = existing.Files, Season = existing.Season, AvailableSeasons = existing.AvailableSeasons,
                     TitleNames = item.TitleNames.Concat(existing.TitleNames).Distinct(StringComparer.OrdinalIgnoreCase).ToArray() };
                 if (existing != updated) _results[_results.IndexOf(existing)] = updated;
             }
@@ -334,7 +349,7 @@ public partial class SubtitleSearchWindow : Window
             if (existing == null) _results.Add(local);
             else
             {
-                var updated = existing with { Local = true, Files = local.Files, Season = local.Season, AvailableSeasons = local.AvailableSeasons,
+                var updated = existing with { Local = true, Complete = local.Complete, Files = local.Files, Season = local.Season, AvailableSeasons = local.AvailableSeasons,
                     TitleNames = existing.TitleNames.Concat(local.TitleNames).Distinct(StringComparer.OrdinalIgnoreCase).ToArray() };
                 if (existing != updated) _results[_results.IndexOf(existing)] = updated;
             }
@@ -363,7 +378,7 @@ public partial class SubtitleSearchWindow : Window
     bool MatchesContext(SubtitleResult result) => result.MatchesFilter(SelectedSource, "", SelectedSeason)
         && (result.Local || _store.Credentials.IsEnabled(result.Source))
         && (_source != "local" || result.Local)
-        && (SelectedSource == null || !result.Local)
+        && (SelectedSource == null || !result.Local || !result.Complete)
         && (_season != "other" || (result.Local ? result.AvailableSeasons.Any(season => season is null or < 0) : result.Season is null or < 0));
     bool FilterResult(object item) => item is SubtitleResult result && MatchesContext(result)
         && result.MatchesFilter(null, _language, SelectedSeason, SelectedEpisode);
@@ -495,6 +510,7 @@ public partial class SubtitleSearchWindow : Window
 
     void ResetSearch()
     {
+        _detailResults.Clear();
         _query = null; _searchResult = null; _displayedKeyword = ""; _results.Clear();
         ResultCount.Text = "共 0 条搜索结果";
         Status.Text = ""; EmptyState.Visibility = Visibility.Collapsed; RefreshSearchButton();
@@ -524,26 +540,165 @@ public partial class SubtitleSearchWindow : Window
 
     async void Result_Click(object sender, MouseButtonEventArgs e)
     {
-        if (ItemsControl.ContainerFromElement(ResultsList, e.OriginalSource as DependencyObject) is ListBoxItem { DataContext: SubtitleResult result })
-            await LoadAsync(result);
+        if (_fileResult == null && ItemsControl.ContainerFromElement(ResultsList, e.OriginalSource as DependencyObject)
+            is ListBoxItem { DataContext: SubtitleResult result })
+        { e.Handled = true; await OpenFilesAsync(result); }
     }
 
     async void Result_KeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Enter && ItemsControl.ContainerFromElement(ResultsList, Keyboard.FocusedElement as DependencyObject)
+        if (_fileResult == null && e.Key == Key.Enter && ItemsControl.ContainerFromElement(ResultsList, Keyboard.FocusedElement as DependencyObject)
             is ListBoxItem { DataContext: SubtitleResult result })
-        { e.Handled = true; await LoadAsync(result); }
+        { e.Handled = true; await OpenFilesAsync(result); }
     }
 
-    async Task LoadAsync(SubtitleResult result)
+    static T? VisualChild<T>(DependencyObject parent) where T : DependencyObject
     {
-        if (_closed) return;
+        for (int index = 0; index < VisualTreeHelper.GetChildrenCount(parent); index++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, index);
+            if (child is T match) return match;
+            if (VisualChild<T>(child) is { } descendant) return descendant;
+        }
+        return null;
+    }
+
+    void CancelDetails()
+    {
+        ++_detailsGeneration;
+        var request = _detailsLifetime;
+        _detailsLifetime = null;
+        request?.Cancel();
+        request?.Dispose();
+    }
+
+    async Task OpenFilesAsync(SubtitleResult result)
+    {
+        if (_closed || _canClose || _downloading || _fileResult != null) return;
+        CancelDetails();
+        int generation = _detailsGeneration;
+        var request = _detailsLifetime = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        var token = request.Token;
+        _resultsOffset = VisualChild<ScrollViewer>(ResultsList)?.VerticalOffset ?? 0;
+        _fileResult = result;
+        _files.Clear();
+        AliasesPopup.IsOpen = false;
+        SearchHeader.Visibility = ResultsList.Visibility = SearchSummary.Visibility = Visibility.Collapsed;
+        FilesHeader.Visibility = FilesList.Visibility = FilesSummary.Visibility = Visibility.Visible;
+        FilesEmpty.Visibility = Visibility.Collapsed;
+        DownloadAllButton.IsEnabled = false;
+        FileCount.Text = "";
+        FileStatus.Text = "正在加载字幕…";
+        try
+        {
+            var key = (result.Source, result.Id);
+            SubtitleResult detail;
+            if (result.Local && (_source == "local" || result.Complete)) detail = result;
+            else if (_detailResults.TryGetValue(key, out var cached)) detail = cached;
+            else
+            {
+                result = result with { Local = false };
+                ISubtitleClient client = result.Source switch
+                {
+                    SubtitleSource.Assrt => _assrt,
+                    SubtitleSource.Amenzb => new AmenzbClient(_api),
+                    _ => new TsukihimeClient(_api)
+                };
+                detail = result.DownloadUrl.Length > 0 && (result.Files.Count > 0 || result.Individual)
+                    ? result : await client.DetailAsync(result, token);
+                token.ThrowIfCancellationRequested();
+                _detailResults[key] = detail;
+            }
+            if (_closed || token.IsCancellationRequested || generation != _detailsGeneration) return;
+            _fileResult = detail;
+            IEnumerable<SubtitleFile> files = detail.Files;
+            if (detail.Individual && !detail.Local && detail.DownloadName.Length > 0 && detail.DownloadUrl.Length > 0)
+            {
+                string name = detail.DownloadName.EndsWith(".xz", StringComparison.OrdinalIgnoreCase)
+                    ? detail.DownloadName[..^3] : detail.DownloadName;
+                files = [new(detail.Source, detail.Id, 0, name, detail.DownloadUrl) { Season = detail.Season, Episode = detail.Episode }];
+            }
+            foreach (var file in files.Where(file => SubtitleDownload.Supported(file.Name)
+                && (file.LocalPath.Length > 0 || file.Url.Length > 0)).DistinctBy(file => file.Name)) _files.Add(file);
+            FilesList.SelectedIndex = -1;
+            FileCount.Text = $"共 {_files.Count} 个字幕文件";
+            FileStatus.Text = "";
+            DownloadAllButton.IsEnabled = detail.Local ? _files.Count > 0 : detail.Individual
+                ? detail.DownloadUrl.Length > 0 : SubtitleDownload.PackageSupported(detail.DownloadName) && detail.DownloadUrl.Length > 0;
+            if (_files.Count == 0)
+            {
+                FilesEmpty.Text = "没有单集字幕";
+                FilesEmpty.Visibility = Visibility.Visible;
+            }
+            MpvNet.Diagnostics.Write("subtitle.search", "detail-complete", new { source = detail.Source.ToString(), detail.Id, files = _files.Count, detail.Local });
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        catch (Exception error)
+        {
+            MpvNet.Diagnostics.Write("subtitle.search", "detail-failed", new { source = result.Source.ToString(), result.Id }, error);
+            if (_closed || token.IsCancellationRequested || generation != _detailsGeneration) return;
+            FileStatus.Text = "";
+            FilesEmpty.Text = "获取字幕失败";
+            FilesEmpty.Visibility = Visibility.Visible;
+        }
+        finally
+        {
+            if (_detailsLifetime == request)
+            {
+                _detailsLifetime = null;
+                request.Dispose();
+            }
+        }
+    }
+
+    void RestoreSearchPage()
+    {
+        CancelDetails();
+        _fileResult = null;
+        FilesHeader.Visibility = FilesList.Visibility = FilesSummary.Visibility = FilesEmpty.Visibility = Visibility.Collapsed;
+        SearchHeader.Visibility = ResultsList.Visibility = SearchSummary.Visibility = Visibility.Visible;
+        RefreshSeasons();
+        RefreshResults();
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+        {
+            if (!_closed && _fileResult == null) VisualChild<ScrollViewer>(ResultsList)?.ScrollToVerticalOffset(_resultsOffset);
+        }));
+    }
+
+    void Back_Click(object sender, RoutedEventArgs e) => RestoreSearchPage();
+
+    async void File_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (_fileResult is { } result && ItemsControl.ContainerFromElement(FilesList, e.OriginalSource as DependencyObject)
+            is ListBoxItem { DataContext: SubtitleFile file })
+        { e.Handled = true; await LoadAsync(result, file); }
+    }
+
+    async void File_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape) { e.Handled = true; RestoreSearchPage(); }
+        else if (e.Key == Key.Enter && _fileResult is { } result && ItemsControl.ContainerFromElement(FilesList, Keyboard.FocusedElement as DependencyObject)
+            is ListBoxItem { DataContext: SubtitleFile file })
+        { e.Handled = true; await LoadAsync(result, file); }
+    }
+
+    async void DownloadAll_Click(object sender, RoutedEventArgs e)
+    {
+        if (_fileResult is { } result && DownloadAllButton.IsEnabled) await LoadAsync(result);
+    }
+
+    async Task LoadAsync(SubtitleResult result, SubtitleFile? selectedFile = null)
+    {
+        if (_closed || _canClose || _downloading) return;
+        _downloading = true;
         var query = (_query ?? new(SearchBox.Text.Trim(), null, null, "")) with
         {
             Season = (result.Collection ? null : result.Season) ?? SelectedSeason ?? (_media.Kind == "show" ? _media.Season : null)
         };
+        CancelDetails();
         Close();
-        await SubtitlePlayback.Current.DownloadAsync(query, result, _store, _titles).ConfigureAwait(false);
+        try { await SubtitlePlayback.Current.DownloadAsync(query, result, _store, _titles, selectedFile); }
+        finally { _downloading = false; }
     }
 
     void Settings_Click(object sender, RoutedEventArgs e)

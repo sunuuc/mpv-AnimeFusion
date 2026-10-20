@@ -33,7 +33,7 @@ BangumiNet.Api（MIT）用于 API 请求；mpv_bangumi_sync（MIT）提供标题
 
 ## Trakt 同步与文件名解析
 
-Trakt 请求和响应契约来源于 [trakt/trakt-api](https://github.com/trakt/trakt-api)，MIT；服务器使用 ASP.NET Core OpenID Connect 的 PKCE 流程。Bangumi 与 Trakt 共用未修改的 [AnitomySharp](https://github.com/chu-shen/AnitomySharp) 文件名解析器，MPL-2.0，其来源为 erengy/anitomy 和 AnitomyJ。固定提交、移植范围与官方文档见 [Trakt 源码来源](trakt-sources.md)。头像和封面的 WebP 解码复用 SkiaSharp，MIT。新增许可原文随源码及包保留。
+Trakt 请求和响应契约来源于 [trakt/trakt-api](https://github.com/trakt/trakt-api)，MIT；服务器使用 ASP.NET Core OpenID Connect 的 PKCE 流程。Bangumi 与 Trakt 共用 [AnitomySharp](https://github.com/chu-shen/AnitomySharp) 文件名解析器，MPL-2.0，其来源为 erengy/anitomy 和 AnitomyJ；本地修正了末段分词和分隔符合并的边界检查。固定提交、移植范围与官方文档见 [Trakt 源码来源](trakt-sources.md)。头像和封面的 WebP 解码复用 SkiaSharp，MIT。新增许可原文随源码及包保留。
 
 ## MyAnimeList 同步
 

@@ -64,8 +64,6 @@ public class AppClass
 
         Language = AnimeJaNai.Localization.InterfaceLanguage.PlayerValue;
 
-        DebugMode = Diagnostics.Enabled;
-
         Player.Shutdown += Player_Shutdown;
         Player.Initialized += Player_Initialized;
     }

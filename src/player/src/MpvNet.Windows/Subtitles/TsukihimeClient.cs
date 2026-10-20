@@ -61,8 +61,8 @@ public sealed class TsukihimeClient(HttpClient http) : ISubtitleClient
             || Text(item, "state") != "completed") yield break;
         var release = BangumiMedia.FromPlayback(title, title);
         var anime = Object(item, "anime");
-        var seasons = new[] { release, BangumiMedia.Parse(Text(anime, "title")), BangumiMedia.Parse(Text(anime, "english_title")) };
-        int? season = seasons.FirstOrDefault(media => media.HasSeason)?.Season;
+        int? season = Season(title, release) ?? AnimeNames(anime)
+            .Select(name => Season(name, BangumiMedia.Parse(name))).FirstOrDefault(value => value != null);
         double? position = release.EpisodeNumber;
         int? episode = position is >= 0 and <= int.MaxValue && position == Math.Truncate(position.Value)
             ? (int)position.Value : EpisodeNumber(item);
@@ -84,6 +84,8 @@ public sealed class TsukihimeClient(HttpClient http) : ISubtitleClient
 
     static string[] AnimeNames(JsonElement anime) => new[] { Text(anime, "title"), Text(anime, "english_title") }
         .Select(name => name.Trim()).Where(name => name.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+
+    static int? Season(string title, BangumiMedia media) => SubtitleQuery.IsSpecial(title) ? 0 : media.HasSeason ? media.Season : null;
 
     static long Id(JsonElement value) => Object(value, "id") is var id
         && id.ValueKind == JsonValueKind.Number && id.TryGetInt64(out long number) ? number : 0;
@@ -143,13 +145,16 @@ public sealed class TsukihimeClient(HttpClient http) : ISubtitleClient
         var file = files[0];
         string filename = Path.GetFileName(Text(file, "filename").Replace('\\', '/'));
         if (filename.Length == 0) throw new SubtitleServiceException("TsukiHime：字幕文件名缺失。");
-        var release = BangumiMedia.FromPlayback(Text(detail, "name"), Text(detail, "name"));
+        string releaseTitle = Text(detail, "name");
+        var release = BangumiMedia.FromPlayback(releaseTitle, releaseTitle);
         var media = BangumiMedia.FromPlayback(filename, filename);
         var anime = Object(detail, "anime");
-        var positions = new[] { release, media, BangumiMedia.Parse(Text(anime, "title")),
-            BangumiMedia.Parse(Text(anime, "english_title")) };
-        int?[] seasons = positions.Where(position => position.HasSeason).Select(position => (int?)position.Season)
-            .Append(result.Season).Where(value => value != null).Distinct().ToArray();
+        int?[] seasons = new[] { Season(releaseTitle, release), Season(filename, media),
+                Season(result.Title, BangumiMedia.FromPlayback(result.Title, result.Title)) }
+            .Where(value => value != null).Distinct().ToArray();
+        if (seasons.Length == 0)
+            seasons = AnimeNames(anime).Select(name => Season(name, BangumiMedia.Parse(name)))
+                .Append(result.Season).Where(value => value != null).Distinct().ToArray();
         int?[] episodes = new[] { release.EpisodeNumber, media.EpisodeNumber }
             .Where(value => value is >= 0 and <= int.MaxValue && value == Math.Truncate(value.Value))
             .Select(value => (int?)value).Append(EpisodeNumber(detail)).Append(result.Episode)

@@ -69,17 +69,17 @@ public sealed class AssrtClient(HttpClient http, SubtitleStore store) : ISubtitl
                     Collection = Text(s, "videoname").Contains("合集", StringComparison.Ordinal)
                         || Text(s, "filename").Contains("合集", StringComparison.Ordinal),
                     PackageNames = Array(s, "filelist").Select(file => Text(file, "f")).Where(name => name.Length > 0).ToArray(),
-                    Season = Season(Text(s, "native_name") is { Length: > 0 } nativeTitle ? nativeTitle : Text(s, "videoname"), query.Episode != null)
+                    Season = Season(Text(s, "native_name") is { Length: > 0 } nativeTitle ? nativeTitle : Text(s, "videoname"))
                 }).ToArray();
         return new(results, items.Length == 15)
             { PageKey = string.Join(',', items.Select(item => Number(item, "id")).Where(id => id > 0)) };
     }
 
-    static int? Season(string title, bool episode)
+    static int? Season(string title)
     {
-        if (Regex.IsMatch(title, @"\b(?:OVA|OAD|Special)\b|特典|特别篇|特別篇", RegexOptions.IgnoreCase)) return 0;
+        if (SubtitleQuery.IsSpecial(title)) return 0;
         var media = BangumiMedia.Parse(title);
-        return media.HasSeason || episode ? media.Season : null;
+        return media.HasSeason ? media.Season : null;
     }
 
     static bool LanguageMatches(JsonElement value, string language)
@@ -130,8 +130,23 @@ public sealed class AssrtClient(HttpClient http, SubtitleStore store) : ISubtitl
         using var document = await RequestAsync("sub/detail", token, content: new FormUrlEncodedContent(new Dictionary<string, string> { ["id"] = id.ToString() })).ConfigureAwait(false);
         var detail = Array(Object(document.RootElement, "sub"), "subs").FirstOrDefault();
         string name = Text(detail, "filename"), url = Text(detail, "url");
-        if (name.Length == 0 || url.Length == 0) throw new SubtitleServiceException("没有可下载的字幕包。");
+        var files = Array(detail, "filelist").Select(file =>
+        {
+            string fileUrl = Text(file, "url");
+            int fileId = 0;
+            if (Uri.TryCreate(fileUrl, UriKind.Absolute, out var uri))
+            {
+                var match = Regex.Match(uri.AbsolutePath, @"^/onthefly/" + id + @"/[^/]+/(?<id>\d+)/");
+                int.TryParse(match.Groups["id"].Value, out fileId);
+            }
+            return new SubtitleFile(Source, result.Id, fileId, Text(file, "f"), fileUrl, Text(file, "s"));
+        }).Where(file => file.Name.Length > 0 && file.Url.Length > 0).ToArray();
+        if (files.Length == 0 && SubtitleDownload.Supported(name) && url.Length > 0)
+            files = [new(Source, result.Id, 0, name, url)];
+        if ((name.Length == 0 || url.Length == 0) && files.Length == 0)
+            throw new SubtitleServiceException("没有可下载的字幕。");
         return result with { Title = Title(detail), Format = Text(detail, "subtype"), DownloadName = name, DownloadUrl = url, Details = Details(detail),
+            Files = files,
             PackageNames = Array(detail, "filelist").Select(file => Text(file, "f")).Where(filename => filename.Length > 0).ToArray(),
             Collection = Text(detail, "videoname").Contains("合集", StringComparison.Ordinal) || name.Contains("合集", StringComparison.Ordinal) };
     }

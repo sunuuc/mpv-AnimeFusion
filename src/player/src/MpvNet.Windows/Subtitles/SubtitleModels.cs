@@ -45,6 +45,16 @@ public sealed record SubtitleLanguage(string Code, string Name)
     public bool Matches(string language) => Code == language || language == "zh" && Code is "zh-Hans" or "zh-Hant";
 }
 
+public sealed record SubtitleContent(string Type, double? Episode, int? Season, bool Ambiguous)
+{
+    public bool HasSeason => Season != null;
+    public bool Extra => IsExtra(Type);
+    public static bool IsExtra(string type) => type is "OVA" or "OAD" or "SP" or "PV" or "PREVIEW" or "NCED" or "NCOP" or "ED" or "OP";
+    public string Title { get; init; } = "";
+    public int? Year { get; init; }
+    public bool PlaybackNumbered { get; init; }
+}
+
 public sealed record SubtitleQuery(string Title, int? Season, int? Episode, string Language)
 {
     public IReadOnlyList<string> Names { get; init; } = [];
@@ -52,6 +62,123 @@ public sealed record SubtitleQuery(string Title, int? Season, int? Episode, stri
     public int? SearchSeason { get; init; }
     public int? RequestSeason { get; init; }
     public int? RequestEpisode { get; init; }
+    public string ContentType { get; init; } = "";
+    public double? ContentEpisode { get; init; }
+
+    static string NormalizeType(string value) => value.Trim().ToUpperInvariant() switch
+    {
+        "OAV" or "OVA" => "OVA",
+        "SP" or "SPS" or "SPECIAL" or "SPECIALS" => "SP",
+        "ENDING" or "ED" => "ED",
+        "OPENING" or "OP" => "OP",
+        "GEKIJOUBAN" or "MOVIE" => "MOVIE",
+        "OAD" => "OAD",
+        "PV" => "PV",
+        "PREVIEW" => "PREVIEW",
+        "NCED" => "NCED",
+        "NCOP" => "NCOP",
+        "TV" => "TV",
+        "ONA" => "ONA",
+        _ => ""
+    };
+
+    const string SpecialPattern = @"(?:^|[^a-z0-9])(?:OVA|OAD)(?=\d|[^a-z0-9]|$)"
+        + @"|(?:^|[^a-z0-9])SP(?=\s*(?:\d|Ep?(?:isode)?\s*\d|[._\[\]()/\\-]|$))"
+        + @"|(?:^|[^a-z0-9])Specials?(?=\s*(?:\d|Ep?(?:isode)?\s*\d|[._\[\]()/\\-]|$))|特典|特别篇|特別篇|特别版|特別版";
+
+    static SubtitleContent ReadContent(string name)
+    {
+        var elements = AnitomySharp.AnitomySharp.Parse(name, new(delimiters: " _.&+,|/\\")).ToArray();
+        var parsed = BangumiMedia.FromPlayback(name, name);
+        var numbered = BangumiMedia.Parse(name);
+        var types = elements.Where(element => element.Category == AnitomySharp.Element.ElementCategory.ElementAnimeType)
+            .Where(element => element.Value.ToUpperInvariant() is not ("SPECIAL" or "SPECIALS")
+                || Regex.IsMatch(name, SpecialPattern, RegexOptions.IgnoreCase))
+            .Select(element => NormalizeType(element.Value)).Where(type => type.Length > 0).Distinct().ToArray();
+        if (types.Length == 0 && NormalizeType(name.Trim(' ', '[', ']', '(', ')')) is { Length: > 0 } exact)
+            types = [exact];
+        var numbers = elements.Where(element => element.Category == AnitomySharp.Element.ElementCategory.ElementEpisodeNumber)
+            .Select(element => double.TryParse(element.Value, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out double number)
+                && double.IsFinite(number) && number >= 0 ? (double?)number : null)
+            .OfType<double>().Distinct().ToArray();
+        if (numbers.Length > 0)
+        {
+            // Anitomy intentionally leaves a separated SP token unsearchable so
+            // titles such as SP Professional are not labelled as extras. Retain
+            // its known type only immediately before an already parsed number.
+            var prefixes = Regex.Matches(name, @"(?:^|[^a-z0-9])(?<type>[a-z]+)(?=[\s._-]*(?:[\[(]\s*)?\d)",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)
+                .Select(match => AnitomySharp.KeywordManager.Normalize(match.Groups["type"].Value))
+                .Where(type => AnitomySharp.KeywordManager.Contains(AnitomySharp.Element.ElementCategory.ElementAnimeType, type))
+                .Select(NormalizeType).Where(type => type.Length > 0);
+            types = types.Concat(prefixes).Distinct().ToArray();
+        }
+        return new(types.Length == 1 ? types[0] : "", numbers.Length == 1 ? numbers[0] : parsed.EpisodeNumber,
+            parsed.HasSeason ? parsed.Season : null, parsed.Ambiguous || types.Length > 1 || numbers.Length > 1)
+        {
+            Title = elements.FirstOrDefault(element => element.Category == AnitomySharp.Element.ElementCategory.ElementAnimeTitle)?.Value
+                ?? parsed.Title,
+            Year = parsed.Year,
+            PlaybackNumbered = numbered.HasSeason && numbered.EpisodeNumber != null
+        };
+    }
+
+    public static SubtitleContent Content(string name)
+    {
+        string[] parts = name.Replace('\\', '/').Split('/');
+        var content = ReadContent(parts[^1]);
+        if (content.HasSeason || content.Type.Length > 0 || content.Ambiguous) return content;
+        // A dedicated type directory can identify an otherwise unlabelled file.
+        // Mixed wrappers such as TV+OVA identify neither kind of child.
+        foreach (string folder in parts.SkipLast(1).Reverse())
+        {
+            var parent = ReadContent(folder);
+            if (!parent.Ambiguous && parent.Type.Length > 0) return content with { Type = parent.Type };
+        }
+        return content;
+    }
+
+    public SubtitleQuery WithPlayback(TraktMedia media)
+    {
+        // A library can number an OVA among all specials while its title retains
+        // the content's own number. Keep those two coordinate systems separate.
+        var contents = AnitomySharp.AnitomySharp.Parse(media.DisplayTitle, new(extension: false))
+            .Where(element => element.Category == AnitomySharp.Element.ElementCategory.ElementEpisodeTitle)
+            .Select(element => ReadContent(element.Value))
+            .Where(content => !content.Ambiguous && content.Extra && content.Episode != null).Distinct().ToArray();
+        return this with
+        {
+            ContentType = contents.Length == 1 ? contents[0].Type : "",
+            ContentEpisode = contents.Length == 1 ? contents[0].Episode : null
+        };
+    }
+
+    public bool MatchesContent(string name, int? season = null, double? episode = null)
+    {
+        var content = Content(name);
+        bool playbackNumbered = content.HasSeason && (!content.Extra || content.PlaybackNumbered);
+        int? contentSeason = content.Extra && !playbackNumbered ? 0 : content.Season;
+        if (content.Ambiguous || Season < 0 || season < 0
+            || Season != null && season != null && Season != season
+            || contentSeason != null && season != null && contentSeason != season
+            || content.Episode != null && episode != null && content.Episode != episode) return false;
+        string type = NormalizeType(ContentType);
+        if (ContentType.Length > 0 && type.Length == 0 || Season > 0 && SubtitleContent.IsExtra(type)) return false;
+        double? number = content.Episode ?? episode;
+        if (playbackNumbered)
+        {
+            // Explicit SxxExx filenames use the library's playback numbering.
+            if (Season != content.Season || Season > 0 && content.Extra
+                || type.Length > 0 && content.Type.Length > 0 && type != content.Type) return false;
+            return number == Episode;
+        }
+        if (Season == null) return season == null && !content.Extra && number == null
+            && (Year == null || content.Year == null || Year == content.Year);
+        if (Season > 0) return !content.Extra && content.Type != "MOVIE" && number == Episode;
+        if (content.Type is "TV" or "ONA" or "MOVIE" || type.Length > 0 && type != content.Type) return false;
+        if (type.Length == 0 && content.Type.Length == 0 && season != 0) return false;
+        return number == (ContentEpisode ?? Episode);
+    }
     public bool MatchesTitle(IEnumerable<string> titles)
     {
         var wanted = Names.Append(Title).Where(s => s.Length > 0)
@@ -70,16 +197,17 @@ public sealed record SubtitleQuery(string Title, int? Season, int? Episode, stri
     }
     public bool MatchesEpisode(string title)
     {
-        if (Episode != null && Season > 0 && Special(title) && !Names.Append(Title).Any(Special)) return false;
+        if (Season > 0 && IsSpecial(title)) return false;
         return MatchesEpisode(BangumiMedia.Parse(title));
     }
-    public bool MatchesFile(string name)
+    public bool MatchesFile(string name) => MatchesContent(name);
+    internal static bool IsSpecial(string title)
     {
-        var parsed = BangumiMedia.FromPlayback(name, name);
-        return parsed.Ambiguous || MatchesEpisode(parsed);
+        var content = ReadContent(title);
+        if (content.Ambiguous && content.Type.Length == 0) return false;
+        return content.Extra || content.Season == 0 || Regex.IsMatch(System.IO.Path.GetFileName(title.Replace('\\', '/')),
+            SpecialPattern, RegexOptions.IgnoreCase);
     }
-    static bool Special(string title) => Regex.IsMatch(title,
-        @"\b(?:OVA|OAD|Special)\b|特典|特别篇|特別篇", RegexOptions.IgnoreCase);
     bool MatchesEpisode(BangumiMedia parsed)
     {
         return (Season == null || !parsed.HasSeason || Season == parsed.Season)
@@ -101,6 +229,7 @@ public sealed record SubtitleResult(SubtitleSource Source, string Id, string Tit
     public string Format { get; init; } = "";
     public string FormatLabel => Format.Trim() is "" or "不明" or "其他" ? "字幕" : Format.Trim();
     public bool Local { get; init; }
+    public bool Complete { get; init; }
     public bool Collection { get; init; }
     public bool Individual { get; init; }
     public IReadOnlyList<string> TitleNames { get; init; } = [];
@@ -132,13 +261,16 @@ public sealed record SubtitleResult(SubtitleSource Source, string Id, string Tit
             var parsed = BangumiMedia.FromPlayback(name, name);
             double? episode = file.Episode ?? (parsed.Ambiguous ? null : parsed.EpisodeNumber);
             if (episode is not (>= 0 and <= int.MaxValue) || episode != Math.Truncate(episode.Value)) continue;
+            if (season == null)
+            {
+                episodes.Add((int)episode.Value);
+                continue;
+            }
             int? fileSeason = file.Season;
             if (fileSeason == null)
             {
-                var seasons = file.Name.Replace('\\', '/').Split('/').SkipLast(1).Select(BangumiMedia.Parse)
-                    .Append(parsed).Where(media => media.HasSeason).Select(media => media.Season).Distinct().ToArray();
-                if (seasons.Length > 1) continue;
-                fileSeason = seasons.Length == 1 ? seasons[0] : Season;
+                var query = new SubtitleQuery(Title, Season ?? -1, null, language) { Names = TitleNames };
+                fileSeason = SubtitleLibrary.FileQuery(query, this, file.Name).Season;
             }
             if (season == null || season == fileSeason) episodes.Add((int)episode.Value);
         }

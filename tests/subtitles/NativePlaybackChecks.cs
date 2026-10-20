@@ -3,6 +3,8 @@ using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Net.Http;
+using System.Net;
+using System.Net.Sockets;
 using MpvNet;
 using MpvNet.Native;
 using MpvNet.Windows.Subtitles;
@@ -14,6 +16,8 @@ if(!Path.IsPathFullyQualified(video)||!File.Exists(video))throw new Exception("T
 NativeLibrary.SetDllImportResolver(typeof(LibMpv).Assembly,(name,_,_)=>File.Exists(Path.Combine(native,name))?NativeLibrary.Load(Path.Combine(native,name)):IntPtr.Zero);
 string temp=Path.Combine(Path.GetTempPath(),"AnimeFusion-NativeSubtitles-"+Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(temp);
+string config=Path.Combine(temp,"config");Directory.CreateDirectory(config);
+Environment.SetEnvironmentVariable("ANIMEVE_HOME",config);
 var library=new SubtitleLibrary(Path.Combine(temp,"Subtitles"));
 int checks=0;
 void Check(bool value,string message){if(!value)throw new Exception(message);checks++;}
@@ -129,8 +133,76 @@ async Task DownloadedSubtitleChecks()
   "Reopening the matching episode restores the downloaded version without another download");
  Console.WriteLine($"Downloaded subtitle native chain passed; bytes={bytes.Length}; fixture HTTP reads={handler.Requests}; no network or desktop window.");
 }
+async Task SetRemovalChecks()
+{
+ const string title="Set Removal Fixture";
+ TraktMedia Media(int episode)=>TraktMedia.Parse(title+$" S01E{episode:00}","",new Dictionary<string,string>());
+ string Original(string set,int episode)
+ {
+  string directory=Path.Combine(temp,"removal-originals",set);Directory.CreateDirectory(directory);
+  string path=Path.Combine(directory,$"[{set}] {title} S01E{episode:00}.full.en.srt");
+  File.WriteAllText(path,$"1\n00:00:00,000 --> 00:00:50,000\n{set} episode {episode}\n",Encoding.UTF8);
+  return path;
+ }
+ string originalA=Original("SetA",1),originalA2=Original("SetA",2);
+ string originalB=Original("SetB",1),originalB2=Original("SetB",2);
+ string Saved(string original,int episode)=>library.Tracks(Media(episode)).Single(track=>track.Title==Path.GetFileName(original)).Path;
+ await Open(title+" S01E01");player.SetPropertyBool("pause",true);
+ player.LoadFiles([originalA],false,false);
+ await WaitFor(()=>library.Tracks(Media(1)).Any(track=>track.Title==Path.GetFileName(originalA)),
+  "The first imported set enters the real native subtitle library");
+ string savedA=Saved(originalA,1),savedA2=Saved(originalA2,2);
+ player.LoadFiles([originalB],false,false);
+ await WaitFor(()=>library.Tracks(Media(1)).Count==2&&library.Tracks(Media(2)).Count==2,
+  "Two imported sets retain their own first and second episodes");
+ string savedB=Saved(originalB,1),savedB2=Saved(originalB2,2);
+ await WaitFor(()=>HasTrack(savedA)&&HasTrack(savedB),"Both imported sets are available in the real native track list");
+ SubtitlePlayback.Current.TogglePinned(TrackId(savedA));
+ Check(Selected()==savedA&&library.Tracks(Media(2)).Single(track=>track.Path==savedA2).Pinned,
+  "The deletion target is a forced set spanning both saved episodes");
+ var package=library.Results(title).Single(item=>item.Files.Any(file=>file.LocalPath==savedA));
+ await using var server=new HeldSubtitleServer();
+ var pendingFile=new SubtitleFile(package.Source,package.Id,741,
+  $"[SetA] {title} S01E01.pending.en.srt",server.Url);
+ var pendingResult=package with{Local=false,Complete=false,Title=title,TitleNames=[title],Files=[pendingFile],
+  DownloadName="",DownloadUrl="",Season=1,PackageNames=[pendingFile.Name]};
+ var store=new SubtitleStore(Path.Combine(temp,"removal-account"));
+ Console.WriteLine("Native set removal: starting held loopback subtitle download");
+ Task download=SubtitlePlayback.Current.DownloadAsync(new(title,1,1,""),pendingResult,store,CurrentTitles(),pendingFile);
+ await server.Started.WaitAsync(TimeSpan.FromSeconds(5));
+ Check(!download.IsCompleted&&server.Requests==1,"A subtitle body is genuinely in flight before deletion begins");
+ string pendingPath=library.FilePath(new(title,1,1,""),pendingResult,pendingFile.Name);
+ var removal=SubtitlePlayback.Current.PrepareRemoval(TrackId(savedA))??throw new Exception("The active imported set must allow deletion");
+ int starts=Volatile.Read(ref fileStarts);string opened=player.GetPropertyString("path");
+ bool removed=await SubtitlePlayback.Current.RemoveAsync(removal,true).WaitAsync(TimeSpan.FromSeconds(10));
+ Check(removed&&download.IsCompleted,"Set removal waits for the real download cancellation to finish");
+ await download;
+ server.Release();await server.Finished.WaitAsync(TimeSpan.FromSeconds(5));
+ Check(!File.Exists(savedA)&&!File.Exists(savedA2)&&!File.Exists(originalA)&&!File.Exists(originalA2)&&!File.Exists(pendingPath),
+  "Deleting one set removes its other episode and originals without a late download restoring a file");
+ Check(File.Exists(savedB)&&File.Exists(savedB2)&&File.Exists(originalB)&&File.Exists(originalB2)
+  &&HasTrack(savedB)&&!HasTrack(savedA),"Deleting a set retains every file and native track belonging to the other set");
+ Check(library.Results(title).All(item=>item.Source!=package.Source||item.Id!=package.Id)
+  &&library.Tracks(Media(1)).Single().Path==savedB&&library.Tracks(Media(2)).Single().Path==savedB2
+  &&library.Tracks(Media(1)).All(track=>!track.Pinned),
+  "The deleted package, pending download and forced selection cannot return to either episode index");
+ Check(Volatile.Read(ref fileStarts)==starts&&player.GetPropertyString("path")==opened&&server.Requests==1,
+  "Cancellation and set deletion preserve playback and make only the local subtitle request");
+ await Open(title+" S01E02");
+ Check(SubtitleCount()==1&&HasTrack(savedB2)&&!HasTrack(savedA2),"The next episode restores only the retained set");
+ await Open(title+" S01E01");
+ Check(SubtitleCount()==1&&HasTrack(savedB)&&!HasTrack(savedA)&&!File.Exists(pendingPath),
+  "Reopening cannot recreate the deleted set after the canceled response finishes");
+ Console.WriteLine("Native set removal: loopback cancellation and complete-set deletion passed");
+}
 try
 {
+ if(args.Contains("--set-removal-only"))
+ {
+  await SetRemovalChecks();
+  Console.WriteLine($"Native set removal checks passed: {checks}; isolated generated media and loopback only; no desktop window.");
+  return;
+ }
  if(CommandLine.Contains("sid"))
  {
   string startupVideo=Path.Combine(temp,"测试作品 S2E1.mp4");File.Copy(video,startupVideo);
@@ -807,11 +879,11 @@ try
  startsBefore=Volatile.Read(ref fileStarts);pathBefore=player.GetPropertyString("path");timeBefore=player.GetPropertyDouble("time-pos");
  var keepFile=SubtitlePlayback.Current.PrepareRemoval(TrackId(savedC))??throw new Exception("Managed subtitle should allow deletion confirmation");
  Check(File.Exists(savedC)&&HasTrack(savedC),"Preparing a deletion confirmation has no destructive side effects");
- Check(SubtitlePlayback.Current.Remove(keepFile,false)&&File.Exists(savedC)&&File.Exists(originalC)
+ Check(await SubtitlePlayback.Current.RemoveAsync(keepFile,false)&&File.Exists(savedC)&&File.Exists(originalC)
   &&!HasTrack(savedC)&&!library.Tracks(ImportedMedia(1)).Any(track=>track.Path==savedC),
   "Unchecking local deletion removes the track and saved association but retains both local and original files");
  var deleteFileRequest=SubtitlePlayback.Current.PrepareRemoval(TrackId(savedB))??throw new Exception("Managed second subtitle should allow deletion confirmation");
- Check(SubtitlePlayback.Current.Remove(deleteFileRequest,true)&&!File.Exists(savedB)&&!File.Exists(originalB)
+ Check(await SubtitlePlayback.Current.RemoveAsync(deleteFileRequest,true)&&!File.Exists(savedB)&&!File.Exists(originalB)
   &&File.Exists(savedA)&&File.Exists(savedA2)&&!HasTrack(savedB)&&!HasTrack(originalB),
   "Checking local deletion removes the managed and original files and both native tracks without deleting other episodes");
  Check(player.GetPropertyString("secondary-sid")==importedSecondary&&HasTrack(danmakuFixture)
@@ -820,7 +892,7 @@ try
   "Both deletion modes preserve the secondary subtitle, video connection and paused playback position");
  var stale=SubtitlePlayback.Current.PrepareRemoval(TrackId(savedA))??throw new Exception("Remaining subtitle should allow deletion confirmation");
  await Open(importedTitle+" S1E2");
- Check(!SubtitlePlayback.Current.Remove(stale,true)&&File.Exists(savedA)&&File.Exists(savedA2)
+ Check(!await SubtitlePlayback.Current.RemoveAsync(stale,true)&&File.Exists(savedA)&&File.Exists(savedA2)
   &&library.Tracks(ImportedMedia(1)).Any(track=>track.Path==savedA),
   "A confirmation prepared before switching episodes cannot delete files from the previous playback generation");
  await Open(importedTitle+" S1E1");
@@ -867,6 +939,7 @@ try
  Check(SubtitleCount()==1&&Selected()==savedBatch&&!HasTrack(wrongEpisode),
   "Reopening after a partial batch failure restores only the successfully imported subtitle");
  await DownloadedSubtitleChecks();
+ await SetRemovalChecks();
  Console.WriteLine($"Native subtitle playback checks passed: {checks}; local generated video only; no desktop window or service calls.");
 }
 
@@ -918,5 +991,57 @@ sealed class SubtitleBytesHandler(byte[] bytes):HttpMessageHandler
   if(request.RequestUri?.AbsoluteUri!="https://subtitle-fixture.invalid/track")throw new Exception("Unexpected subtitle fixture request");
   Requests++;
   return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK){Content=new ByteArrayContent(bytes)});
+ }
+}
+
+sealed class HeldSubtitleServer:IAsyncDisposable
+{
+ readonly TcpListener _listener=new(IPAddress.Loopback,0);
+ readonly CancellationTokenSource _lifetime=new();
+ readonly TaskCompletionSource _started=new(TaskCreationOptions.RunContinuationsAsynchronously);
+ readonly TaskCompletionSource _release=new(TaskCreationOptions.RunContinuationsAsynchronously);
+ readonly Task _server;
+ public string Url{get;}
+ public int Requests{get;private set;}
+ public Task Started=>_started.Task;
+ public Task Finished=>_server;
+ public HeldSubtitleServer()
+ {
+  _listener.Start();Url=$"http://127.0.0.1:{((IPEndPoint)_listener.LocalEndpoint).Port}/subtitle.srt";
+  _server=ServeAsync();
+ }
+ public void Release()=>_release.TrySetResult();
+ async Task ServeAsync()
+ {
+  try
+  {
+   using var client=await _listener.AcceptTcpClientAsync(_lifetime.Token);
+   using var stream=client.GetStream();
+   var headers=new List<byte>();byte[] one=new byte[1];
+   while(headers.Count<16384)
+   {
+    if(await stream.ReadAsync(one,_lifetime.Token)==0)throw new IOException("Loopback request ended before its headers");
+    headers.Add(one[0]);
+    if(headers.Count>=4&&headers.TakeLast(4).SequenceEqual(new byte[]{13,10,13,10}))break;
+   }
+   if(!Encoding.ASCII.GetString(headers.ToArray()).StartsWith("GET /subtitle.srt HTTP/",StringComparison.Ordinal))
+    throw new IOException("Unexpected loopback request");
+   Requests++;
+   byte[] body=Encoding.UTF8.GetBytes("1\n00:00:00,000 --> 00:00:50,000\npending subtitle\n");
+   byte[] response=Encoding.ASCII.GetBytes($"HTTP/1.1 200 OK\r\nContent-Type: application/x-subrip\r\nContent-Length: {body.Length}\r\nConnection: close\r\n\r\n");
+   await stream.WriteAsync(response,_lifetime.Token);await stream.WriteAsync(body.AsMemory(0,1),_lifetime.Token);
+   await stream.FlushAsync(_lifetime.Token);_started.TrySetResult();
+   await _release.Task.WaitAsync(_lifetime.Token);
+   try{await stream.WriteAsync(body.AsMemory(1),_lifetime.Token);await stream.FlushAsync(_lifetime.Token);}
+   catch(IOException){ } // The client has canceled and may already have closed its socket.
+  }
+  catch(Exception error){_started.TrySetException(error);throw;}
+ }
+ public async ValueTask DisposeAsync()
+ {
+  _lifetime.Cancel();_listener.Stop();Release();
+  try{await _server;}
+  catch(Exception error)when(error is OperationCanceledException or SocketException or IOException){ }
+  _lifetime.Dispose();
  }
 }

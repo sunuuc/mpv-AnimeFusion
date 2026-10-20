@@ -9,7 +9,7 @@
 
 ## 匹配
 
-- [AnitomySharp](https://github.com/chu-shen/AnitomySharp)，MPL-2.0，固定提交 `579d94335dff23e3f44f72fa169ecadf03d039dc`。原 C# 文件完整保留于 `third_party/anitomysharp`，未修改解析规则；其来源为 [erengy/anitomy](https://github.com/erengy/anitomy) 和 AnitomyJ。通过公开 `Parse` API 提取字幕组、标题、年份、季度和集数，供 Bangumi 与 Trakt 共用。
+- [AnitomySharp](https://github.com/chu-shen/AnitomySharp)，MPL-2.0，固定提交 `579d94335dff23e3f44f72fa169ecadf03d039dc`。原 C# 文件完整保留于 `third_party/anitomysharp`，本地修正末段分词和分隔符合并的边界检查，未添加作品解析规则；其来源为 [erengy/anitomy](https://github.com/erengy/anitomy) 和 AnitomyJ。通过公开 `Parse` API 提取字幕组、标题、年份、季度和集数，供 Bangumi 与 Trakt 共用。
 - 已有 `mpv_bangumi_sync` 移植代码继续处理标题别名和候选置信度；Trakt 使用同一个标题评分函数。新增逻辑读取 mpv 的现有元数据 ID，按官方 ID lookup 接口匹配，检查所选季度与剧集是否真实存在。
 - 研究参考：[iamkroot/trakt-scrobbler](https://github.com/iamkroot/trakt-scrobbler) 的文件名分析、ID 缓存和剧集定位；[dyphire/trakt-scrobble](https://github.com/dyphire/trakt-scrobble) 的 mpv 使用场景。未复制这两个项目的运行代码或增加 Python、Lua HTTP 实现。
 

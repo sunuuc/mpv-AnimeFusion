@@ -77,16 +77,16 @@ static class Program
         Check(catalogueKeywords.Count > 0 && catalogueKeywords.All(keyword => keyword == media.Title),
             "The alias picker requests the current playback title even after a different subtitle keyword was entered.");
         var original = await titles.QueryAsync(media.Title, default);
-        Check(original.Names.Contains("摇曳百合 第二季") && original.Names.Contains("搖曳百合 第二季")
+        Check(original.Names.Contains("摇曳百合 第二季") && !original.Names.Contains("搖曳百合 第二季")
             && original.Names.Contains("ゆるゆり♪♪") && original.Names.Contains("YuruYuri: Happy Go Lily"),
-            "Matched names contain simplified/traditional Chinese, original Japanese and English aliases.");
+            "Matched names retain returned Chinese, Japanese and English aliases without inventing a traditional conversion.");
         Check(!original.Names.Contains("另一部动画") && original.Names.Count(name => name == "Yuru Yuri Season 2") == 1,
             "Aliases are deduplicated and never mixed with a different catalogue result.");
-        Check(original.Names.Contains("摇曳动画") && original.Names.Contains("搖曳動畫")
+        Check(original.Names.Contains("摇曳动画") && !original.Names.Contains("搖曳動畫")
             && original.Names.Contains("楽園") && !original.Names.Contains("樂園"),
-            "Explicit Chinese aliases gain both scripts without transforming unlabelled Japanese kanji.");
-        Check(original.Names.Contains("Yuru Yuri ゆるゆり") && original.Names.Contains("ゆるゆり"),
-            "Existing bilingual title variants remain available after extracting alias lookup from the window.");
+            "Explicit Chinese and Japanese aliases preserve their service-returned scripts without local conversion.");
+        Check(original.Names.Contains("Yuru Yuri ゆるゆり") && !original.Names.Contains("ゆるゆり"),
+            "A bilingual service-returned alias remains intact without inventing a shortened name.");
         int loaded = handler.Count;
         var english = await titles.QueryAsync("Yuru Yuri Season 2", default);
         Check(english.Title == "Yuru Yuri Season 2" && english.Episode == 3 && english.SearchSeason == 2
@@ -109,18 +109,14 @@ static class Program
                 && (await titles.NamesAsync(default)).SequenceEqual(original.Names) && handler.Count == loaded,
                 "Editing or clearing the search text leaves the playback alias list and its cached catalogue request unchanged.");
         }
+        string returnedTraditional = subject.Replace("{\"v\":\"楽園\"}", "{\"v\":\"楽園\"},{\"v\":\"搖曳百合 第二季\"}", StringComparison.Ordinal);
         using (var scriptHttp = new HttpClient(new Handler(request => Content(request.RequestUri!.AbsolutePath.EndsWith("/search/subjects", StringComparison.Ordinal)
-            ? "{\"data\":[" + subject + "]}" : subject))))
+            ? "{\"data\":[" + returnedTraditional + "]}" : returnedTraditional))))
         {
             var scriptClient = new MalClient(new(Path.Combine(Root, "script-config"), Path.Combine(Root, "script-account")), scriptHttp);
-            bool terminated = true;
-            for (int repeat = 0; repeat < 32; repeat++)
-            {
-                var scriptNames = await new SubtitleTitles(media, default, scriptClient).NamesAsync(default);
-                terminated &= scriptNames.Where(name => name.StartsWith("搖曳百合", StringComparison.Ordinal))
-                    .SequenceEqual(["搖曳百合 第二季"]);
-            }
-            Check(terminated, "Repeated native script conversion returns exact names without characters beyond the destination terminator.");
+            var scriptNames = await new SubtitleTitles(media, default, scriptClient).NamesAsync(default);
+            Check(scriptNames.Contains("摇曳百合 第二季") && scriptNames.Contains("搖曳百合 第二季") && !scriptNames.Contains("搖曳動畫"),
+                "A traditional alias is retained when the service actually returns it without converting other aliases.");
         }
 
         const string untranslated = """
@@ -147,7 +143,8 @@ static class Program
             var translatedTitles = new SubtitleTitles(media, default, translatedClient);
             var matchedNames = await translatedTitles.NamesAsync(default);
             Check(matchedNames.Contains("YuruYuri: Happy Go Lily ♪♪") && matchedNames.Contains("ゆるゆり♪♪")
-                && matchedNames.Contains("搖曳百合 第二季"), "A confirmed Chinese/Japanese-only catalogue entry gains its exact MAL English title.");
+                && matchedNames.Contains("摇曳百合 第二季") && !matchedNames.Contains("搖曳百合 第二季"),
+                "A confirmed Chinese/Japanese-only catalogue entry gains its exact MAL English title without local script conversion.");
             Check(matchedNames.All(name => !name.Any(char.IsControl)) && matchedNames.Count(name => name == "摇曳百合 第二季") == 1,
                 "Control characters are removed before alias deduplication and display.");
             Check((await translatedTitles.QueryAsync("YuruYuri: Happy Go Lily ♪♪", default)).Episode == 3
@@ -422,6 +419,7 @@ static class Program
             await Rejected(() => new TsukihimeClient(http).DetailAsync(Mirrored("zh-Hans"), default),
                 "The AnimeTosho source does not bypass text-format validation.");
 
+        await ProviderSpecialCoordinatesChecks();
         await AmenzbSearchChecks();
         await AmenzbLanguageChecks();
         await AmenzbAggregateChecks();
@@ -430,6 +428,122 @@ static class Program
         await AssrtLanguagePagingChecks();
     }
 
+    static async Task ProviderSpecialCoordinatesChecks()
+    {
+        // Public response fields from the reported TsukiHime/AnimeTosho release.
+        const string title = "[memess] Himouto! Umaru-chan - OVA 01 [WEB 1080p][BC04527C].mkv";
+        const string special = """
+            {"id":1000313833,"name":"[memess] Himouto! Umaru-chan - OVA 01 [WEB 1080p][BC04527C].mkv","filecount":1,"state":"completed","source_date":1564757943,"episode_no":null,"sublangs":["en"],"animetosho":true,
+             "anime":{"title":"Himouto! Umaru-chan OVA","english_title":null,"release_year":2015,"mal":30991,"is_movie":0},
+             "files":[{"filename":"[memess] Himouto! Umaru-chan - OVA 01 [WEB 1080p][BC04527C].mkv","attachments":[
+              {"id":1367,"type":0,"info":{"name":"bip.ttf","mime":"application/x-truetype-font"}},
+              {"id":784152,"type":1,"info":{"codec":"ASS","lang":"en","default":1,"enabled":1,"forced":0,"trackid":2,"tracknum":3}}
+             ]}]}
+            """;
+        static string Search(string item) => "{\"total\":1,\"start\":0,\"results\":[" + item + "]}";
+        var realHandler = new Handler(request => Content(request.RequestUri!.AbsolutePath.EndsWith("/torrents/1000313833", StringComparison.Ordinal)
+            ? special : Search(special)));
+        using (var http = new HttpClient(realHandler))
+        {
+            var client = new TsukihimeClient(http);
+            var page = await client.SearchAsync(new("Himouto! Umaru-chan", null, null, "en"), 1, default);
+            var found = page.Results.Single();
+            Check(found.Id == "1000313833:en" && found.Season == 0 && found.Episode == 1,
+                "The real Umaru OVA title identifies S00E01 even when the catalogue has no explicit season and episode_no is null.");
+            var detail = await client.DetailAsync(found, default);
+            Check(detail.Season == 0 && detail.Episode == 1 && detail.DownloadName.Contains("OVA 01", StringComparison.Ordinal)
+                && detail.DownloadUrl == "https://storage.tsukihime.org/tosho/attach/000bf718/784152.xz" && realHandler.Count == 2,
+                "The reported OVA detail preserves S00E01 and resolves the actual full English ASS attachment with one detail read.");
+            await SavedSpecialChecks("Himouto! Umaru-chan", detail, true);
+        }
+        string[] releaseNames = ["[Group] Fixture - OVA 01.mkv", "[Group] Fixture - OAD 01.mkv", "[Group] Fixture - SP01.mkv", "[Group] Fixture S00E01.mkv"];
+        foreach (string release in releaseNames)
+        foreach (string catalogue in new[] { "Fixture Season 1", "Fixture OVA", "Fixture" })
+        {
+            string item = special.Replace(title, release, StringComparison.Ordinal)
+                .Replace("Himouto! Umaru-chan OVA", catalogue, StringComparison.Ordinal);
+            var handler = new Handler(request => Content(request.RequestUri!.AbsolutePath.EndsWith("/torrents/1000313833", StringComparison.Ordinal)
+                ? item : Search(item)));
+            using var http = new HttpClient(handler);
+            var client = new TsukihimeClient(http);
+            var found = (await client.SearchAsync(new("Fixture", null, null, "en"), 1, default)).Results.Single();
+            Check(found.Season == 0 && found.Episode == 1 && found.MatchesFilter(null, "en", 0, 1)
+                && !found.MatchesFilter(null, "en", 1, 1),
+                "TsukiHime release special markers supersede ordinary or unspecified catalogue seasons during search: " + release + "; " + catalogue);
+            var detail = await client.DetailAsync(found, default);
+            Check(detail.Season == 0 && detail.Episode == 1 && handler.Count == 2,
+                "TsukiHime resolves the same special coordinates during detail without rejecting its season-one catalogue identity: " + release + "; " + catalogue);
+        }
+        foreach (string release in releaseNames)
+        foreach (string position in new[] { "S1 E01", "Specials E01", "" })
+        {
+            const string owner = "945001", attachment = "1945001";
+            var handler = new Handler(request => Content(request.RequestUri!.AbsolutePath == "/browse"
+                ? BrowseRow(owner, release, "eng", position)
+                : "<h1>" + release + "</h1><table id=\"subs-table\">" + SubtitleTrack(owner, attachment, "eng", "English") + "</table>", "text/html"));
+            using var http = new HttpClient(handler);
+            var client = new AmenzbClient(http);
+            var query = new SubtitleQuery("Fixture", null, null, "en");
+            var found = (await client.SearchAsync(query, 1, default)).Results.Single();
+            Check(found.Season == 0 && found.Episode == 1 && found.MatchesFilter(null, "en", 0, 1)
+                && !found.MatchesFilter(null, "en", 1, 1),
+                "ameNZB release special markers supersede regular or missing browse coordinates: " + release + "; " + position);
+            var detail = await client.DetailAsync(found, default);
+            Check(detail.Season == 0 && detail.Episode == 1 && handler.Count == 2,
+                "ameNZB retains special coordinates while reusing its search-resolved subtitle attachment.");
+            Check((await client.SearchAsync(query with { RequestSeason = 0, RequestEpisode = 1 }, 1, default)).Results.Count == 1
+                && (await client.SearchAsync(query with { RequestSeason = 1, RequestEpisode = 1 }, 1, default)).Results.Count == 0
+                && handler.Count == 2,
+                "ameNZB season-zero filtering retains the special and regular-season filtering excludes it without another browse or detail request.");
+            if (release == releaseNames[0] && position == "S1 E01") await SavedSpecialChecks("Fixture", detail, false);
+        }
+        var correctedHandler = new Handler(request => Content(request.RequestUri!.AbsolutePath == "/browse"
+            ? BrowseRow("945002", "Fixture", "eng", "S1 E02")
+            : "<h1>Fixture OVA01</h1><table id=\"subs-table\">" + SubtitleTrack("945002", "1945002", "eng", "English") + "</table>", "text/html"));
+        using (var http = new HttpClient(correctedHandler))
+        {
+            var client = new AmenzbClient(http);
+            var found = (await client.SearchAsync(new("Fixture", null, null, "en"), 1, default)).Results.Single();
+            Check(found.Season == 0 && found.Episode == 1,
+                "ameNZB detail OVA01 corrects a title with no episode and stale S1 E02 browse coordinates to S00E01.");
+            var detail = await client.DetailAsync(found, default);
+            Check(detail.Season == 0 && detail.Episode == 1 && correctedHandler.Count == 2,
+                "The resolved OVA detail retains the actual first special rather than inheriting the browse row's episode two.");
+            await SavedSpecialChecks("Fixture", detail, false);
+        }
+    }
+    static async Task SavedSpecialChecks(string title, SubtitleResult result, bool compressed)
+    {
+        var library = new SubtitleLibrary(Path.Combine(Root, "parsed-special-" + result.Source + "-" + result.Id.Replace(':', '-')));
+        var handler = new Handler(request =>
+        {
+            Check(request.RequestUri!.AbsoluteUri == result.DownloadUrl, "A manually selected special downloads only its resolved attachment URL.");
+            return new(HttpStatusCode.OK) { Content = new ByteArrayContent(compressed ? Convert.FromBase64String(AssXz) : Encoding.UTF8.GetBytes(Ass)) };
+        });
+        using var http = new HttpClient(handler);
+        var download = new SubtitleDownload(http, library);
+        var current = new SubtitleQuery(title, 1, 2, "en");
+        Check(await download.DownloadAsync(current, result, null, [], null, default) == null && handler.Count == 1,
+            result.Source + " allows manual download of a different special episode without returning it for current regular playback.");
+        var saved = library.Results(title).Single();
+        var file = saved.Files.Single();
+        Check(saved.AvailableSeasons.SequenceEqual(new int?[] { 0 }) && file.Season == 0 && file.Episode == 1
+            && file.LocalPath.StartsWith(library.SeasonDirectory(title, 0) + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+            && library.Tracks(TraktMedia.Parse(title + " S01E01", "", new Dictionary<string, string>())).Count == 0
+            && library.Tracks(TraktMedia.Parse(title + " S01E02", "", new Dictionary<string, string>())).Count == 0
+            && library.Tracks(TraktMedia.Parse(title + " S00E02", "", new Dictionary<string, string>())).Count == 0,
+            result.Source + " saves the selected OVA solely as S00E01 without exposing it to a regular episode or the second special.");
+        var matching = current with { Season = 0, Episode = 1 };
+        Check(await download.DownloadAsync(matching, result, null, [], null, default) == file.LocalPath
+            && library.CurrentFile(matching, saved, saved.Files)?.LocalPath == file.LocalPath
+            && await download.DownloadAsync(current with { Episode = 1 }, result, null, [], null, default) == null
+            && await download.DownloadAsync(matching with { Episode = 2 }, result, null, [], null, default) == null && handler.Count == 1,
+            result.Source + " reuses the saved special for matching S00 playback only and makes no second attachment request.");
+        await Rejected(() => download.DownloadAsync(current with { Episode = 1 }, result with { Season = 1 }, null, [], null, default),
+            "Correcting provider special coordinates does not weaken rejection of a genuinely contradictory regular result and OVA filename.");
+        Check(handler.Count == 1 && library.Results(title).Single().Files.Single().Season == 0,
+            "Rejected contradictory metadata neither downloads again nor changes the valid saved special.");
+    }
     static string BrowseRow(string id, string title, string languages, string seasonEpisode)
     {
         string data = WebUtility.HtmlEncode(System.Text.Json.JsonSerializer.Serialize(new
@@ -1483,6 +1597,20 @@ static class Program
         Directory.CreateDirectory(Root);
         try
         {
+            if (args.Contains("--download-only"))
+            {
+                await DownloadChecks();
+                await IndividualWorkChecks();
+                await EpisodeIdentityChecks();
+                Console.WriteLine($"Subtitle download identity checks passed: {_checks}; isolated mock responses only.");
+                return;
+            }
+            if (args.Contains("--special-provider-only"))
+            {
+                await ProviderSpecialCoordinatesChecks();
+                Console.WriteLine($"Special provider checks passed: {_checks}; isolated mock responses only.");
+                return;
+            }
             await SearchChecks();
             await TitleChecks();
             await ExactSearchChecks();

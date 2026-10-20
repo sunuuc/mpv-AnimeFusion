@@ -34,12 +34,18 @@
                 <RowDefinition Height="Auto" /><RowDefinition Height="*" />
                 <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
-            <Grid Margin="2,0,0,13">
+            <Grid x:Name="SearchHeader" Margin="2,0,0,13">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                 <StackPanel>
                     <TextBlock Text="搜索字幕" FontSize="24" FontWeight="SemiBold" />
                 </StackPanel>
                 <Button Grid.Column="1" Content="来源设置" Click="Settings_Click" VerticalAlignment="Center" />
+            </Grid>
+            <Grid x:Name="FilesHeader" Margin="2,0,0,13" Visibility="Collapsed">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <Button x:Name="BackButton" Content="返回" Click="Back_Click" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1" Text="字幕文件" FontSize="22" FontWeight="SemiBold" Margin="12,0" VerticalAlignment="Center" />
+                <Button x:Name="DownloadAllButton" Grid.Column="2" Content="下载全部" Click="DownloadAll_Click" IsEnabled="False" VerticalAlignment="Center" />
             </Grid>
                 <ListBox x:Name="ResultsList" Grid.Row="1" Style="{StaticResource MatchList}" PreviewMouseLeftButtonUp="Result_Click" KeyDown="Result_KeyDown" BorderThickness="0" Background="Transparent"
                          ItemContainerStyle="{StaticResource MatchResultItem}" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
@@ -154,9 +160,32 @@
                         </Grid>
                     </DataTemplate></ListBox.ItemTemplate>
                 </ListBox>
-            <StackPanel Grid.Row="2" Margin="2,8,2,0" VerticalAlignment="Center">
+            <ListBox x:Name="FilesList" Grid.Row="1" Style="{StaticResource MatchList}" Visibility="Collapsed"
+                     ItemContainerStyle="{StaticResource MatchResultItem}" BorderThickness="0" Background="Transparent"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled" PreviewMouseLeftButtonUp="File_Click" KeyDown="File_KeyDown"
+                     VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling">
+                <ListBox.ItemTemplate><DataTemplate>
+                    <StackPanel MinHeight="50" Margin="2" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding Size}" Margin="0,5,0,0"
+                                   Foreground="{Binding DataContext.Theme.Foreground2, RelativeSource={RelativeSource AncestorType=Window}}">
+                            <TextBlock.Style><Style TargetType="TextBlock"><Style.Triggers>
+                                <DataTrigger Binding="{Binding Size}" Value=""><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
+                            </Style.Triggers></Style></TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+                </DataTemplate></ListBox.ItemTemplate>
+            </ListBox>
+            <TextBlock x:Name="FilesEmpty" Grid.Row="1" FontSize="18" FontWeight="SemiBold" TextAlignment="Center"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24,12" TextWrapping="Wrap"
+                       Visibility="Collapsed" IsHitTestVisible="False" />
+            <StackPanel x:Name="SearchSummary" Grid.Row="2" Margin="2,8,2,0" VerticalAlignment="Center">
                 <TextBlock x:Name="ResultCount" Text="共 0 条搜索结果" Foreground="{Binding Theme.Foreground2}" />
                 <TextBlock x:Name="Status" Style="{StaticResource MatchStatusText}" />
+            </StackPanel>
+            <StackPanel x:Name="FilesSummary" Grid.Row="2" Margin="2,8,2,0" VerticalAlignment="Center" Visibility="Collapsed">
+                <TextBlock x:Name="FileCount" Foreground="{Binding Theme.Foreground2}" />
+                <TextBlock x:Name="FileStatus" Style="{StaticResource MatchStatusText}" />
             </StackPanel>
             <Grid Grid.Row="3" Margin="0,12,0,0">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
