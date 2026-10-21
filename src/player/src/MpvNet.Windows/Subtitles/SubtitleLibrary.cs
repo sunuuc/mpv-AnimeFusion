@@ -571,7 +571,7 @@ public sealed class SubtitleLibrary
                 if (query.Season == null) return true;
                 if (query.Episode == null) return false;
                 var content = SubtitleQuery.Content(file.Name);
-                return query.MatchesContent(file.Name, query.Season, file.Episode)
+                return query.MatchesContent(file.Name, query.Season, file.Episode ?? (result.Individual ? result.Episode : null))
                     || !result.Individual && files.Count == 1 && file.Episode == null && !content.Ambiguous && content.Episode == null
                         && content.Type.Length == 0 && query.ContentType.Length == 0;
             }).ToArray();

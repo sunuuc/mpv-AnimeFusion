@@ -255,7 +255,6 @@ public sealed record SubtitleResult(SubtitleSource Source, string Id, string Tit
         foreach (var file in Files.Concat(PackageNames.Except(Files.Select(file => file.Name), StringComparer.Ordinal)
             .Select(name => new SubtitleFile(Source, Id, 0, name, ""))).Where(file => SubtitleDownload.Supported(file.Name)))
         {
-            if (SubtitleQuery.Content(file.Name).Ambiguous) continue;
             if (language.Length > 0)
             {
                 string fileLanguage = SubtitleLibrary.FileLanguage(file.Name);
@@ -263,6 +262,7 @@ public sealed record SubtitleResult(SubtitleSource Source, string Id, string Tit
             }
             string name = System.IO.Path.GetFileName(file.Name.Replace('\\', '/'));
             var parsed = BangumiMedia.FromPlayback(name, name);
+            if (parsed.HasSeason && file.Name.IndexOfAny(['/', '\\']) >= 0 && SubtitleQuery.Content(file.Name).Ambiguous) continue;
             double? episode = file.Episode ?? (parsed.Ambiguous ? null : parsed.EpisodeNumber);
             if (episode is not (>= 0 and <= int.MaxValue) || episode != Math.Truncate(episode.Value)) continue;
             if (season == null)
