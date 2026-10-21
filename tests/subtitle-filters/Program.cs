@@ -62,6 +62,9 @@ static class Checks
             .EpisodesFor(2).SequenceEqual(new[] { 3, 4 }), "Both supplied file records and package file lists contribute episodes.");
         Check((Result() with { Files = [File("Season 1/Series S02E03.chs.ass")] }).EpisodesFor(null).Count == 0,
             "Conflicting folder and filename seasons are not guessed.");
+        Check(!new SubtitleQuery("Series", 2, 3, "").MatchesFile("Season 1/Series S02E03.chs.ass")
+            && SubtitleLibrary.FileQuery(new("Series", 2, 3, ""), Result(), "Season 1/Series S02E03.chs.ass").Season == -1,
+            "Season conflicts cannot be automatically loaded or assigned to a library season.");
         Check((Result() with { Files = [File("Series 01-02.chs.ass"), File("Series S02E12.5.chs.ass")] }).EpisodesFor(2).Count == 0,
             "Ambiguous ranges and fractional specials are not invented as regular episode numbers.");
         Check((Result() with { PackageNames = ["Font S02E08.ttf", "Series S02E09.zip"] }).EpisodesFor(2).Count == 0,

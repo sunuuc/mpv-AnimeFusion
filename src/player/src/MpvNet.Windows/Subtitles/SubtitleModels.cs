@@ -127,6 +127,9 @@ public sealed record SubtitleQuery(string Title, int? Season, int? Episode, stri
     {
         string[] parts = name.Replace('\\', '/').Split('/');
         var content = ReadContent(parts[^1]);
+        if (content.HasSeason && parts.SkipLast(1).Select(ReadContent).Any(parent =>
+            parent.HasSeason && !parent.Ambiguous && parent.Season != content.Season))
+            return content with { Ambiguous = true };
         if (content.HasSeason || content.Type.Length > 0 || content.Ambiguous) return content;
         // A dedicated type directory can identify an otherwise unlabelled file.
         // Mixed wrappers such as TV+OVA identify neither kind of child.
@@ -252,6 +255,7 @@ public sealed record SubtitleResult(SubtitleSource Source, string Id, string Tit
         foreach (var file in Files.Concat(PackageNames.Except(Files.Select(file => file.Name), StringComparer.Ordinal)
             .Select(name => new SubtitleFile(Source, Id, 0, name, ""))).Where(file => SubtitleDownload.Supported(file.Name)))
         {
+            if (SubtitleQuery.Content(file.Name).Ambiguous) continue;
             if (language.Length > 0)
             {
                 string fileLanguage = SubtitleLibrary.FileLanguage(file.Name);

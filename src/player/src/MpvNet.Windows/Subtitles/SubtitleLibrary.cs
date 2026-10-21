@@ -622,6 +622,7 @@ public sealed class SubtitleLibrary
     public static SubtitleQuery FileQuery(SubtitleQuery query, SubtitleResult result, string filename)
     {
         string[] Parts(string name) => name.Replace('\\', '/').Split('/');
+        if (SubtitleQuery.Content(filename).Ambiguous) return query with { Season = -1, Episode = null };
         if (result.Individual && query.Season < 0) return query;
         if (query.Season == null)
             return !result.Collection ? query : query with { Season = MovieFileMatches(query, filename) ? null : -1, Episode = null };
