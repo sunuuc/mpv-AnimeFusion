@@ -14,6 +14,7 @@ static class Program
     [STAThread]
     static void Main()
     {
+        using var installMutex = new Mutex(false, "mpv-AnimeFusion_Player");
         try
         {
             RegistryHelp.ProductName = AppInfo.Product;

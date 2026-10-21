@@ -32,6 +32,7 @@ DefaultGroupName={#MyAppName}
 SetupIconFile=..\..\MpvNet.Windows\mpv-icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 PrivilegesRequired=lowest
+AppMutex=mpv-AnimeFusion_Player,mpv-AnimeFusionManager_SingleInstance,mpv-AnimeFusion_Components
 CloseApplications=yes
 RestartApplications=no
 WizardStyle=modern
@@ -70,16 +71,24 @@ Type: files; Name: "{app}\portable_config\scripts\thumbfast.lua"
 [UninstallDelete]
 ; Runtime updates and optional components can create files outside the install log.
 ; Personal data is removed only for the categories selected in the uninstall form.
+Type: files; Name: "{app}\mpv-AnimeFusion.exe"
+Type: files; Name: "{app}\mpv-AnimeFusionManager.exe"
 Type: filesandordirs; Name: "{app}\app"
 Type: filesandordirs; Name: "{app}\docs"
 Type: filesandordirs; Name: "{app}\build-info"
 Type: filesandordirs; Name: "{app}\portable_config\cache"
+Type: filesandordirs; Name: "{app}\portable_config\logs"
 Type: files; Name: "{app}\animejanai\currentanimejanai.log"
+Type: files; Name: "{app}\animejanai\onnx\*.build.log"
+Type: files; Name: "{app}\animejanai\rife\*.build.log"
 Type: files; Name: "{app}\portable_config\startup-diagnostic.json"
 Type: files; Name: "{app}\portable_config\startup-diagnostic.json.tmp"
+Type: files; Name: "{app}\portable_config\startup-error.json"
+Type: files; Name: "{app}\portable_config\startup-error.json.tmp"
 Type: files; Name: "{app}\portable_config\playback-diagnostic.json"
 Type: files; Name: "{app}\portable_config\playback-error.json"
 Type: files; Name: "{app}\portable_config\playback-error.json.tmp"
+Type: files; Name: "{app}\portable_config\MpvNet-debug.log"
 Type: dirifempty; Name: "{app}\animejanai"
 Type: dirifempty; Name: "{app}\portable_config"
 Type: dirifempty; Name: "{localappdata}\mpv-AnimeFusion"
@@ -135,25 +144,12 @@ end;
 procedure DeleteSelectedData;
 begin
   if DeleteUserData[0] then begin
-    DeleteDataPath('{app}\portable_config\settings.xml', False);
-    DeleteDataPath('{app}\portable_config\*.conf', False);
-    DeleteDataPath('{app}\portable_config\interface-language.json', False);
-    DeleteDataPath('{app}\portable_config\script-opts', True);
-    DeleteDataPath('{app}\portable_config\scripts', True);
-    DeleteDataPath('{app}\portable_config\script-modules', True);
-    DeleteDataPath('{app}\portable_config\shaders', True);
+    DeleteDataPath('{app}\portable_config', True);
     DeleteDataPath('{app}\animejanai\animejanai.conf', False);
     DeleteDataPath('{app}\animejanai\backups', True);
-    DeleteDataPath('{app}\portable_config\bangumi.json', False);
-    DeleteDataPath('{app}\portable_config\bangumi-app.json', False);
-    DeleteDataPath('{app}\portable_config\trakt.json', False);
-    DeleteDataPath('{app}\portable_config\mal.json', False);
-    DeleteDataPath('{app}\portable_config\sync.json', False);
     DeleteDataPath('{localappdata}\mpv-AnimeFusion\Bangumi', True);
     DeleteDataPath('{localappdata}\mpv-AnimeFusion\Trakt', True);
     DeleteDataPath('{localappdata}\mpv-AnimeFusion\MyAnimeList', True);
-    DeleteDataPath('{app}\portable_config\watch_later', True);
-    DeleteDataPath('{app}\portable_config\saved-props.json', False);
     DeleteDataPath('{localappdata}\mpv-AnimeFusion\watch_history.jsonl', False);
   end;
   if DeleteUserData[1] then begin

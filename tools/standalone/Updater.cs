@@ -9,6 +9,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Management;
 
+using var installMutex = new Mutex(false, "mpv-AnimeFusion_Components");
 string installDir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, ".."));
 using var cancellation = new CancellationTokenSource();
 if (Console.IsInputRedirected)
