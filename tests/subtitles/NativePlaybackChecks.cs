@@ -86,7 +86,11 @@ async Task DownloadedSubtitleChecks()
   ??throw new Exception("Downloaded subtitle manifest is empty");
  Check(Path.IsPathFullyQualified(fixture.File)&&File.Exists(fixture.File),"The downloaded subtitle fixture is an existing local file");
  var media=TraktMedia.Parse(fixture.MediaTitle,video,new Dictionary<string,string>());
- Check(media.Kind=="show"&&media.Episode is >0&&fixture.Result.Individual,"Downloaded playback regression uses an identified single episode subtitle");
+ Check(media.Kind=="show"&&media.Episode is >0&&(fixture.Result.Individual||fixture.SelectedFile!=null),
+  "Downloaded playback regression uses an identified extracted or manually selected episode subtitle");
+ Check(fixture.SelectedFile==null||fixture.SelectedFile.Source==fixture.Result.Source&&fixture.SelectedFile.ResultId==fixture.Result.Id
+  &&fixture.Result.Files.Any(file=>file.FileId==fixture.SelectedFile.FileId&&file.Name==fixture.SelectedFile.Name),
+  "A manually selected subtitle belongs to the real provider file listing");
  var work=new SubtitleWork(media,fixture.Names,fixture.MalId);
  var matched=work.ForDownload(new(media.Title,media.Season,media.Episode,fixture.Result.LanguageCode),fixture.Result);
  Check(matched.Current&&matched.Query.Title==media.Title,"Real provider metadata belongs to the confirmed current work before saving");
@@ -94,44 +98,151 @@ async Task DownloadedSubtitleChecks()
  using var handler=new SubtitleBytesHandler(bytes);
  using var http=new HttpClient(handler);
  var downloader=new SubtitleDownload(http,library);
- var downloadable=fixture.Result with{Local=false,DownloadUrl="https://subtitle-fixture.invalid/track"};
- string saved=await downloader.DownloadAsync(matched.Query,downloadable,null,downloadable.Files,null,default)
+ var selectedFile=fixture.SelectedFile is {} selected?selected with{Url="https://subtitle-fixture.invalid/track"}:null;
+ var downloadable=fixture.Result with{Local=false,DownloadUrl="https://subtitle-fixture.invalid/track",
+  Files=selectedFile==null?fixture.Result.Files:fixture.Result.Files.Select(file=>file.FileId==selectedFile.FileId
+   &&file.Name==selectedFile.Name?selectedFile:file).ToArray()};
+ int expectedReads=fixture.Archive==null?1:0;
+ if(fixture.Archive!=null)
+ {
+  Check(selectedFile!=null&&Path.IsPathFullyQualified(fixture.Archive)&&File.Exists(fixture.Archive),
+   "Archive reuse checks use a real previously saved package and an explicitly selected file");
+  string archive=library.ArchivePath(matched.Query,downloadable);
+  Directory.CreateDirectory(Path.GetDirectoryName(archive)!);File.Copy(fixture.Archive,archive);
+ }
+ string saved=await downloader.DownloadAsync(matched.Query,downloadable,selectedFile,downloadable.Files,null,default)
   ??throw new Exception("The real downloaded subtitle did not match the current episode");
- Check(handler.Requests==1&&File.ReadAllBytes(saved).SequenceEqual(bytes),
+ Check(handler.Requests==expectedReads&&File.ReadAllBytes(saved).SequenceEqual(bytes),
   "The real downloaded subtitle bytes enter the library unchanged through SubtitleDownload");
  Check(saved.StartsWith(library.SeasonDirectory(media.Title,media.Season)+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase),
   "The actual release is stored beneath the current canonical work and source season");
  var local=library.Results(media.Title).Single(item=>item.Source==fixture.Result.Source&&item.Id==fixture.Result.Id);
+ var localSelected=selectedFile==null?null:local.Files.Single(file=>file.LocalPath.Equals(saved,StringComparison.OrdinalIgnoreCase));
  await Open(fixture.MediaTitle);
  player.SetPropertyBool("pause",true);
  int starts=Volatile.Read(ref fileStarts);
  string opened=player.GetPropertyString("path");
  double position=player.GetPropertyDouble("time-pos");
  var store=new SubtitleStore(Path.Combine(temp,"downloaded-fixture-account"));
- await SubtitlePlayback.Current.DownloadAsync(matched.Query,local,store,CurrentTitles());
+ await SubtitlePlayback.Current.DownloadAsync(matched.Query,local,store,CurrentTitles(),localSelected);
  Check(Selected().Equals(saved,StringComparison.OrdinalIgnoreCase)&&player.GetPropertyBool("sub-visibility")
-  &&SubtitlePlayback.Current.DownloadStatus=="",
+  &&player.GetPropertyString("sid")==TrackId(saved)&&SubtitlePlayback.Current.DownloadStatus=="",
   "Playback selects the actual downloaded subtitle immediately and clears its loading notice");
  Check(player.GetPropertyString("current-tracks/sub/codec").Length>0&&HasTrack(saved),
   "The native player recognizes the real subtitle as a loaded subtitle track");
  Check(Volatile.Read(ref fileStarts)==starts&&player.GetPropertyString("path")==opened
   &&Math.Abs(player.GetPropertyDouble("time-pos")-position)<.15,
   "Loading the real subtitle neither reloads the local sample nor changes its playback position");
- Check(await downloader.DownloadAsync(matched.Query,downloadable,null,downloadable.Files,null,default)==saved&&handler.Requests==1,
+ Check(await downloader.DownloadAsync(matched.Query,downloadable,selectedFile,downloadable.Files,null,default)==saved&&handler.Requests==expectedReads,
   "Reusing the real subtitle performs no additional download request");
  int tracks=SubtitleCount();
- await SubtitlePlayback.Current.DownloadAsync(matched.Query,local,store,CurrentTitles());
- Check(SubtitleCount()==tracks&&Selected().Equals(saved,StringComparison.OrdinalIgnoreCase)&&handler.Requests==1,
+ await SubtitlePlayback.Current.DownloadAsync(matched.Query,local,store,CurrentTitles(),localSelected);
+ Check(SubtitleCount()==tracks&&Selected().Equals(saved,StringComparison.OrdinalIgnoreCase)&&handler.Requests==expectedReads,
   "Repeated playback loading reuses the same native subtitle track and stored bytes");
  await Open(media.Title+$" S{media.Season}E{media.Episode+1}");
  Check(!HasTrack(saved)&&SubtitleCount()==0,"The real downloaded episode is not restored for the next episode");
  await SubtitlePlayback.Current.DownloadAsync(matched.Query with{Episode=media.Episode+1},local,store,CurrentTitles());
  Check(!HasTrack(saved)&&SubtitleCount()==0&&SubtitlePlayback.Current.DownloadStatus=="字幕加载失败",
   "Explicitly choosing the previous episode's local result cannot load it into the next episode");
+ if(localSelected!=null)
+ {
+  await SubtitlePlayback.Current.DownloadAsync(matched.Query with{Episode=media.Episode+1},local,store,CurrentTitles(),localSelected);
+  Check(HasTrack(saved)&&Selected().Equals(saved,StringComparison.OrdinalIgnoreCase)
+   &&SubtitlePlayback.Current.DownloadStatus==""&&handler.Requests==expectedReads,
+   "An explicit previous-episode file choice overrides automatic episode recognition without another request");
+ }
  await Open(fixture.MediaTitle);
- Check(Selected().Equals(saved,StringComparison.OrdinalIgnoreCase)&&SubtitlePlayback.Current.DownloadStatus==""&&handler.Requests==1,
+ Check(Selected().Equals(saved,StringComparison.OrdinalIgnoreCase)&&SubtitlePlayback.Current.DownloadStatus==""&&handler.Requests==expectedReads,
   "Reopening the matching episode restores the downloaded version without another download");
  Console.WriteLine($"Downloaded subtitle native chain passed; bytes={bytes.Length}; fixture HTTP reads={handler.Requests}; no network or desktop window.");
+}
+async Task ManualSelectionChecks()
+{
+ const string title="不正经的魔术讲师与禁忌教典";
+ bool Managed(string path,bool pinned)
+ {
+  using var metadata=JsonDocument.Parse(JsonSerializer.Deserialize<string>(player.GetPropertyString("user-data/player_ui/subtitles"))!);
+  return metadata.RootElement.GetProperty("tracks").TryGetProperty(TrackId(path),out var track)
+   &&track.TryGetProperty("managed",out var managed)&&managed.GetBoolean()
+   &&track.GetProperty("pinned").GetBoolean()==pinned;
+ }
+ string fixture=Environment.GetEnvironmentVariable("ANIMEFUSION_TEST_MANUAL_SUBTITLE");
+ byte[] bytes=fixture==null?Encoding.UTF8.GetBytes("1\n00:00:00,000 --> 00:00:50,000\nmanual episode four\n"):File.ReadAllBytes(fixture);
+ string name=fixture==null?title+" 第04集.srt":Path.GetFileName(fixture);
+ var expectedEpisode=SubtitleQuery.Content(name).Episode;
+ Check(expectedEpisode!=null,"The manual subtitle fixture retains a concrete original episode number");
+ var query=new SubtitleQuery(title,1,8,"ja");
+ var automatic=new SubtitleResult(SubtitleSource.Assrt,"manual-default",title,"简","",[]){Season=1,LanguageCode="zh-Hans"};
+ var autoFile=new SubtitleFile(automatic.Source,automatic.Id,1,title+" S01E08.sc.srt","");
+ string autoPath=library.FilePath(query,automatic,autoFile.Name);
+ Directory.CreateDirectory(Path.GetDirectoryName(autoPath)!);File.Copy(supplied,autoPath);
+ library.Save(query,automatic,autoFile,autoPath,true);library.SetPinned(title,autoPath,true);
+ await Open(title+" S01E08");player.SetPropertyBool("pause",true);
+ Check(Selected()==autoPath,"The current episode has an automatic forced subtitle before the user's explicit choice");
+ await using var server=new HeldSubtitleServer(bytes);server.Release();
+ var file=new SubtitleFile(SubtitleSource.Assrt,"manual-choice",4,name,server.Url);
+ var result=new SubtitleResult(file.Source,file.ResultId,title,"简","",[file]){Season=1,LanguageCode="zh-Hans",PackageNames=[name]};
+ var store=new SubtitleStore(Path.Combine(temp,"manual-account"));
+ int starts=Volatile.Read(ref fileStarts);string opened=player.GetPropertyString("path");
+ double position=player.GetPropertyDouble("time-pos");
+ await SubtitlePlayback.Current.DownloadAsync(query,result,store,CurrentTitles(),file);
+ string saved=library.Cached(query,result,file)??throw new Exception("The explicitly selected subtitle must be saved");
+ Check(server.Requests==1&&File.ReadAllBytes(saved).SequenceEqual(bytes),
+  "The real manually selected subtitle downloads once and retains its exact bytes");
+ Check(Selected()==saved&&player.GetPropertyBool("sub-visibility")&&player.GetPropertyString("sid")==TrackId(saved)
+  &&SubtitlePlayback.Current.DownloadStatus=="",
+  "Manual file selection overrides automatic episode, language and forced-version selection and clears the saved notice");
+ Check(Managed(saved,false)&&SubtitlePlayback.Current.PrepareRemoval(TrackId(saved)) is {Title:title},
+  "A manually selected other-episode file retains the existing managed metadata and deletion action");
+ SubtitlePlayback.Current.TogglePinned(TrackId(saved));
+ Check(Managed(saved,true)&&Selected()==saved&&library.FindTrack(saved) is {Title:title,Track.Pinned:true},
+  "The existing force-use action updates the same library selection for a manually selected other-episode file");
+ SubtitlePlayback.Current.TogglePinned(TrackId(saved));
+ Check(Managed(saved,false)&&Selected()==saved,"Canceling force-use refreshes the same managed subtitle row without changing its selection");
+ library.SetPinned(title,autoPath,true);
+ Check(Volatile.Read(ref fileStarts)==starts&&player.GetPropertyString("path")==opened
+  &&Math.Abs(player.GetPropertyDouble("time-pos")-position)<.15,
+  "An explicit subtitle choice does not reload video or change its position");
+ var local=library.Results(title).Single(item=>item.Id==result.Id);
+ var localFile=local.Files.Single();
+ Check(localFile.Season==1&&localFile.Episode==expectedEpisode
+  &&library.CurrentFile(query with{Language=""},local,local.Files)==null,
+  "Manual loading preserves the file's actual episode identity rather than reclassifying it as episode eight");
+ await Open(title+" S01E08");
+ Check(Selected()==autoPath&&!HasTrack(saved),"Reopening still applies automatic episode matching rather than restoring an explicit other-episode file");
+ await SubtitlePlayback.Current.DownloadAsync(query,local,store,CurrentTitles(),localFile);
+ Check(Selected()==saved&&SubtitlePlayback.Current.DownloadStatus==""&&server.Requests==1,
+  "Explicit local selection reuses the same file and overrides the automatic choice without another request");
+ await Open("另一部作品 S01E08");
+ Check(SubtitleCount()==0,"An unrelated work cannot automatically inherit the manually selected subtitle");
+ await SubtitlePlayback.Current.DownloadAsync(query,local,store,CurrentTitles(),localFile);
+ Check(Selected()==saved&&SubtitlePlayback.Current.DownloadStatus==""&&library.Results("另一部作品").Count==0,
+  "An explicit file choice also overrides unresolved work recognition without changing its library ownership");
+ Check(Managed(saved,false)&&SubtitlePlayback.Current.PrepareRemoval(TrackId(saved)) is {Title:title},
+  "Management actions use the actual indexed owner even when a subtitle is explicitly loaded in another work");
+ SubtitlePlayback.Current.TogglePinned(TrackId(saved));
+ Check(Managed(saved,true)&&library.FindTrack(saved)!.Value.Title==title,
+  "Force-use in another playback context still updates the subtitle's original library owner");
+ SubtitlePlayback.Current.TogglePinned(TrackId(saved));library.SetPinned(title,autoPath,true);
+ await Open(title+" S01E08");
+ await using var held=new HeldSubtitleServer(bytes);
+ var pendingFile=file with{FileId=5,Name=title+" 第05集"+Path.GetExtension(name),Url=held.Url};
+ var pendingResult=result with{Files=[pendingFile],PackageNames=[pendingFile.Name]};
+ Task pending=SubtitlePlayback.Current.DownloadAsync(query,pendingResult,store,CurrentTitles(),pendingFile);
+ await held.Started.WaitAsync(TimeSpan.FromSeconds(5));
+ await Open(title+" S01E10");held.Release();
+ await pending.WaitAsync(TimeSpan.FromSeconds(5));
+ Check(SubtitleCount()==0&&SubtitlePlayback.Current.DownloadStatus==""&&held.Requests==1,
+  "Switching videos cancels an explicit download and prevents late loading or notices in the new episode");
+ await Open("另一部作品 S01E08");
+ await SubtitlePlayback.Current.DownloadAsync(query,local,store,CurrentTitles(),localFile);
+ var removal=SubtitlePlayback.Current.PrepareRemoval(TrackId(saved))??throw new Exception("The manually selected subtitle must support the existing delete action");
+ Check(await SubtitlePlayback.Current.RemoveAsync(removal,false)&&!HasTrack(saved)&&File.Exists(saved)
+  &&library.FindTrack(saved)==null&&library.Results(title).Single().Id==automatic.Id,
+  "The existing set deletion removes the manually loaded row and its records from the actual owner while preserving files and another set");
+ Check(library.FindTrack(supplied)==null&&library.FindTrack("https://example.invalid/subtitle.ass")==null,
+  "Unmanaged files and remote tracks do not acquire library management actions");
+ Console.WriteLine($"Manual subtitle priority checks passed; real bytes={bytes.Length}; loopback requests=2; no desktop window or media service calls.");
 }
 async Task SetRemovalChecks()
 {
@@ -197,6 +308,12 @@ async Task SetRemovalChecks()
 }
 try
 {
+ if(args.Contains("--manual-selection-only"))
+ {
+  await ManualSelectionChecks();
+  Console.WriteLine($"Native manual subtitle checks passed: {checks}; isolated generated media and loopback only; no desktop window.");
+  return;
+ }
  if(args.Contains("--set-removal-only"))
  {
   await SetRemovalChecks();
@@ -391,6 +508,61 @@ try
      Check(new System.Windows.Interop.WindowInteropHelper(defaultWindow).Handle==IntPtr.Zero,"Default-filter checks never create a desktop window");
     }
     finally{type.GetField("_canClose",fields)!.SetValue(defaultWindow,true);defaultWindow.Close();}
+     var filesWindow=new MpvNet.Windows.WPF.SubtitleSearchWindow();
+     using(var filesHandler=new WindowFilesHandler())
+     using(var filesHttp=new HttpClient(filesHandler))
+     try
+     {
+      var filesClient=new WindowPagedSearchClient();
+      type.GetField("_store",fields)!.SetValue(filesWindow,fixtureStore);
+      type.GetField("_assrt",fields)!.SetValue(filesWindow,new AssrtClient(filesHttp,fixtureStore));
+      ((SubtitleSearch)type.GetField("_search",fields)!.GetValue(filesWindow)!).Dispose();
+      type.GetField("_search",fields)!.SetValue(filesWindow,new SubtitleSearch(filesClient));
+      type.GetField("_source",fields)!.SetValue(filesWindow,"assrt");
+      type.GetMethod("Window_Loaded",fields)!.Invoke(filesWindow,[filesWindow,new System.Windows.RoutedEventArgs()]);
+      type.GetMethod("Search_Click",fields)!.Invoke(filesWindow,[filesWindow,new System.Windows.RoutedEventArgs()]);
+      WaitUi(()=>filesClient.Pages.Count==2&&type.GetField("_searchResult",fields)!.GetValue(filesWindow) is SubtitleSearchResult{Results.Count:1});
+      var state=(SubtitleSearchResult)type.GetField("_searchResult",fields)!.GetValue(filesWindow)!;
+      var row=state.Results.Single();
+      var fileSearchBox=(System.Windows.Controls.TextBox)filesWindow.FindName("SearchBox");
+      var fileSearchButton=(System.Windows.Controls.Button)filesWindow.FindName("SearchButton");
+      string originalKeyword=fileSearchBox.Text;
+      fileSearchBox.Text=originalKeyword+" 未搜索的修改";
+      var openFiles=(Task)type.GetMethod("OpenFilesAsync",fields)!.Invoke(filesWindow,[row])!;
+      WaitUi(()=>filesClient.Cancelled==1&&filesHandler.Details==1);
+      Check(state.Paused&&!state.Complete&&state.Results.Count==1&&filesClient.Pages.SequenceEqual(new[]{1,2}),
+       "Opening subtitle files pauses the actual requested search even after editing the input and cancels its unfinished page");
+      Check(!openFiles.IsCompleted&&((System.Windows.Controls.TextBlock)filesWindow.FindName("FileStatus")).Text=="正在获取文件列表…"
+       &&filesHandler.FileRequests==0,
+       "A pending file page reports metadata retrieval and does not download any subtitle or archive bytes before selection");
+      filesHandler.Release();WaitUi(()=>openFiles.IsCompleted);openFiles.GetAwaiter().GetResult();
+      Check(((System.Collections.ObjectModel.ObservableCollection<SubtitleFile>)type.GetField("_files",fields)!.GetValue(filesWindow)!).Count==2
+       &&filesHandler.Details==1&&filesHandler.FileRequests==0,
+       "One detail response populates the file list without contacting either file download URL");
+      fileSearchBox.Text=originalKeyword;
+      type.GetMethod("RestoreSearchPage",fields)!.Invoke(filesWindow,null);WaitUi(()=>true);
+      Check(state.Paused&&!state.Complete&&state.Results.Count==1&&filesClient.Pages.SequenceEqual(new[]{1,2})
+       &&fileSearchButton.Content?.ToString()=="继续",
+       "Returning from a file page retains completed results and the paused unfinished page without automatically continuing");
+      openFiles=(Task)type.GetMethod("OpenFilesAsync",fields)!.Invoke(filesWindow,[row])!;
+      WaitUi(()=>openFiles.IsCompleted);openFiles.GetAwaiter().GetResult();
+      Check(filesHandler.Details==1&&filesHandler.FileRequests==0&&state.Paused&&filesClient.Pages.Count==2,
+       "Reopening the same file page reuses its detail response and leaves pagination paused");
+      type.GetMethod("RestoreSearchPage",fields)!.Invoke(filesWindow,null);
+      type.GetMethod("Search_Click",fields)!.Invoke(filesWindow,[filesWindow,new System.Windows.RoutedEventArgs()]);
+      WaitUi(()=>state.Complete);
+      Check(filesClient.Pages.SequenceEqual(new[]{1,2,2})&&state.Results.Count==2&&!state.Paused
+       &&fileSearchButton.Content?.ToString()=="搜索"&&filesHandler.Details==1&&filesHandler.FileRequests==0,
+       "Only manual Continue retries the interrupted second page without repeating page one or downloading a subtitle");
+      openFiles=(Task)type.GetMethod("OpenFilesAsync",fields)!.Invoke(filesWindow,[row with{Id="invalid-file-page"}])!;
+      WaitUi(()=>openFiles.IsCompleted);openFiles.GetAwaiter().GetResult();
+      Check(((System.Windows.Controls.TextBlock)filesWindow.FindName("FilesEmpty")).Text=="获取文件列表失败"
+       &&filesHandler.Details==1&&filesHandler.FileRequests==0,
+       "A file-detail failure is identified as a file-list failure without attempting a subtitle download");
+      Check(new System.Windows.Interop.WindowInteropHelper(filesWindow).Handle==IntPtr.Zero,
+       "File-list pause, metadata caching and resume checks never create a desktop window");
+     }
+     finally{type.GetField("_canClose",fields)!.SetValue(filesWindow,true);filesWindow.Close();}
     ChooseSeason("2");ChooseLanguage("zh-Hans");
     ChooseEpisode("all");Refresh();
     Check((string)type.GetField("_episode",fields)!.GetValue(window)! =="all"&&EpisodeTags().Contains("2")&&client.Requests==0,
@@ -905,21 +1077,20 @@ try
  string movieSubtitle=library.FilePath(movieQuery,moviePackage,movieSubtitleName);
  Directory.CreateDirectory(Path.GetDirectoryName(movieSubtitle)!);File.Copy(supplied,movieSubtitle);
  library.Save(movieQuery,moviePackage,new(SubtitleSource.Assrt,moviePackage.Id,0,movieSubtitleName,""),movieSubtitle,true);
+ string movieLibraryBefore=JsonSerializer.Serialize(library.Results("导入电影"));
  var movieMedia=TraktMedia.Parse("导入电影 (2020)","",new Dictionary<string,string>());
  await Open("导入电影 (2020)");
  Check(SubtitleCount()==0,"A subtitle previously stored under specials is not automatically assigned to an unrelated movie shelf");
  player.LoadFiles([movieSubtitle],false,false);
- await WaitFor(()=>library.Tracks(movieMedia).Count==1
-  &&library.Tracks(movieMedia).Any(track=>HasTrack(track.Path)&&Selected()==track.Path)&&!HasTrack(movieSubtitle),
-  "Manually dropping an already stored subtitle selects its copy in the current movie shelf");
- string savedMovie=library.Tracks(movieMedia).Single().Path;
- Check(!savedMovie.Equals(movieSubtitle,StringComparison.OrdinalIgnoreCase)
-  &&savedMovie.StartsWith(library.SeasonDirectory(movieMedia.Title,null)+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase)
-  &&File.Exists(movieSubtitle)&&File.ReadAllBytes(savedMovie).SequenceEqual(File.ReadAllBytes(movieSubtitle)),
-  "Movie import stores an identical copy under the movie shelf and preserves the original special-episode file");
+ await WaitFor(()=>HasTrack(movieSubtitle)&&Selected()==movieSubtitle
+  &&SubtitlePlayback.Current.PrepareRemoval(TrackId(movieSubtitle))!=null,
+  "Manually dropping an already indexed subtitle reuses its original file and management actions");
+ Check(library.Tracks(movieMedia).Count==0&&library.FindTrack(movieSubtitle) is {Title:"导入电影"}
+  &&JsonSerializer.Serialize(library.Results("导入电影"))==movieLibraryBefore&&File.Exists(movieSubtitle),
+  "Reusing an indexed subtitle does not copy or reclassify it into the current movie shelf");
  await Open("导入电影 (2020)");
- Check(SubtitleCount()==1&&Selected()==savedMovie&&File.Exists(movieSubtitle),
-  "Reopening selects the confirmed movie copy while the original special-episode file remains intact");
+ Check(SubtitleCount()==0&&File.Exists(movieSubtitle),
+  "Reopening retains automatic movie matching rather than treating a manual choice as a new ownership mapping");
 
  const string batchTitle="批次回归作品";
  var batchMedia=TraktMedia.Parse(batchTitle+" S1E1","",new Dictionary<string,string>());
@@ -939,6 +1110,7 @@ try
  Check(SubtitleCount()==1&&Selected()==savedBatch&&!HasTrack(wrongEpisode),
   "Reopening after a partial batch failure restores only the successfully imported subtitle");
  await DownloadedSubtitleChecks();
+ await ManualSelectionChecks();
  await SetRemovalChecks();
  Console.WriteLine($"Native subtitle playback checks passed: {checks}; local generated video only; no desktop window or service calls.");
 }
@@ -973,6 +1145,53 @@ sealed class WindowSearchClient:ISubtitleClient
  public Task<SubtitleResult> DetailAsync(SubtitleResult result,CancellationToken token)=>throw new Exception("Window search checks must not request subtitle details");
 }
 
+sealed class WindowPagedSearchClient:ISubtitleClient
+{
+ readonly System.Collections.Concurrent.ConcurrentQueue<int> _pages=new();
+ int _secondPages,_cancelled;
+ public SubtitleSource Source=>SubtitleSource.Assrt;
+ public IReadOnlyList<int> Pages=>_pages.ToArray();
+ public int Cancelled=>Volatile.Read(ref _cancelled);
+ public async Task<SubtitlePage> SearchAsync(SubtitleQuery query,int page,CancellationToken token,IProgress<IReadOnlyList<SubtitleResult>> progress=null)
+ {
+  _pages.Enqueue(page);
+  if(page==2&&Interlocked.Increment(ref _secondPages)==1)
+  {
+   try{await Task.Delay(Timeout.Infinite,token);}
+   catch(OperationCanceledException){Interlocked.Increment(ref _cancelled);throw;}
+  }
+  token.ThrowIfCancellationRequested();
+  if(page is not (1 or 2))throw new Exception("Unexpected file-page pagination request");
+  return new([new(Source,page==1?"990101":"990102",query.Title,"简体中文","",[]){LanguageCode="zh-Hans"}],page==1)
+   {PageKey="file-page-"+page};
+ }
+ public Task<SubtitleResult> DetailAsync(SubtitleResult result,CancellationToken token)=>throw new Exception("Only the real ASSRT detail parser may populate the file page");
+}
+
+sealed class WindowFilesHandler:HttpMessageHandler
+{
+ readonly TaskCompletionSource _release=new(TaskCreationOptions.RunContinuationsAsynchronously);
+ int _details,_files;
+ public int Details=>Volatile.Read(ref _details);
+ public int FileRequests=>Volatile.Read(ref _files);
+ public void Release()=>_release.TrySetResult();
+ protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken token)
+ {
+  if(request.Method!=HttpMethod.Post||request.RequestUri?.Host!="api.assrt.net"||request.RequestUri.AbsolutePath!="/v1/sub/detail")
+  {Interlocked.Increment(ref _files);throw new Exception("Opening a file page must not download a subtitle or archive");}
+  string form=await request.Content.ReadAsStringAsync(token);
+  if(form!="id=990101")throw new Exception("Unexpected file-detail fixture ID");
+  Interlocked.Increment(ref _details);await _release.Task.WaitAsync(token);
+  const string response="""
+   {"status":0,"sub":{"subs":[{"native_name":"测试作品 第二季","videoname":"File Page Fixture",
+   "filename":"File Page Fixture.zip","url":"https://subtitle-fixture.invalid/archive.zip","subtype":"ASS",
+   "filelist":[{"f":"File Page Fixture S02E02.sc.ass","url":"https://subtitle-fixture.invalid/onthefly/990101/key/1/one.ass"},
+   {"f":"File Page Fixture S02E03.sc.ass","url":"https://subtitle-fixture.invalid/onthefly/990101/key/2/two.ass"}]}]}}
+   """;
+  return new(HttpStatusCode.OK){Content=new StringContent(response,Encoding.UTF8,"application/json")};
+ }
+}
+
 sealed class MemoryPresentationSource:System.Windows.PresentationSource
 {
  public override System.Windows.Media.Visual RootVisual{get;set;}
@@ -980,7 +1199,8 @@ sealed class MemoryPresentationSource:System.Windows.PresentationSource
  protected override System.Windows.Media.CompositionTarget GetCompositionTargetCore()=>null;
 }
 
-sealed record DownloadedSubtitleFixture(string File,string MediaTitle,IReadOnlyList<string> Names,SubtitleResult Result,int? MalId=null);
+sealed record DownloadedSubtitleFixture(string File,string MediaTitle,IReadOnlyList<string> Names,SubtitleResult Result,int? MalId=null,
+ SubtitleFile SelectedFile=null,string Archive=null);
 
 sealed class SubtitleBytesHandler(byte[] bytes):HttpMessageHandler
 {
@@ -1005,8 +1225,10 @@ sealed class HeldSubtitleServer:IAsyncDisposable
  public int Requests{get;private set;}
  public Task Started=>_started.Task;
  public Task Finished=>_server;
- public HeldSubtitleServer()
+ readonly byte[] _body;
+ public HeldSubtitleServer(byte[] content=null)
  {
+  _body=content??Encoding.UTF8.GetBytes("1\n00:00:00,000 --> 00:00:50,000\npending subtitle\n");
   _listener.Start();Url=$"http://127.0.0.1:{((IPEndPoint)_listener.LocalEndpoint).Port}/subtitle.srt";
   _server=ServeAsync();
  }
@@ -1027,8 +1249,8 @@ sealed class HeldSubtitleServer:IAsyncDisposable
    if(!Encoding.ASCII.GetString(headers.ToArray()).StartsWith("GET /subtitle.srt HTTP/",StringComparison.Ordinal))
     throw new IOException("Unexpected loopback request");
    Requests++;
-   byte[] body=Encoding.UTF8.GetBytes("1\n00:00:00,000 --> 00:00:50,000\npending subtitle\n");
-   byte[] response=Encoding.ASCII.GetBytes($"HTTP/1.1 200 OK\r\nContent-Type: application/x-subrip\r\nContent-Length: {body.Length}\r\nConnection: close\r\n\r\n");
+   byte[] body=_body;
+   byte[] response=Encoding.ASCII.GetBytes($"HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {body.Length}\r\nConnection: close\r\n\r\n");
    await stream.WriteAsync(response,_lifetime.Token);await stream.WriteAsync(body.AsMemory(0,1),_lifetime.Token);
    await stream.FlushAsync(_lifetime.Token);_started.TrySetResult();
    await _release.Task.WaitAsync(_lifetime.Token);

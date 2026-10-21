@@ -20,10 +20,12 @@ public sealed class SubtitleDownload(HttpClient http, SubtitleLibrary library)
     public async Task<string?> DownloadAsync(SubtitleQuery query, SubtitleResult result, SubtitleFile? selected,
         IReadOnlyList<SubtitleFile> files, IProgress<string>? progress, CancellationToken token)
     {
+        if (selected != null && (selected.Source != result.Source || selected.ResultId != result.Id))
+            throw new SubtitleServiceException("字幕文件无效。");
         if (!result.Local)
         {
             if (result.Individual)
-                return await DownloadIndividualAsync(query, result, progress, token).ConfigureAwait(false);
+                return await DownloadIndividualAsync(query, result, selected != null, progress, token).ConfigureAwait(false);
             if (selected != null)
                 return await DownloadFileAsync(query, result, selected, files, progress, token).ConfigureAwait(false);
             if (result.DownloadName.Length == 0 || result.DownloadUrl.Length == 0)
@@ -55,7 +57,7 @@ public sealed class SubtitleDownload(HttpClient http, SubtitleLibrary library)
             }
             var package = library.Package(query, result);
             if (package?.Complete != true || package.Files.Any(file => !File.Exists(file.Path)))
-                if (!await Task.Run(() => ExtractAsync(query, result, archivePath, progress, token), token).ConfigureAwait(false))
+                if (await Task.Run(() => ExtractAsync(query, result, archivePath, progress, token), token).ConfigureAwait(false) != true)
                     return null;
             package = library.Package(query, result);
             if (package != null) result = result with { Collection = package.Collection, PackageNames = package.Files.Select(file => file.Name).ToArray() };
@@ -78,12 +80,14 @@ public sealed class SubtitleDownload(HttpClient http, SubtitleLibrary library)
             string pairedPath = SavedPath(query, result, pair);
             if (extension == ".sub") path = pairedPath;
         }
-        return !result.Local || library.CurrentFile(query, result, [selected]) != null ? path : null;
+        return path;
     }
 
     async Task<string?> DownloadFileAsync(SubtitleQuery query, SubtitleResult result, SubtitleFile selected,
         IReadOnlyList<SubtitleFile> files, IProgress<string>? progress, CancellationToken token)
     {
+        MpvNet.Diagnostics.Write("subtitle.download", "file-start", new
+            { source = result.Source.ToString(), result.Id, selected.FileId, selected.Name });
         if (selected.Source != result.Source || selected.ResultId != result.Id || !Supported(selected.Name))
             throw new SubtitleServiceException("不支持这份字幕格式。");
         string extension = Path.GetExtension(selected.Name).ToLowerInvariant();
@@ -95,15 +99,40 @@ public sealed class SubtitleDownload(HttpClient http, SubtitleLibrary library)
         // Fetch both parts before saving either. Write the SUB data before its IDX
         // index, so a failed pair never leaves a new, unusable IDX in the library.
         SubtitleFile[] requested = pair == null ? [selected] : extension == ".idx" ? [pair, selected] : [selected, pair];
+        if (requested.Any(file => library.Cached(query, result, file) == null)
+            && result.DownloadName.Length > 0 && PackageSupported(result.DownloadName)
+            && library.ArchivePath(query, result) is { } archivePath && File.Exists(archivePath))
+        {
+            bool? extracted = await Task.Run(() => ExtractAsync(query, result, archivePath, progress, token, requested), token).ConfigureAwait(false);
+            if (extracted == false) return null;
+            MpvNet.Diagnostics.Write("subtitle.download", extracted == true ? "file-archive-reused" : "file-archive-miss",
+                new { source = result.Source.ToString(), result.Id, selected.FileId });
+        }
         var pending = requested.Select(file => (File: file, Cached: library.Cached(query, result, file),
             Target: library.FilePath(query, result, file.Name))).ToArray();
+        MpvNet.Diagnostics.Write("subtitle.download", "file-cache", new
+            { source = result.Source.ToString(), result.Id, files = pending.Select(item => new { item.File.FileId, cached = item.Cached != null }).ToArray() });
+        bool alignPair = pair != null && !Path.ChangeExtension(pending[1].Cached ?? pending[1].Target, ".sub")
+            .Equals(pending[0].Cached ?? pending[0].Target, StringComparison.OrdinalIgnoreCase);
         var downloaded = new List<(SubtitleFile File, string Path, byte[] Bytes)>();
+        int fetched = 0, copied = 0;
         foreach (var item in pending)
         {
             token.ThrowIfCancellationRequested();
-            if (item.Cached != null) continue;
+            if (item.Cached != null)
+            {
+                if (alignPair && !item.Cached.Equals(item.Target, StringComparison.OrdinalIgnoreCase))
+                {
+                    using var stream = File.OpenRead(item.Cached);
+                    byte[] cached = await SubtitleHttp.ReadBytesAsync(stream, 32 * 1024 * 1024, token).ConfigureAwait(false);
+                    downloaded.Add((item.File with { LocalPath = item.Cached }, item.Target, cached));
+                    copied++;
+                }
+                continue;
+            }
             byte[] bytes = await FetchAsync(item.File.Url, result.Source, 32 * 1024 * 1024, token, progress).ConfigureAwait(false);
             downloaded.Add((item.File, item.Target, bytes));
+            fetched++;
         }
         foreach (var item in downloaded)
             await WriteAsync(item.Path, item.Bytes, token).ConfigureAwait(false);
@@ -113,13 +142,14 @@ public sealed class SubtitleDownload(HttpClient http, SubtitleLibrary library)
         var saved = library.Results(query.Title).FirstOrDefault(item => item.Source == result.Source && item.Id == result.Id);
         var savedFile = saved?.Files.FirstOrDefault(file => file.LocalPath.Equals(selectedPath, StringComparison.OrdinalIgnoreCase));
         bool matches = saved != null && savedFile != null && library.CurrentFile(query, saved, [savedFile]) != null;
-        MpvNet.Diagnostics.Write("subtitle.download", downloaded.Count == 0 ? "reused" : "file-indexed",
-            new { source = result.Source.ToString(), result.Id, selected.FileId, count = downloaded.Count, matches });
+        MpvNet.Diagnostics.Write("subtitle.download", fetched == 0 ? "reused" : "file-indexed",
+            new { source = result.Source.ToString(), result.Id, selected.FileId, count = fetched, copied, matches });
         string path = extension == ".sub" && pair != null ? SavedPath(query, result, pair) : selectedPath;
-        return matches ? path : null;
+        return path;
     }
 
-    async Task<string?> DownloadIndividualAsync(SubtitleQuery query, SubtitleResult result, IProgress<string>? progress, CancellationToken token)
+    async Task<string?> DownloadIndividualAsync(SubtitleQuery query, SubtitleResult result, bool explicitlySelected,
+        IProgress<string>? progress, CancellationToken token)
     {
         string name = result.DownloadName;
         string filename = name.EndsWith(".xz", StringComparison.OrdinalIgnoreCase) ? name[..^3] : name;
@@ -135,7 +165,8 @@ public sealed class SubtitleDownload(HttpClient http, SubtitleLibrary library)
             throw new SubtitleServiceException("字幕季集信息不一致。");
         }
         // An extracted track belongs to its release, even when the user searches
-        // another episode. Save it there, and only load it for the current episode.
+        // another episode. Automatic loading still requires the current episode;
+        // an explicitly selected file is returned without changing its identity.
         // Unresolved coordinates remain in the unclassified shelf without loading.
         bool sameWork = SubtitleLibrary.IndividualMatches(query, result);
         var targetQuery = query with { Season = sameWork ? result.Season : -1, Episode = sameWork ? result.Episode : null };
@@ -149,7 +180,7 @@ public sealed class SubtitleDownload(HttpClient http, SubtitleLibrary library)
             if (library.Cached(targetQuery, result, savedFile) is { } cached)
             {
                 MpvNet.Diagnostics.Write("subtitle.download", "reused", new { source = result.Source.ToString(), result.Id, matches });
-                return matches ? cached : null;
+                return explicitlySelected || matches ? cached : null;
             }
         }
         byte[] bytes = await FetchAsync(result.DownloadUrl, result.Source, 32 * 1024 * 1024, token, progress).ConfigureAwait(false);
@@ -200,10 +231,11 @@ public sealed class SubtitleDownload(HttpClient http, SubtitleLibrary library)
         library.Save(targetQuery, result with { Format = format.ToUpperInvariant() }, file, path, true, true);
         MpvNet.Diagnostics.Write("subtitle.download", "indexed", new { source = result.Source.ToString(), result.Id, format,
             bytes = bytes.Length, sameWork, matches, targetQuery.Season, targetQuery.Episode });
-        return matches ? path : null;
+        return explicitlySelected || matches ? path : null;
     }
 
-    async Task<bool> ExtractAsync(SubtitleQuery query, SubtitleResult result, string archivePath, IProgress<string>? progress, CancellationToken token)
+    async Task<bool?> ExtractAsync(SubtitleQuery query, SubtitleResult result, string archivePath, IProgress<string>? progress,
+        CancellationToken token, IReadOnlyList<SubtitleFile>? requested = null)
     {
         MpvNet.Diagnostics.Write("subtitle.download", "extract-start", new { source = result.Source.ToString(), result.Id });
         progress?.Report("正在解压字幕包…");
@@ -229,10 +261,30 @@ public sealed class SubtitleDownload(HttpClient http, SubtitleLibrary library)
                 names.Select(choices, selectedNames);
                 progress?.Report("正在解压字幕包…");
             }
+            var requestedResult = result;
             result = result with { PackageNames = entries.Where(entry => !entry.IsDirectory && names.Name(entry) is { } name && Supported(name)).Select(entry => names.Name(entry)!).ToArray() };
             var collection = result with { Collection = true };
             if (result.PackageNames.Select(name => SubtitleLibrary.FileQuery(query, collection, name).Season).Where(season => season >= 0).Distinct().Count() > 1)
                 result = collection;
+            Dictionary<string, SubtitleFile>? selectedFiles = null;
+            if (requested != null)
+            {
+                selectedFiles = new(StringComparer.OrdinalIgnoreCase);
+                foreach (var file in requested)
+                {
+                    string? name = SubtitleLibrary.PackageFileName(result.PackageNames, requestedResult, file);
+                    int? expectedSeason = file.Season ?? SubtitleLibrary.FileQuery(query, requestedResult, file.Name).Season;
+                    if (name == null || expectedSeason < 0
+                        || SubtitleLibrary.FileQuery(query, result, name).Season != expectedSeason
+                        || !selectedFiles.TryAdd(name.Replace('\\', '/'), file with { Name = name })) return null;
+                }
+                if (selectedFiles.Count == 2)
+                {
+                    string[] paired = selectedFiles.Keys.ToArray();
+                    if (!Path.ChangeExtension(paired[0], Path.GetExtension(paired[1])).Equals(paired[1], StringComparison.OrdinalIgnoreCase))
+                        return null;
+                }
+            }
             var targets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var entry in entries.Where(entry => !entry.IsDirectory))
             {
@@ -245,22 +297,28 @@ public sealed class SubtitleDownload(HttpClient http, SubtitleLibrary library)
                 }
             }
             int count = 0;
-            int total = entries.Count(entry => !entry.IsDirectory && names.Name(entry) is { } name && Supported(name)), lastPercent = -1;
+            int total = selectedFiles?.Count ?? entries.Count(entry => !entry.IsDirectory && names.Name(entry) is { } name && Supported(name)), lastPercent = -1;
+            var selectedWrites = requested == null ? null : new List<(SubtitleFile File, string Path, byte[] Bytes)>();
             async Task SaveEntryAsync(SharpCompress.Common.IEntry entry, Func<Stream> open)
             {
                 token.ThrowIfCancellationRequested();
                 string? name = names.Name(entry);
                 if (entry.IsDirectory || name == null || !Supported(name)) return;
-                var file = result.Files.FirstOrDefault(file => file.Name == name)
-                    ?? new SubtitleFile(result.Source, result.Id, 0, name, "");
+                if (selectedFiles != null && !selectedFiles.ContainsKey(name.Replace('\\', '/'))) return;
+                var file = selectedFiles?.GetValueOrDefault(name.Replace('\\', '/'))
+                    ?? result.Files.FirstOrDefault(file => file.Name == name) ?? new SubtitleFile(result.Source, result.Id, 0, name, "");
                 string target = library.FilePath(query, result, file.Name);
                 if (library.Cached(query, result, file) == null)
                 {
                     using var stream = open();
                     byte[] bytes = await SubtitleHttp.ReadBytesAsync(stream, 32 * 1024 * 1024, token).ConfigureAwait(false);
                     if (bytes.Length == 0) return;
-                    await WriteAsync(target, bytes, token).ConfigureAwait(false);
-                    library.Save(query, result, file, target, false);
+                    if (selectedWrites != null) selectedWrites.Add((file, target, bytes));
+                    else
+                    {
+                        await WriteAsync(target, bytes, token).ConfigureAwait(false);
+                        library.Save(query, result, file, target, false);
+                    }
                 }
                 count++;
                 int percent = count * 100 / Math.Max(1, total) / 10 * 10;
@@ -272,8 +330,15 @@ public sealed class SubtitleDownload(HttpClient http, SubtitleLibrary library)
                 while (reader.MoveToNextEntry()) await SaveEntryAsync(reader.Entry, reader.OpenEntryStream).ConfigureAwait(false);
             }
             else foreach (var entry in entries) await SaveEntryAsync(entry, entry.OpenEntryStream).ConfigureAwait(false);
-            if (count == 0) throw new SubtitleServiceException("字幕包里没有可用字幕。");
-            library.Complete(query, result);
+            if (count == 0 || selectedFiles != null && count != selectedFiles.Count)
+                throw new SubtitleServiceException("字幕包里没有可用字幕。");
+            if (selectedWrites != null)
+            {
+                var ordered = selectedWrites.OrderBy(item => Path.GetExtension(item.File.Name).Equals(".idx", StringComparison.OrdinalIgnoreCase)).ToArray();
+                foreach (var item in ordered) await WriteAsync(item.Path, item.Bytes, token).ConfigureAwait(false);
+                foreach (var item in ordered) library.Save(query, result, item.File, item.Path, false);
+            }
+            if (requested == null) library.Complete(query, result);
             MpvNet.Diagnostics.Write("subtitle.download", "extract-complete", new { source = result.Source.ToString(), result.Id, count });
             return true;
         }

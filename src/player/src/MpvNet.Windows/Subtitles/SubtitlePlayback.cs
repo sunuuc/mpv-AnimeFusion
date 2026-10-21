@@ -77,14 +77,13 @@ public sealed class SubtitlePlayback(SubtitleLibrary library)
             _applying = true;
             try
             {
-                var managed = Library.Tracks(_media).Select(track => track.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
                 string secondary = Player.GetPropertyString("secondary-sid");
                 foreach (var track in added)
                 {
                     try
                     {
                         if (Player.GetPropertyString("path") != _path) return;
-                        if (track.Id == secondary || track.Language == "danmaku" || managed.Contains(track.Path)
+                        if (track.Id == secondary || track.Language == "danmaku" || Library.FindTrack(track.Path) != null
                             || !FileTypes.Subtitle.Contains(Path.GetExtension(track.Path).TrimStart('.').ToLowerInvariant()) || !File.Exists(track.Path)) continue;
                         string path = Library.Import(_media, track.Path);
                         if (Player.GetPropertyString("path") != _path) return;
@@ -131,14 +130,12 @@ public sealed class SubtitlePlayback(SubtitleLibrary library)
             if (!_loaded) return;
             string video = Player.GetPropertyString("path"), agent = Player.GetPropertyString("user-agent");
             var labels = new Dictionary<string, object>();
-            var local = Library.Tracks(_media).DistinctBy(track => track.Path, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(track => track.Path, StringComparer.OrdinalIgnoreCase);
             var requests = new List<EmbySubtitleMetadata.Source>();
             foreach (var playbackTrack in LocalTracks())
             {
                 string path = playbackTrack.Path, id = playbackTrack.Id;
-                if (id != Player.GetPropertyString("secondary-sid") && local.TryGetValue(path, out var saved))
-                    labels[id] = new { managed = true, pinned = saved.Pinned };
+                if (id != Player.GetPropertyString("secondary-sid") && Library.FindTrack(path) is { } saved)
+                    labels[id] = new { managed = true, pinned = saved.Track.Pinned };
                 var source = EmbySubtitleMetadata.Identify(path, video, agent);
                 if (source == null) continue;
                 string key = source.Request.AbsoluteUri;
@@ -266,7 +263,8 @@ public sealed class SubtitlePlayback(SubtitleLibrary library)
                 if (!_loaded || generation != _generation || Player.GetPropertyString("path") != _path
                     || Player.GetPropertyString("media-title") != _title)
                 { MpvNet.Diagnostics.Write("subtitle.playback", "stale", new { generation }); return; }
-                if (path == null || !current) { Notice(generation, result.Individual ? "字幕已保存" : "字幕包已保存", true); return; }
+                if (path == null || selectedFile == null && !current)
+                { Notice(generation, result.Individual ? "字幕已保存" : "字幕包已保存", true); return; }
                 Select(path);
                 MpvNet.Diagnostics.Write("subtitle.playback", "selected", new { generation,
                     sid = Player.GetPropertyString("sid"), visible = Player.GetPropertyBool("sub-visibility") });
@@ -306,11 +304,11 @@ public sealed class SubtitlePlayback(SubtitleLibrary library)
         {
             if (!_loaded || Player.GetPropertyString("path") != _path || id == Player.GetPropertyString("secondary-sid")) return null;
             var track = LocalTracks().FirstOrDefault(track => track.Id == id);
-            var package = track == null ? null : Library.Results(_media.Title)
-                .FirstOrDefault(package => package.Files.Any(file => file.LocalPath.Equals(track.Path, StringComparison.OrdinalIgnoreCase)));
-            return track != null && package != null
-                && Library.Tracks(_media).Any(saved => saved.Path.Equals(track.Path, StringComparison.OrdinalIgnoreCase))
-                ? new(_media.Title, track.Path, package.Title, _generation) : null;
+            var saved = track == null ? null : Library.FindTrack(track.Path);
+            var package = saved == null ? null : Library.Results(saved.Value.Title)
+                .FirstOrDefault(package => package.Files.Any(file => file.LocalPath.Equals(track!.Path, StringComparison.OrdinalIgnoreCase)));
+            return track != null && saved != null && package != null
+                ? new(saved.Value.Title, track.Path, package.Title, _generation) : null;
         }
     }
     public async Task<bool> RemoveAsync(Removal removal, bool deleteLocal)
@@ -319,7 +317,8 @@ public sealed class SubtitlePlayback(SubtitleLibrary library)
         int generation;
         lock (_lock)
         {
-            if (!_loaded || Player.GetPropertyString("path") != _path || removal.Generation != _generation || removal.Title != _media.Title) return false;
+            if (!_loaded || Player.GetPropertyString("path") != _path || removal.Generation != _generation
+                || Library.FindTrack(removal.Path)?.Title != removal.Title) return false;
             pending = _downloadFinished?.Task ?? Task.CompletedTask;
             CancelDownload();
             generation = _generation;
@@ -329,7 +328,7 @@ public sealed class SubtitlePlayback(SubtitleLibrary library)
         await pending.ConfigureAwait(false);
         lock (_lock)
         {
-            bool Current() => _loaded && generation == _generation && removal.Title == _media.Title
+            bool Current() => _loaded && generation == _generation
                 && Player.GetPropertyString("path") == _path && Player.GetPropertyString("media-title") == _title;
             if (!Current()) return false;
             var paths = Library.Remove(removal.Title, removal.Path, deleteLocal).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -354,8 +353,9 @@ public sealed class SubtitlePlayback(SubtitleLibrary library)
         {
             var removal = PrepareRemoval(id);
             if (removal == null) return;
-            var track = Library.Tracks(_media).First(item => item.Path.Equals(removal.Path, StringComparison.OrdinalIgnoreCase));
-            Library.SetPinned(_media.Title, track.Path, !track.Pinned);
+            if (Library.FindTrack(removal.Path) is not { } saved) return;
+            var track = saved.Track;
+            Library.SetPinned(removal.Title, track.Path, !track.Pinned);
             if (!track.Pinned) { CancelDownload(); Apply(track.Path); }
             UpdateMetadata();
         }

@@ -114,8 +114,44 @@ public sealed class SubtitleLibrary
     }
     public string? Cached(SubtitleQuery query, SubtitleResult result, SubtitleFile file)
     {
-        var package = Package(query, result);
-        return package?.Files.FirstOrDefault(local => (file.FileId > 0 && local.FileId == file.FileId || local.Name == file.Name) && Exists(local))?.Path;
+        if (file.Source != result.Source || file.ResultId != result.Id) return null;
+        lock (Gate)
+        {
+            var files = Shelves(query.Title).SelectMany(item => item.Shelf.Packages
+                .Where(package => package.Source == result.Source && package.Id == result.Id)
+                .SelectMany(package => package.Files.Select(local => (File: local, item.Shelf.Season)))).ToArray();
+            var exact = files.Where(local => file.FileId > 0 && local.File.FileId == file.FileId).ToArray();
+            if (exact.Length > 0) return exact.Length == 1 && Exists(exact[0].File) ? exact[0].File.Path : null;
+            string? name = PackageFileName(files.Select(local => local.File.Name).ToArray(), result, file);
+            var matching = files.Where(local => local.File.Name == name).ToArray();
+            if (matching.Length != 1 || !Exists(matching[0].File)
+                || file.FileId > 0 && matching[0].File.FileId > 0 && file.FileId != matching[0].File.FileId) return null;
+            if (StringComparer.OrdinalIgnoreCase.Equals(file.Name.Replace('\\', '/'), name!.Replace('\\', '/')))
+                return matching[0].File.Path;
+            int? season = file.Season ?? FileQuery(query, result, file.Name).Season;
+            return season >= 0 && season == matching[0].Season || season == null && matching[0].Season == null
+                ? matching[0].File.Path : null;
+        }
+    }
+    internal static string? PackageFileName(IReadOnlyList<string> names, SubtitleResult result, SubtitleFile file)
+    {
+        static string Relative(string name) => name.Replace('\\', '/');
+        static string Leaf(string name) => System.IO.Path.GetFileName(Relative(name));
+        bool SameName(string left, string right) => StringComparer.OrdinalIgnoreCase.Equals(left, right);
+        if (result.Files.Where(item => SameName(Relative(item.Name), Relative(file.Name)))
+            .Select(item => item.FileId).Distinct().Count() > 1) return null;
+        var exact = names.Where(name => SameName(Relative(name), Relative(file.Name))).ToArray();
+        if (exact.Length > 0) return exact.Length == 1 ? exact[0] : null;
+        // ASSRT file URLs can omit an archive's directory wrapper. Reuse only
+        // an unambiguous member of this package, retaining its original path.
+        string leaf = Leaf(file.Name);
+        var matching = names.Where(name => SameName(Leaf(name), leaf)).ToArray();
+        if (matching.Length != 1 || !SameName(Relative(file.Name), leaf) && !SameName(Relative(matching[0]), leaf)) return null;
+        if (result.Files.Where(item => SameName(Leaf(item.Name), leaf))
+                .Select(item => (Name: Relative(item.Name).ToUpperInvariant(), item.FileId)).Distinct().Count() > 1
+            || result.PackageNames.Where(name => SameName(Leaf(name), leaf))
+                .Select(name => Relative(name).ToUpperInvariant()).Distinct().Count() > 1) return null;
+        return matching[0];
     }
     public void Save(SubtitleQuery query, SubtitleResult result, SubtitleFile file, string path, bool complete, bool selected = false, bool imported = false,
         string originalPath = "", string originalHash = "")
@@ -132,7 +168,13 @@ public sealed class SubtitleLibrary
             string directory = SeasonDirectory(query.Title, query.Season);
             var shelf = Read(directory, query.Title, query.Season);
             var old = shelf.Packages.FirstOrDefault(package => package.Source == result.Source && package.Id == result.Id);
-            var files = (old?.Files ?? []).Where(item => item.Name != file.Name && (file.FileId <= 0 || item.FileId != file.FileId)).Append(local).ToArray();
+            var previous = old?.Files.FirstOrDefault(item => file.LocalPath.Length > 0
+                && item.Path.Equals(file.LocalPath, StringComparison.OrdinalIgnoreCase));
+            if (previous != null) local = local with
+                { OriginalPath = originalPath.Length > 0 ? originalPath : previous.OriginalPath,
+                    OriginalHash = originalHash.Length > 0 ? originalHash : previous.OriginalHash };
+            var files = (old?.Files ?? []).Where(item => item.Name != file.Name && (file.FileId <= 0 || item.FileId != file.FileId)
+                && (file.LocalPath.Length == 0 || !item.Path.Equals(file.LocalPath, StringComparison.OrdinalIgnoreCase))).Append(local).ToArray();
             var package = new SubtitlePackage(result.Source, result.Id, result.Title, result.Language, result.LanguageCode, files, complete || old?.Complete == true)
                 { Collection = result.Collection, Details = result.Details, Format = result.Format, Imported = imported || old?.Imported == true,
                     Individual = result.Individual };
@@ -143,6 +185,26 @@ public sealed class SubtitleLibrary
     {
         lock (Gate) return Shelves(title).Any(item => item.Shelf.Packages.Any(package => package.Files.Any(file =>
             file.Path.Equals(path, StringComparison.OrdinalIgnoreCase) && Exists(file))));
+    }
+    public (string Title, SubtitleTrack Track)? FindTrack(string path)
+    {
+        if (!System.IO.Path.IsPathFullyQualified(path) || !CanDelete(path)) return null;
+        string full = System.IO.Path.GetFullPath(path);
+        string[] parts = System.IO.Path.GetRelativePath(Root, full).Split(System.IO.Path.DirectorySeparatorChar);
+        if (parts.Length < 4) return null;
+        lock (Gate)
+        {
+            string directory = System.IO.Path.Combine(Root, parts[0], parts[1]);
+            var shelf = Read(directory, "", null);
+            if (shelf.Title.Length == 0 || !SeasonDirectory(shelf.Title, shelf.Season).Equals(directory, StringComparison.OrdinalIgnoreCase))
+                return null;
+            foreach (var package in shelf.Packages)
+            {
+                var file = package.Files.FirstOrDefault(file => file.Path.Equals(full, StringComparison.OrdinalIgnoreCase) && Exists(file));
+                if (file != null) return (shelf.Title, Track(shelf, package, file, Selection(shelf.Title)));
+            }
+            return null;
+        }
     }
     static string ImportFamily(string path)
     {
@@ -347,6 +409,23 @@ public sealed class SubtitleLibrary
                     if (File.Exists(original) && !FileHash(original).Equals(file.OriginalHash, StringComparison.OrdinalIgnoreCase))
                         throw new SubtitleServiceException("原始字幕已更改，未删除：" + System.IO.Path.GetFileName(original));
                     physical.Add(original);
+                }
+                foreach (var item in affected)
+                {
+                    string directory = System.IO.Path.Combine(item.Directory, Name(key));
+                    if (!Directory.Exists(directory)) continue;
+                    var pending = new Stack<string>(); pending.Push(directory);
+                    while (pending.Count > 0)
+                    {
+                        string current = pending.Pop();
+                        if (!CanDelete(current)) throw new SubtitleServiceException("字幕文件路径无效，未删除本地文件。");
+                        foreach (string file in Directory.EnumerateFiles(current).Where(SubtitleDownload.Supported))
+                        {
+                            if (!CanDelete(file)) throw new SubtitleServiceException("字幕文件路径无效，未删除本地文件。");
+                            physical.Add(System.IO.Path.GetFullPath(file));
+                        }
+                        foreach (string child in Directory.EnumerateDirectories(current)) pending.Push(child);
+                    }
                 }
                 string archiveDirectory = System.IO.Path.Combine(workDirectory, "字幕包", Name(key));
                 if (Directory.Exists(archiveDirectory))
@@ -643,12 +722,13 @@ public sealed class SubtitleLibrary
                 .Select(file => (Package: package, File: file))).ToArray();
             if (season == 0 && query.ContentType.Length == 0
                 && files.Select(item => SubtitleQuery.Content(item.File.Name).Type).Distinct().Count() > 1) return [];
-            return files.Select(item => new SubtitleTrack(item.File.Path, System.IO.Path.GetFileName(item.File.Name.Replace('\\', '/')),
-                    FileLanguage(item.File.Name) is { Length: > 0 } language ? language : item.Package.LanguageCode,
-                    shelf.PreferredPackage == PackageKey(item.Package.Source, item.Package.Id) && shelf.PreferredVariant == item.File.Variant,
-                    pinned.Package == PackageKey(item.Package.Source, item.Package.Id)
-                        && pinned.Variant == Variant(item.File.Name, item.Package.LanguageCode, true)))
+            return files.Select(item => Track(shelf, item.Package, item.File, pinned))
                 .OrderByDescending(track => track.Pinned).ThenByDescending(track => track.Preferred).ToArray();
         }
     }
+    static SubtitleTrack Track(SubtitleShelf shelf, SubtitlePackage package, LocalSubtitle file, SubtitleSelection pinned) =>
+        new(file.Path, System.IO.Path.GetFileName(file.Name.Replace('\\', '/')),
+            FileLanguage(file.Name) is { Length: > 0 } language ? language : package.LanguageCode,
+            shelf.PreferredPackage == PackageKey(package.Source, package.Id) && shelf.PreferredVariant == file.Variant,
+            pinned.Package == PackageKey(package.Source, package.Id) && pinned.Variant == Variant(file.Name, package.LanguageCode, true));
 }

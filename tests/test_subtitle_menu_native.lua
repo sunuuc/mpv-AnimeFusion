@@ -26,9 +26,10 @@ local function run()
         {id=2,type='sub',lang='zh',title='chs[KTXP&SumiSora]'},
         {id=3,type='sub',lang='zh',title='cht[KTXP&SumiSora]'},
     }}
+    local metadata={['1']={managed=true,pinned=true}}
     local menu=create_menu({state=state,core=core,measure_text=measure,
         prop=function(key,default) local value=properties[key];if value==nil then return default end;return value end,
-        subtitle_tracks=function()return {['1']={managed=true,pinned=true}}end,
+        subtitle_tracks=function()return metadata end,
         command=function()error('Layout checks must not issue player commands')end,
         set=function()error('Layout checks must not change playback properties')end,
         open_file=function()error('Layout checks must not open files')end,
@@ -84,12 +85,27 @@ local function run()
     end
     local old_lines=core.wrap(name,right-left,18*box.ui,0)
     check(#old_lines==3,'The previous estimate reproduces the reported three-line filename')
+    local hover_extra_measurements=calls-first_calls
+    properties.sid=9
+    properties['track-list']={
+        {id=8,type='sub',external=true,['external-filename']='C:/fixture/不正经的魔术讲师与禁忌教典 第08集.ass'},
+        {id=9,type='sub',external=true,['external-filename']='C:/fixture/不正经的魔术讲师与禁忌教典 第09集.ass'},
+    }
+    metadata={['8']={managed=true,pinned=false},['9']={managed=true,pinned=false}}
+    menu.invalidate();draw()
+    for _,id in ipairs({8,9})do
+        local name_button=button('sid:'..id)
+        local force_button=button('sid:'..id..':pin')
+        local delete_button=button('sid:'..id..':delete')
+        check(name_button.x1<=force_button.x0 and force_button.x1<=delete_button.x0,
+            'Automatic and manually selected subtitle rows both reuse the existing separate F and delete controls')
+    end
     overlay:remove()
     return {ok=true,checks=checks,viewport={width=layout.w,height=layout.h,dpi=1.5},ui=box.ui,
         font='Microsoft YaHei',font_size=18*box.ui,line_count=#entry.lines,old_line_count=#old_lines,
         available_width=right-left,text_left=left,text_right_limit=right,lines=lines,
         force_x0=force.x0,delete_x1=delete.x1,highlight_x1=selected.x1,
-        first_layout_ms=first_elapsed,first_layout_measurements=first_calls,hover_extra_measurements=calls-first_calls}
+        first_layout_ms=first_elapsed,first_layout_measurements=first_calls,hover_extra_measurements=hover_extra_measurements}
 end
 local ok,result=xpcall(run,debug.traceback)
 if not ok then result={ok=false,checks=checks,error=result}end

@@ -73,6 +73,14 @@ static class Program
         Check(Path.GetFileName(imported) == names[0] && File.Exists(original), "Local import preserves the original filename and source file");
         Check(library.Tracks(first).Count == 2 && library.Results(first.Title).Single().Files.Count == 4, "Local import includes matching sibling episodes and variants without another work or release group");
         Check(library.Tracks(Media("Library Fixture S01E03")).Count == 0, "A different release group does not enter the imported set");
+        string otherEpisode=library.Results(first.Title).Single().Files.Single(file=>file.Name==names[1]).LocalPath;
+        Check(library.FindTrack(otherEpisode) is {Title:"Library Fixture"} managed
+            &&managed.Track.Path==otherEpisode&&managed.Track.Title==names[1]
+            &&library.Tracks(first).All(track=>track.Path!=otherEpisode),
+            "Managed ownership lookup includes a saved other-episode file without making it an automatic current-episode match");
+        Check(library.FindTrack(original)==null&&library.FindTrack(Path.Combine(library.Root,"missing.ass"))==null
+            &&library.FindTrack("https://example.invalid/subtitle.ass")==null,
+            "Ownership lookup rejects originals outside the library, missing records and remote subtitle addresses");
         library.SetPinned(first.Title, imported, true);
         library.Remember(first.Title, 1, library.Tracks(first).Single(track => track.Path.EndsWith(".tc.ass")).Path);
         Check(library.Tracks(first).First().Pinned && library.Tracks(first).First().Path == imported, "Pinned version sorts before the ordinary remembered version");

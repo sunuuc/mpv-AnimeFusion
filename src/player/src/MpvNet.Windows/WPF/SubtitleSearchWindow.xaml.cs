@@ -575,6 +575,8 @@ public partial class SubtitleSearchWindow : Window
     async Task OpenFilesAsync(SubtitleResult result)
     {
         if (_closed || _canClose || _downloading || _fileResult != null) return;
+        _search.SetPaused(_displayedKeyword, true, _requestedLanguage, _requestedSeason, _requestedEpisode);
+        RefreshSearchButton();
         CancelDetails();
         int generation = _detailsGeneration;
         var request = _detailsLifetime = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
@@ -588,7 +590,7 @@ public partial class SubtitleSearchWindow : Window
         FilesEmpty.Visibility = Visibility.Collapsed;
         DownloadAllButton.IsEnabled = false;
         FileCount.Text = "";
-        FileStatus.Text = "正在加载字幕…";
+        FileStatus.Text = "正在获取文件列表…";
         try
         {
             var key = (result.Source, result.Id);
@@ -638,7 +640,7 @@ public partial class SubtitleSearchWindow : Window
             MpvNet.Diagnostics.Write("subtitle.search", "detail-failed", new { source = result.Source.ToString(), result.Id }, error);
             if (_closed || token.IsCancellationRequested || generation != _detailsGeneration) return;
             FileStatus.Text = "";
-            FilesEmpty.Text = "获取字幕失败";
+            FilesEmpty.Text = "获取文件列表失败";
             FilesEmpty.Visibility = Visibility.Visible;
         }
         finally

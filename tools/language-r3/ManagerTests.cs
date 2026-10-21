@@ -66,7 +66,7 @@ var selector=w.GetVisualDescendants().OfType<ComboBox>().Single(c=>c.Name=="Inte
 Check(selector.SelectedIndex==Array.IndexOf(InterfaceLanguage.Choices,selected),"selector reflects persisted setting "+selected);
 foreach(string page in new[]{"global","profile","components","about"})
 {
-    vm.SelectedTabIndex=page=="about"?2:page=="components"?1:0;
+    vm.SelectedTabIndex=page=="about"?Array.IndexOf(tabs,zh?"关于":"About"):page=="components"?1:0;
     if(page=="global")vm.HandleShowGlobalSettings();
     if(page=="profile")vm.HandleShowCustomProfile(vm.AnimeJaNaiConf.UpscaleSlots.First().SlotNumber);
     Dispatcher.UIThread.RunJobs();

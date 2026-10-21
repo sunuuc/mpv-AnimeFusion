@@ -116,10 +116,205 @@ static class SubtitleFileDownloadChecks
         Check(await download.DownloadAsync(query, result, files[1], files, null, default) == selected && handler.Paths.Count == 1,
             "Repeated single file selection reuses local bytes without requesting another episode");
 
-        Check(await download.DownloadAsync(query, result, files[0], files, null, default) == null
+        foreach (var (chinese, english, id) in new[]
+        {
+            ("超时空要塞Δ", "Macross Delta", "608923"),
+            ("星际航行测试", "Stellar Voyage", "991")
+        })
+        {
+            string folder = english + " 1(Plus)-26 BDRip Sub\\";
+            string Leaf(int episode) => "[SFEO-Raws] " + english + " - " + episode.ToString("00")
+                + (episode == 1 ? "_plus" : "") + " (BD 1080P x264 FLACx2).ass";
+            string[] releaseNames = Enumerable.Range(1, 26).Select(episode => folder + Leaf(episode))
+                .Append(Leaf(1)).Append(folder + "[SFEO-Raws] " + english + " OVA01.ass").ToArray();
+            var releaseFiles = releaseNames.Select((name, index) => new SubtitleFile(SubtitleSource.Assrt, id,
+                1001 + index, name, $"https://download.example/release/{index + 1}.ass")).ToArray();
+            var release = new SubtitleResult(SubtitleSource.Assrt, id, chinese + "/" + english + " 1(Plus)-26 BDrip",
+                "简", "", releaseFiles)
+            {
+                LanguageCode = "zh-Hans", PackageNames = releaseNames, Format = "ASS",
+                DownloadName = english + ".zip", DownloadUrl = "https://download.example/release.zip"
+            };
+            var media = Media(chinese + " (2016) S1E1 - 第一集");
+            var search = new SubtitleQuery(chinese, null, null, "zh-Hans") { Names = [chinese] };
+            var work = new SubtitleWork(media, [chinese], null).ForDownload(search, release);
+            Check(work.Current && work.Query.Title == chinese && work.Query.Season == 1 && work.Query.Episode == 1,
+                "A source's Chinese release title confirms the current work without a separately resolved English alias: " + english);
+            Check(releaseFiles.Take(26).All(file => SubtitleLibrary.FileQuery(work.Query, release, file.Name).Season == 1)
+                && SubtitleQuery.Content(releaseFiles[0].Name) is { Episode: 1, Ambiguous: false, Extra: false },
+                "An episode-range wrapper and a plus edition retain the concrete regular episode identity: " + english);
+
+            var releaseHandler = new Handler(request =>
+            {
+                int index = int.Parse(Path.GetFileNameWithoutExtension(request.RequestUri!.AbsolutePath)) - 1;
+                return Bytes(Ass(releaseNames[index]));
+            });
+            using var releaseHttp = new HttpClient(releaseHandler);
+            var releaseLibrary = new SubtitleLibrary(Path.Combine(root, "chinese-release-english-files-" + id));
+            var releaseDownload = new SubtitleDownload(releaseHttp, releaseLibrary);
+            string? firstPath = await releaseDownload.DownloadAsync(work.Query, release, releaseFiles[0], releaseFiles, null, default);
+            Check(firstPath != null && Path.GetFileName(firstPath) == Leaf(1)
+                && File.ReadAllBytes(firstPath).SequenceEqual(Ass(releaseNames[0]))
+                && releaseHandler.Paths.SequenceEqual(["/release/1.ass"]),
+                "Selecting a plus-edition episode from a multi-file release downloads only that file and returns it for loading: " + english);
+            Check(releaseLibrary.Tracks(media).Single().Path == firstPath
+                && releaseLibrary.Tracks(Media(chinese + " S01E02")).Count == 0
+                && releaseLibrary.Results(chinese).Single().Files.Single() is { Season: 1, Episode: 1 },
+                "The saved subtitle immediately becomes a current-episode track rather than an unclassified file: " + english);
+
+            var freshLibrary = new SubtitleLibrary(releaseLibrary.Root);
+            var freshDownload = new SubtitleDownload(releaseHttp, freshLibrary);
+            var savedRelease = freshLibrary.Results(chinese).Single();
+            var savedFirst = savedRelease.Files.Single();
+            Check(await freshDownload.DownloadAsync(work.Query, savedRelease, savedFirst, savedRelease.Files, null, default) == firstPath
+                && await freshDownload.DownloadAsync(work.Query, release, releaseFiles[0], releaseFiles, null, default) == firstPath
+                && releaseHandler.Paths.Count == 1,
+                "Reopening the library reuses either the local row or the original online file without a request: " + english);
+            Check(await freshDownload.DownloadAsync(work.Query, release, releaseFiles[1], releaseFiles, null, default) is { } chosenSecond
+                && Path.GetFileName(chosenSecond) == Leaf(2)
+                && releaseHandler.Paths.SequenceEqual(["/release/1.ass", "/release/2.ass"])
+                && freshLibrary.Tracks(media).Single().Path == firstPath,
+                "An explicit episode-two choice returns its file while preserving its actual episode identity: " + english);
+            var nextMedia = Media(chinese + " S01E02");
+            var nextWork = new SubtitleWork(nextMedia, [chinese], null).ForDownload(search, release);
+            string? nextPath = await freshDownload.DownloadAsync(nextWork.Query, release, releaseFiles[1], releaseFiles, null, default);
+            Check(nextWork.Current && nextPath != null && nextPath != firstPath
+                && Path.GetFileName(nextPath) == Leaf(2) && freshLibrary.Tracks(nextMedia).Single().Path == nextPath
+                && freshLibrary.Tracks(Media(chinese + " S01E03")).Count == 0 && releaseHandler.Paths.Count == 2,
+                "The next episode reuses its own saved file and never substitutes episode one or an absent episode: " + english);
+            Check(await freshDownload.DownloadAsync(nextWork.Query, release, releaseFiles[^1], releaseFiles, null, default) is { } chosenSpecial
+                && chosenSpecial.EndsWith(" OVA01.ass", StringComparison.Ordinal)
+                && freshLibrary.Tracks(nextMedia).Single().Path == nextPath
+                && freshLibrary.Tracks(Media(chinese + " S00E01")).Single().Path.EndsWith(" OVA01.ass", StringComparison.Ordinal)
+                && releaseHandler.Paths.Count == 3,
+                "An explicitly selected OVA is returned while remaining indexed separately in season zero: " + english);
+
+            var archiveFiles = releaseFiles.Select(file => file with { Name = Path.GetFileName(file.Name.Replace('\\', '/')) }).ToArray();
+            var archiveResult = release with { Files = archiveFiles, PackageNames = archiveFiles.Select(file => file.Name).ToArray() };
+            var archiveHandler = new Handler(request => request.RequestUri!.AbsolutePath == "/release.zip"
+                ? Bytes(Zip(releaseNames.ToDictionary(name => name, Ass)))
+                : throw new Exception("A saved archive member must not request an onthefly download: " + request.RequestUri.AbsolutePath));
+            using var archiveHttp = new HttpClient(archiveHandler);
+            var archiveLibrary = new SubtitleLibrary(Path.Combine(root, "archive-wrapper-reuse-" + id));
+            var archiveDownload = new SubtitleDownload(archiveHttp, archiveLibrary);
+            Check(await archiveDownload.DownloadAsync(work.Query, archiveResult, null, archiveFiles, null, default) != null
+                && archiveHandler.Paths.SequenceEqual(["/release.zip"]),
+                "Download all preserves the archive wrapper even when the API detail lists only leaf filenames: " + english);
+            var savedArchive = archiveLibrary.Results(chinese).Single();
+            var savedSecond = savedArchive.Files.Single(file => file.Name == releaseNames[1]);
+            Check(savedSecond.FileId == 0 && archiveFiles[1].FileId > 0
+                && archiveLibrary.Cached(nextWork.Query, archiveResult, archiveFiles[1]) == savedSecond.LocalPath,
+                "A unique saved archive member is found when its API leaf filename has a separate onthefly file ID: " + english);
+            var reopenedArchive = new SubtitleLibrary(archiveLibrary.Root);
+            string? reusedSecond = await new SubtitleDownload(archiveHttp, reopenedArchive).DownloadAsync(nextWork.Query,
+                archiveResult, archiveFiles[1], archiveFiles, null, default);
+            Check(reusedSecond == savedSecond.LocalPath && archiveHandler.Paths.Count == 1
+                && File.ReadAllBytes(reusedSecond!).SequenceEqual(Ass(releaseNames[1]))
+                && reopenedArchive.Tracks(nextMedia).Single().Path == reusedSecond,
+                "Selecting episode two after reopening reuses its original archive file without any file download: " + english);
+            Check(reopenedArchive.Results(chinese).Single().Files.Select(file => (file.Name, file.LocalPath))
+                    .SequenceEqual(savedArchive.Files.Select(file => (file.Name, file.LocalPath)))
+                && !File.Exists(reopenedArchive.FilePath(nextWork.Query, archiveResult, archiveFiles[1].Name)),
+                "API leaf-name reuse neither rewrites original archive names and paths nor creates duplicate files: " + english);
+            var ambiguousFiles = archiveFiles.Append(archiveFiles[1] with { FileId = 9000 }).ToArray();
+            Check(reopenedArchive.Cached(nextWork.Query, archiveResult with { Files = ambiguousFiles }, archiveFiles[1]) == null,
+                "A leaf name shared by different API file IDs cannot identify a unique saved archive member: " + english);
+            string archivePath = reopenedArchive.ArchivePath(work.Query, archiveResult);
+            byte[] retainedArchive = File.ReadAllBytes(archivePath);
+            reopenedArchive.Remove(chinese, savedSecond.LocalPath, false);
+            Check(reopenedArchive.Results(chinese).Count == 0 && File.Exists(savedSecond.LocalPath) && File.Exists(archivePath),
+                "Deleting only the records leaves the original archive and extracted members available for explicit reuse: " + english);
+            var removedLibrary = new SubtitleLibrary(reopenedArchive.Root);
+            string? restoredSecond = await new SubtitleDownload(archiveHttp, removedLibrary).DownloadAsync(nextWork.Query,
+                archiveResult, archiveFiles[1], archiveFiles, null, default);
+            var restoredPackage = removedLibrary.Results(chinese).Single();
+            Check(restoredSecond == savedSecond.LocalPath && archiveHandler.Paths.Count == 1
+                && restoredPackage is { Complete: false, Files.Count: 1 }
+                && restoredPackage.Files.Single() is { Season: 1, Episode: 2 }
+                && restoredPackage.Files.Single().Name == releaseNames[1]
+                && removedLibrary.Tracks(nextMedia).Single().Path == restoredSecond
+                && removedLibrary.Tracks(media).Count == 0,
+                "Selecting episode two after deleting records restores only that archive member and index without any network request: " + english);
+            Check(File.ReadAllBytes(archivePath).SequenceEqual(retainedArchive)
+                && await new SubtitleDownload(archiveHttp, new SubtitleLibrary(removedLibrary.Root)).DownloadAsync(nextWork.Query,
+                    archiveResult, archiveFiles[1], archiveFiles, null, default) == restoredSecond
+                && archiveHandler.Paths.Count == 1,
+                "Selective archive reuse preserves the original package and remains reusable after another library reopen: " + english);
+        }
+
+        foreach (string layout in new[] { "versions", "seasons", "other-season" })
+        {
+            var collisionQuery = new SubtitleQuery("Archive Collision", 1, 2, "zh-Hans");
+            string leaf = "[Group] Archive Collision - 02.sc.ass";
+            string[] archiveNames = layout switch
+            {
+                "versions" => ["Version A/" + leaf, "Version B/" + leaf],
+                "seasons" => ["S01/" + leaf, "S02/" + leaf],
+                _ => ["S02/" + leaf]
+            };
+            var collisionFiles = new[] { new SubtitleFile(SubtitleSource.Assrt, "collision", 2, leaf, "https://download.example/collision.ass") };
+            var collisionResult = new SubtitleResult(SubtitleSource.Assrt, "collision", "Archive Collision", "简", "", collisionFiles)
+                { Season = 1, LanguageCode = "zh-Hans", PackageNames = [leaf] };
+            var collisionLibrary = new SubtitleLibrary(Path.Combine(root, "archive-member-collision-" + layout));
+            foreach (string name in archiveNames)
+            {
+                var file = new SubtitleFile(SubtitleSource.Assrt, collisionResult.Id, 0, name, "");
+                string path = collisionLibrary.FilePath(collisionQuery, collisionResult, name);
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                File.WriteAllBytes(path, Ass(name));
+                collisionLibrary.Save(collisionQuery, collisionResult, file, path, true);
+            }
+            Check(collisionLibrary.Cached(collisionQuery, collisionResult, collisionFiles[0]) == null,
+                "A bare API filename cannot reuse an archive member from ambiguous versions or a different season: " + layout);
+            byte[] selectedBytes = Ass("Explicitly selected API file");
+            var collisionHandler = new Handler(_ => Bytes(selectedBytes));
+            using var collisionHttp = new HttpClient(collisionHandler);
+            string? selectedPath = await new SubtitleDownload(collisionHttp, collisionLibrary).DownloadAsync(collisionQuery,
+                collisionResult, collisionFiles[0], collisionFiles, null, default);
+            Check(selectedPath != null && File.ReadAllBytes(selectedPath).SequenceEqual(selectedBytes)
+                && collisionHandler.Paths.SequenceEqual(["/collision.ass"])
+                && archiveNames.All(name => File.ReadAllBytes(collisionLibrary.FilePath(collisionQuery, collisionResult, name)).SequenceEqual(Ass(name))),
+                "An ambiguous cache miss downloads the explicitly chosen file without using or overwriting another version: " + layout);
+
+            var archiveResult = collisionResult with { DownloadName = "collision.zip", DownloadUrl = "https://download.example/collision.zip" };
+            var retainedLibrary = new SubtitleLibrary(Path.Combine(root, "retained-archive-collision-" + layout));
+            string retainedPath = retainedLibrary.ArchivePath(collisionQuery, archiveResult);
+            Directory.CreateDirectory(Path.GetDirectoryName(retainedPath)!);
+            byte[] archiveBytes = Zip(archiveNames.ToDictionary(name => name, Ass));
+            File.WriteAllBytes(retainedPath, archiveBytes);
+            var retainedHandler = new Handler(_ => Bytes(selectedBytes));
+            using var retainedHttp = new HttpClient(retainedHandler);
+            string? retainedSelected = await new SubtitleDownload(retainedHttp, retainedLibrary).DownloadAsync(collisionQuery,
+                archiveResult, collisionFiles[0], collisionFiles, null, default);
+            Check(retainedSelected != null && File.ReadAllBytes(retainedSelected).SequenceEqual(selectedBytes)
+                && retainedHandler.Paths.SequenceEqual(["/collision.ass"])
+                && retainedLibrary.Results(collisionQuery.Title).Single().Files.Single().Name == leaf
+                && File.ReadAllBytes(retainedPath).SequenceEqual(archiveBytes),
+                "An ambiguous or wrong-season retained archive does not guess a member or restore unrelated records: " + layout);
+            if (layout == "versions")
+            {
+                var exactLibrary = new SubtitleLibrary(Path.Combine(root, "retained-archive-exact-path"));
+                string exactArchive = exactLibrary.ArchivePath(collisionQuery, archiveResult);
+                Directory.CreateDirectory(Path.GetDirectoryName(exactArchive)!);
+                File.WriteAllBytes(exactArchive, archiveBytes);
+                var exactFile = collisionFiles[0] with { Name = archiveNames[0] };
+                var exactResult = archiveResult with { Files = [exactFile], PackageNames = archiveNames };
+                var exactHandler = new Handler(_ => throw new Exception("An exact retained archive member must not request a download"));
+                using var exactHttp = new HttpClient(exactHandler);
+                string? exactPath = await new SubtitleDownload(exactHttp, exactLibrary).DownloadAsync(collisionQuery,
+                    exactResult, exactFile, [exactFile], null, default);
+                Check(exactPath != null && File.ReadAllBytes(exactPath).SequenceEqual(Ass(archiveNames[0]))
+                    && exactHandler.Paths.Count == 0 && exactLibrary.Results(collisionQuery.Title).Single().Files.Single().Name == archiveNames[0],
+                    "An exact archive-relative path identifies the selected version without flattening or restoring its sibling");
+            }
+        }
+
+        Check(await download.DownloadAsync(query, result, files[0], files, null, default) is { } chosenFirst
+            && Path.GetFileName(chosenFirst) == names[0]
             && handler.Paths.SequenceEqual(["/file/2.ass", "/file/1.ass"]),
-            "Selecting another episode saves that file but cannot load it into the current episode");
-        Check(await download.DownloadAsync(query, result, files[3], files, null, default) == null
+            "A manually selected file is returned even when its episode differs from the current video");
+        Check(await download.DownloadAsync(query, result, files[3], files, null, default) is { } chosenOva
+            && Path.GetFileName(chosenOva) == names[3]
             && handler.Paths.Last() == "/file/4.ass"
             && library.Tracks(Media("Episode Fixture S01E01")).Count == 1
             && library.Tracks(Media("Episode Fixture S00E01")).Count == 1,
@@ -192,20 +387,21 @@ static class SubtitleFileDownloadChecks
         {
             var collectionLibrary = new SubtitleLibrary(Path.Combine(root, "collection-selected-file"));
             var collectionDownload = new SubtitleDownload(collectionHttp, collectionLibrary);
-            Check(await collectionDownload.DownloadAsync(collectionQuery, collection, collectionFiles[2], collectionFiles, null, default) == null,
-                "A selected file from an unidentified work in a collection cannot borrow the current work and season merely because its episode number matches");
+            string? unidentifiedPath = await collectionDownload.DownloadAsync(collectionQuery, collection, collectionFiles[2], collectionFiles, null, default);
+            Check(unidentifiedPath != null,
+                "An explicitly chosen collection file is returned even when automatic work recognition is unresolved");
             var unidentified = collectionLibrary.Results(collectionQuery.Title).Single();
             Check(unidentified.Files.Single().Season == -1 && unidentified.Files.Single().Episode == null
                 && collectionLibrary.Tracks(Media("Example S02E01")).Count == 0 && collectionHandler.Paths.Count == 1,
                 "The unidentified collection file remains in the unclassified shelf and is absent from current playback tracks");
-            Check(await collectionDownload.DownloadAsync(collectionQuery, unidentified, unidentified.Files[0], unidentified.Files, null, default) == null
-                && await collectionDownload.DownloadAsync(collectionQuery, collection, collectionFiles[2], collectionFiles, null, default) == null
+            Check(await collectionDownload.DownloadAsync(collectionQuery, unidentified, unidentified.Files[0], unidentified.Files, null, default) == unidentifiedPath
+                && await collectionDownload.DownloadAsync(collectionQuery, collection, collectionFiles[2], collectionFiles, null, default) == unidentifiedPath
                 && collectionHandler.Paths.Count == 1,
                 "Neither local file selection nor online file reuse reclassifies an already saved unidentified collection file");
-            Check(await collectionDownload.DownloadAsync(collectionQuery, collection, collectionFiles[0], collectionFiles, null, default) == null
+            Check(await collectionDownload.DownloadAsync(collectionQuery, collection, collectionFiles[0], collectionFiles, null, default) != null
                 && collectionLibrary.Tracks(Media("Example S01E01")).Count == 1
                 && collectionLibrary.Tracks(Media("Example S02E01")).Count == 0,
-                "Selecting a known first-season file saves it to that season rather than loading it into the second season");
+                "An explicit first-season file is returned without rewriting its index as the current second season");
             Check(await collectionDownload.DownloadAsync(collectionQuery, collection, collectionFiles[1], collectionFiles, null, default) is { } current
                 && current.Contains("第 2 季", StringComparison.Ordinal) && collectionHandler.Paths.Count == 3,
                 "The corresponding second-season file remains downloadable after other collection files were saved");
@@ -233,6 +429,99 @@ static class SubtitleFileDownloadChecks
             "The paired subtitle retains both original files and remains a partial package");
         Check(await pairedDownload.DownloadAsync(query, pairedResult, paired[0], paired, null, default) == pairedPath
             && pairedHandler.Paths.Count == 2, "Repeated IDX selection reuses both local files without another request");
+        var pairedArchiveLibrary = new SubtitleLibrary(Path.Combine(root, "retained-paired-archive"));
+        var pairedArchiveResult = pairedResult with { DownloadName = "paired.zip", DownloadUrl = "https://download.example/paired.zip" };
+        string pairedArchive = pairedArchiveLibrary.ArchivePath(query, pairedArchiveResult);
+        Directory.CreateDirectory(Path.GetDirectoryName(pairedArchive)!);
+        File.WriteAllBytes(pairedArchive, Zip(new Dictionary<string, byte[]>
+        {
+            ["Bundle/" + paired[0].Name] = indexBytes,
+            ["Bundle/" + paired[1].Name] = subBytes,
+            ["Bundle/" + paired[2].Name] = Ass("Another episode")
+        }));
+        var pairedArchiveHandler = new Handler(_ => throw new Exception("A retained IDX/SUB pair must not request a download"));
+        using (var pairedArchiveHttp = new HttpClient(pairedArchiveHandler))
+        {
+            string? restoredPair = await new SubtitleDownload(pairedArchiveHttp, pairedArchiveLibrary).DownloadAsync(query,
+                pairedArchiveResult, paired[0], paired, null, default);
+            Check(restoredPair != null && File.ReadAllBytes(restoredPair).SequenceEqual(indexBytes)
+                && File.ReadAllBytes(Path.ChangeExtension(restoredPair, ".sub")).SequenceEqual(subBytes)
+                && pairedArchiveHandler.Paths.Count == 0
+                && pairedArchiveLibrary.Results(query.Title).Single() is { Complete: false, Files.Count: 2 }
+                && pairedArchiveLibrary.Results(query.Title).Single().Files.All(file => file.Name.StartsWith("Bundle/", StringComparison.Ordinal)),
+                "A retained archive restores only the selected original IDX/SUB pair without fetching or indexing another episode");
+        }
+        foreach (string layout in new[] { "two-folders", "wrapper-leaf", "zero-id-wrappers", "missing-sub" })
+        {
+            var splitLibrary = new SubtitleLibrary(Path.Combine(root, "split-pair-" + layout));
+            var cachedIndex = paired[0] with { Name = "Wrapper A/" + paired[0].Name,
+                FileId = layout == "zero-id-wrappers" ? 0 : paired[0].FileId };
+            var cachedSub = paired[1] with { Name = layout == "wrapper-leaf" ? paired[1].Name : "Wrapper B/" + paired[1].Name,
+                FileId = layout == "zero-id-wrappers" ? 0 : paired[1].FileId };
+            string oldIndexPath = splitLibrary.FilePath(query, pairedResult, cachedIndex.Name);
+            string oldSubPath = splitLibrary.FilePath(query, pairedResult, cachedSub.Name);
+            Directory.CreateDirectory(Path.GetDirectoryName(oldIndexPath)!);
+            File.WriteAllBytes(oldIndexPath, indexBytes);
+            string originalIndex = Path.Combine(splitLibrary.SeasonDirectory(query.Title, query.Season), "Originals", paired[0].Name);
+            Directory.CreateDirectory(Path.GetDirectoryName(originalIndex)!);
+            File.WriteAllBytes(originalIndex, indexBytes);
+            string originalHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(indexBytes));
+            splitLibrary.Save(query, pairedResult, cachedIndex, oldIndexPath, false,
+                originalPath: originalIndex, originalHash: originalHash);
+            if (layout != "missing-sub")
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(oldSubPath)!);
+                File.WriteAllBytes(oldSubPath, subBytes);
+                splitLibrary.Save(query, pairedResult, cachedSub, oldSubPath, false);
+            }
+            var splitHandler = new Handler(request => layout == "missing-sub" && request.RequestUri!.AbsolutePath == "/paired.sub"
+                ? Bytes(subBytes) : throw new Exception("An existing IDX/SUB cache must be aligned without downloading its bytes: " + layout));
+            using var splitHttp = new HttpClient(splitHandler);
+            string? aligned = await new SubtitleDownload(splitHttp, splitLibrary).DownloadAsync(query,
+                pairedResult, paired[0], paired, null, default);
+            string standardIndex = splitLibrary.FilePath(query, pairedResult, paired[0].Name);
+            string standardSub = splitLibrary.FilePath(query, pairedResult, paired[1].Name);
+            int expectedRequests = layout == "missing-sub" ? 1 : 0;
+            Check(aligned == standardIndex && Path.ChangeExtension(aligned, ".sub") == standardSub
+                && File.ReadAllBytes(aligned!).SequenceEqual(indexBytes) && File.ReadAllBytes(standardSub).SequenceEqual(subBytes)
+                && splitHandler.Paths.Count == expectedRequests,
+                "Split IDX/SUB caches become an adjacent original-name pair using local bytes and requesting only a missing companion: " + layout);
+            var alignedPackage = splitLibrary.Package(query, pairedResult)!;
+            Check(alignedPackage.Files.Count == 2
+                && splitLibrary.Cached(query, pairedResult, paired[0]) == standardIndex
+                && splitLibrary.Cached(query, pairedResult, paired[1]) == standardSub
+                && alignedPackage.Files.All(file => file.Path == standardIndex || file.Path == standardSub)
+                && alignedPackage.Files.Single(file => file.Path == standardIndex).OriginalPath == originalIndex
+                && alignedPackage.Files.Single(file => file.Path == standardIndex).OriginalHash == originalHash,
+                "Pair alignment replaces the old path and file-ID index while preserving original import ownership: " + layout);
+            Check(File.ReadAllBytes(oldIndexPath).SequenceEqual(indexBytes)
+                && (layout == "missing-sub" || File.ReadAllBytes(oldSubPath).SequenceEqual(subBytes)),
+                "Pair alignment preserves each original cached file: " + layout);
+            Check(await new SubtitleDownload(splitHttp, new SubtitleLibrary(splitLibrary.Root)).DownloadAsync(query,
+                pairedResult, paired[1], paired, null, default) == standardIndex && splitHandler.Paths.Count == expectedRequests,
+                "Reopening and selecting the SUB member returns the same adjacent IDX without another request: " + layout);
+            var otherPairResult = pairedResult with { Id = "45" };
+            var otherPairFile = paired[0] with { ResultId = otherPairResult.Id };
+            string otherPairPath = splitLibrary.FilePath(query, otherPairResult, otherPairFile.Name);
+            Directory.CreateDirectory(Path.GetDirectoryName(otherPairPath)!);
+            File.WriteAllBytes(otherPairPath, indexBytes);
+            splitLibrary.Save(query, otherPairResult, otherPairFile, otherPairPath, false);
+            File.SetAttributes(oldIndexPath, File.GetAttributes(oldIndexPath) | FileAttributes.ReadOnly);
+            try
+            {
+                await Fails(() => Task.Run(() => splitLibrary.Remove(query.Title, standardIndex, true)));
+                Check(File.Exists(standardIndex) && File.Exists(standardSub) && File.Exists(oldIndexPath)
+                    && splitLibrary.Package(query, pairedResult)!.Files.Count == 2 && File.Exists(otherPairPath),
+                    "A read-only original cache copy prevents set deletion before changing files or records: " + layout);
+            }
+            finally { File.SetAttributes(oldIndexPath, File.GetAttributes(oldIndexPath) & ~FileAttributes.ReadOnly); }
+            splitLibrary.Remove(query.Title, standardIndex, true);
+            Check(!File.Exists(standardIndex) && !File.Exists(standardSub) && !File.Exists(oldIndexPath)
+                && (layout == "missing-sub" || !File.Exists(oldSubPath)) && !File.Exists(originalIndex)
+                && splitLibrary.Package(query, pairedResult) == null && File.Exists(otherPairPath)
+                && splitLibrary.Results(query.Title).Single().Id == otherPairResult.Id,
+                "Deleting the aligned set also removes its old cache copies and verified original while preserving another version: " + layout);
+        }
         var failedPairLibrary = new SubtitleLibrary(Path.Combine(root, "failed-pair"));
         var failedPairHandler = new Handler(request => request.RequestUri!.AbsolutePath == "/paired.sub"
             ? Bytes(subBytes) : new(HttpStatusCode.NotFound));
@@ -285,8 +574,9 @@ static class SubtitleFileDownloadChecks
             Check(await extractedDownload.DownloadAsync(extractedQuery, individual, null, [file], null, default) == extractedPath
                 && extractedLibrary.Results(extractedQuery.Title).Single().Files.Count == 1 && extractedHandler.Paths.Count == 1,
                 source + " download-all for an individual release reuses that one extracted subtitle without enumerating a season");
-            Check(await extractedDownload.DownloadAsync(extractedQuery with { Episode = 9 }, individual, file, [file], null, default) == null
-                && extractedHandler.Paths.Count == 1, source + " individual file reuse still protects the current episode");
+            Check(await extractedDownload.DownloadAsync(extractedQuery with { Episode = 9 }, individual, file, [file], null, default) == extractedPath
+                && await extractedDownload.DownloadAsync(extractedQuery with { Episode = 9 }, individual, null, [file], null, default) == null
+                && extractedHandler.Paths.Count == 1, source + " explicit file reuse overrides episode recognition while automatic loading remains restricted");
         }
         var confirmedQuery = new SubtitleQuery("Example", 3, 1, "zh-Hans");
         string[] confirmedNames = ["Collection/Example/[Group][Example][01].sc.ass",
@@ -312,8 +602,10 @@ static class SubtitleFileDownloadChecks
                 "Selecting only that saved local file preserves its confirmed season-three identity without the other collection files");
             foreach (int otherSeason in new[] { 1, 2 })
                 Check(await confirmedDownload.DownloadAsync(confirmedQuery with { Season = otherSeason }, confirmedLocal,
-                    confirmedFile, [confirmedFile], null, default) == null && confirmedHandler.Paths.Count == 1,
-                    "A confirmed season-three file cannot load as the same numbered episode of season " + otherSeason);
+                    confirmedFile, [confirmedFile], null, default) == confirmedPath
+                    && confirmedLibrary.CurrentFile(confirmedQuery with { Season = otherSeason }, confirmedLocal, [confirmedFile]) == null
+                    && confirmedHandler.Paths.Count == 1,
+                    "An explicit season-three choice returns its file without making it an automatic match for season " + otherSeason);
         }
         return checks;
     }
