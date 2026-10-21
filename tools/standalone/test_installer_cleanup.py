@@ -13,6 +13,7 @@ import json
 import os
 import re
 import subprocess
+import time
 import uuid
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -166,6 +167,10 @@ def main(compiler, work):
                     kernel.CloseHandle(handle)
         check(run([uninstaller, *silent, *options, '/LOG=' + str(work / f'uninstall-{tag}.log')],
                   work / f'uninstall-{tag}.stdout') == 0, 'Uninstall must succeed')
+        deadline = time.monotonic() + 20
+        while uninstaller.exists() and time.monotonic() < deadline:
+            time.sleep(.1)
+        check(not uninstaller.exists(), 'Native uninstall cleanup must finish before the next install')
         for name in disposable_names + ['mpv-AnimeFusion.exe', 'mpv-AnimeFusionManager.exe',
                                         'app/runtime.dll', 'animejanai/danmaku/converter.exe']:
             check(not (install / name).exists(), 'Program or diagnostic residue: ' + name)
