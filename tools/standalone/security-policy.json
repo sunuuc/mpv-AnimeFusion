@@ -7,15 +7,29 @@
       "vendor": "360",
       "detection": "Win64/Heur.Generic.H8oAbrkA",
       "status": "review-pending"
+    },
+    {
+      "sha256": "46a2ae0cf5897d816f9022b97dcb2f94fb53677aeedfdcc9e2b0c4e0db0a19b6",
+      "component": "DanmakuFactory",
+      "vendor": "360",
+      "detection": "HEUR/QVM202.0.DFF6.Malware.Gen",
+      "reported_on": "2026-10-21",
+      "status": "review-pending"
     }
   ],
-  "required_reviews": [],
+  "required_reviews": [
+    {
+      "path": "animejanai/danmaku/DanmakuFactory.exe",
+      "vendor": "360"
+    }
+  ],
   "reviews": [],
   "release_assessment": {
     "component": "DanmakuFactory",
     "rebuilt_sha256": "46a2ae0cf5897d816f9022b97dcb2f94fb53677aeedfdcc9e2b0c4e0db0a19b6",
     "source_commit": "1c575c6cda49d32457fd3d7436c722c8999c0633",
-    "basis": "Audited converter source; user accepted the previous desktop source build. Portable builds now fix the CPU target instead of inheriting build-host instructions. Final release requires conversion regressions and a complete fresh antivirus scan.",
+    "basis": "The installed converter matches the recorded build and was reported again by 360 on 2026-10-21. Previous ClamAV scans and acceptance of another build do not clear this report. Publication is on hold pending official review bound to the exact file hash.",
+    "status": "review-pending",
     "official_360_review": "not-obtained",
     "old_reported_file": "remains-blocked",
     "accepted_desktop_sha256": "f6d3f9d5cd99fda0784ef35525f077387ad479f97b8ed4538d870810bb30fca1",

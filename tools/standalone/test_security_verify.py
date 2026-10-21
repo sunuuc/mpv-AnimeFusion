@@ -38,9 +38,15 @@ class SecurityChecks(unittest.TestCase):
 
     def test_release_policy_blocks_actual_reported_hash(self):
         policy = json.loads(POLICY.read_text(encoding='utf-8'))
-        digest = 'db3734fb45118ba08c4929214d4aef000875c2e80ac04130651bc482e5d9b58f'
-        issues = policy_issues({'renamed-tool.exe': digest}, policy)
-        self.assertTrue(any(x['reason'] == 'antivirus-report-unresolved' for x in issues))
+        for digest in ('db3734fb45118ba08c4929214d4aef000875c2e80ac04130651bc482e5d9b58f',
+                       '46a2ae0cf5897d816f9022b97dcb2f94fb53677aeedfdcc9e2b0c4e0db0a19b6'):
+            with self.subTest(sha256=digest):
+                issues = policy_issues({'renamed-tool.exe': digest}, policy)
+                self.assertTrue(any(x['reason'] == 'antivirus-report-unresolved' for x in issues))
+
+    def test_current_release_is_held_pending_vendor_review(self):
+        with self.assertRaises(RuntimeError):
+            preflight()
 
     def test_new_hash_needs_official_review(self):
         self.assertTrue(policy_issues(self.files, self.policy))
@@ -52,11 +58,12 @@ class SecurityChecks(unittest.TestCase):
         self.approve_fixture()
         preflight(self.policy_path)
 
-    def test_accepted_rebuild_does_not_clear_the_old_report(self):
+    def test_previous_acceptance_does_not_clear_reported_builds(self):
         policy = json.loads(POLICY.read_text(encoding='utf-8'))
-        accepted = policy['release_assessment']['rebuilt_sha256']
-        self.assertEqual(policy_issues({self.name: accepted}, policy), [])
-        self.assertTrue(policy_issues({self.name: policy['reported_files'][0]['sha256']}, policy))
+        for reported in policy['reported_files']:
+            issues = policy_issues({self.name: reported['sha256']}, policy)
+            self.assertTrue(any(x['reason'] == 'antivirus-report-unresolved' for x in issues))
+        self.assertTrue(policy_issues({self.name: policy['release_assessment']['accepted_desktop_sha256']}, policy))
         self.assertEqual(policy['release_assessment']['official_360_review'], 'not-obtained')
 
     def test_missing_component_cannot_bypass_review(self):
