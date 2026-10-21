@@ -65,6 +65,8 @@ static class Checks
         Check(!new SubtitleQuery("Series", 2, 3, "").MatchesFile("Season 1/Series S02E03.chs.ass")
             && SubtitleLibrary.FileQuery(new("Series", 2, 3, ""), Result(), "Season 1/Series S02E03.chs.ass").Season == -1,
             "Season conflicts cannot be automatically loaded or assigned to a library season.");
+        Check(SubtitleLibrary.FileQuery(new("Series", 1, 3, ""), Result(), "Season 1/Specials/Series S00E03.chs.ass").Season == 0,
+            "An explicitly numbered special remains separate inside a regular season's archive wrapper.");
         Check((Result() with { Files = [File("Series 01-02.chs.ass"), File("Series S02E12.5.chs.ass")] }).EpisodesFor(2).Count == 0,
             "Ambiguous ranges and fractional specials are not invented as regular episode numbers.");
         Check((Result() with { PackageNames = ["Font S02E08.ttf", "Series S02E09.zip"] }).EpisodesFor(2).Count == 0,

@@ -127,7 +127,7 @@ public sealed record SubtitleQuery(string Title, int? Season, int? Episode, stri
     {
         string[] parts = name.Replace('\\', '/').Split('/');
         var content = ReadContent(parts[^1]);
-        if (content.HasSeason && parts.SkipLast(1).Select(ReadContent).Any(parent =>
+        if (content.Season > 0 && parts.SkipLast(1).Select(ReadContent).Any(parent =>
             parent.HasSeason && !parent.Ambiguous && parent.Season != content.Season))
             return content with { Ambiguous = true };
         if (content.HasSeason || content.Type.Length > 0 || content.Ambiguous) return content;
