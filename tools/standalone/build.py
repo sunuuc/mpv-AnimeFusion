@@ -350,8 +350,9 @@ def package():
       'gpu_inference_tested':False,'player_ui_server_tested':False,'desktop_ui_verified':False})
     dump(info/'SHA256.json',{p.relative_to(ST).as_posix():sha(p) for p in ST.rglob('*') if p.is_file() and p!=info/'SHA256.json'})
     installer=build_installer(ST,DIST/'installer',E/'installer')
-    run(sys.executable,H/'security_verify.py','scan',DIST/'installer',E/'installer/security')
-    require_security_result(DIST/'installer',E/'installer/security/results.json')
+    run(sys.executable,H/'security_verify.py','scan',DIST/'installer',E/'installer/security',
+        '--installer-payload',ST)
+    require_security_result(DIST/'installer',E/'installer/security/results.json',payload=ST)
     cp(installer,DIST/installer.name)
     installer=DIST/installer.name
     archive=DIST/f'{META["name"]}-{META["version"]}-win-x64.7z'

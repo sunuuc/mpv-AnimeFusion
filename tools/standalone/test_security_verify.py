@@ -44,9 +44,19 @@ class SecurityChecks(unittest.TestCase):
                 issues = policy_issues({'renamed-tool.exe': digest}, policy)
                 self.assertTrue(any(x['reason'] == 'antivirus-report-unresolved' for x in issues))
 
-    def test_current_release_is_held_pending_vendor_review(self):
-        with self.assertRaises(RuntimeError):
-            preflight()
+    def test_current_owner_acceptance_preserves_pending_vendor_review(self):
+        preflight()
+        policy = json.loads(POLICY.read_text(encoding='utf-8'))
+        self.assertEqual(policy['reviews'], [])
+        self.assertEqual(policy['release_assessment']['official_360_review'], 'not-obtained')
+        acceptance = policy['owner_acceptances'][0]
+        self.assertEqual(policy_issues({acceptance['path']: acceptance['sha256']}, policy), [])
+        release = self.root / 'release.json'
+        dump(release, {'tag': 'standalone-v-next'})
+        with patch('security_verify.RELEASE', release):
+            self.assertTrue(policy_issues({acceptance['path']: acceptance['sha256']}, policy))
+            with self.assertRaises(RuntimeError):
+                preflight()
 
     def test_new_hash_needs_official_review(self):
         self.assertTrue(policy_issues(self.files, self.policy))
@@ -60,11 +70,40 @@ class SecurityChecks(unittest.TestCase):
 
     def test_previous_acceptance_does_not_clear_reported_builds(self):
         policy = json.loads(POLICY.read_text(encoding='utf-8'))
+        policy['owner_acceptances'] = []
         for reported in policy['reported_files']:
             issues = policy_issues({self.name: reported['sha256']}, policy)
             self.assertTrue(any(x['reason'] == 'antivirus-report-unresolved' for x in issues))
         self.assertTrue(policy_issues({self.name: policy['release_assessment']['accepted_desktop_sha256']}, policy))
         self.assertEqual(policy['release_assessment']['official_360_review'], 'not-obtained')
+
+    def test_owner_acceptance_requires_exact_path_hash_vendor_and_scope(self):
+        policy = json.loads(POLICY.read_text(encoding='utf-8'))
+        acceptance = policy['owner_acceptances'][0]
+        files = {acceptance['path']: acceptance['sha256']}
+        for key, value in [('path', 'renamed.exe'), ('sha256', '0' * 64),
+                           ('vendor', 'other'), ('tag', 'another-release'),
+                           ('scope', 'local-only'), ('decision', 'clean'), ('reason', '')]:
+            changed = copy.deepcopy(policy)
+            changed['owner_acceptances'][0][key] = value
+            with self.subTest(field=key):
+                self.assertTrue(policy_issues(files, changed))
+
+    def test_installer_evidence_is_bound_to_its_payload(self):
+        self.approve_fixture()
+        installer = self.root / 'installer'
+        installer.mkdir()
+        (installer / 'setup.exe').write_bytes(b'Synthetic harmless installer fixture')
+        result = json.loads(self.evidence.read_text())
+        result.update(files=inventory(installer), payload_files=self.files,
+                      scanned_files=len(inventory(installer)))
+        dump(self.evidence, result)
+        require_result(installer, self.evidence, self.policy_path, payload=self.app)
+        with self.assertRaises(RuntimeError):
+            require_result(installer, self.evidence, self.policy_path)
+        self.component.write_bytes(b'Changed harmless payload')
+        with self.assertRaises(RuntimeError):
+            require_result(installer, self.evidence, self.policy_path, payload=self.app)
 
     def test_missing_component_cannot_bypass_review(self):
         self.assertTrue(policy_issues({'other.exe': '0' * 64}, self.policy))

@@ -11,9 +11,9 @@
 		<UseWindowsForms>true</UseWindowsForms>
 		<ApplicationIcon>mpv-icon.ico</ApplicationIcon>
 		<ApplicationManifest>app.manifest</ApplicationManifest>
-    <FileVersion>1.3.5.0</FileVersion>
-    <AssemblyVersion>1.3.5.0</AssemblyVersion>
-    <InformationalVersion>1.3.5</InformationalVersion>
+		<FileVersion>1.3.6.0</FileVersion>
+		<AssemblyVersion>1.3.6.0</AssemblyVersion>
+		<InformationalVersion>1.3.6</InformationalVersion>
 		<AnimeFusionRepositoryRoot>$([MSBuild]::GetDirectoryNameOfFileAbove('$(MSBuildThisFileDirectory)', 'release.json'))</AnimeFusionRepositoryRoot>
 	</PropertyGroup>
 

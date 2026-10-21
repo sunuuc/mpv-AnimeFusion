@@ -6,6 +6,7 @@ from pathlib import Path
 import argparse
 import hashlib
 import json
+import re
 import subprocess
 import urllib.request
 import zipfile
@@ -76,6 +77,19 @@ def build(payload, output, evidence):
                         '/DMyAppOutputDir=' + str(output), str(SOURCE)],
                        stdout=log, stderr=subprocess.STDOUT, check=True)
     installer = output / f'{metadata["name"]}-{metadata["version"]}-setup-x64.exe'
+    extractor = ROOT / 'downloads/inno-setup/extractor/innoextract.exe'
+    with (evidence / 'archive-integrity.log').open('wb') as log:
+        subprocess.run([str(extractor), '--test', str(installer)],
+                       stdout=log, stderr=subprocess.STDOUT, check=True)
+    listing = subprocess.check_output([str(extractor), '--list-checksums', str(installer)],
+                                      encoding='utf-8')
+    (evidence / 'archive-files.log').write_text(listing, encoding='utf-8')
+    listed = {name.replace('\\', '/'): digest for name, digest in re.findall(
+        r'^ - "app\\(.+)" SHA-256 ([0-9a-f]{64})$', listing, re.MULTILINE)}
+    expected_files = {path.relative_to(payload).as_posix(): sha(path)
+                      for path in payload.rglob('*') if path.is_file()}
+    if listed != expected_files:
+        raise RuntimeError('Installer archive does not match the verified payload')
     result = {'version': metadata['version'], 'installer': installer.name,
               'sha256': sha(installer), 'bytes': installer.stat().st_size,
               'definition_sha256': sha(SOURCE),

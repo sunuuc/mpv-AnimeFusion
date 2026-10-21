@@ -27,7 +27,7 @@ def verified_assets():
 def verify_validation(source):
     desktop=source['validation_scope']=='desktop'
     require_security_result(R/'clean-install',E/'security/results.json')
-    require_security_result(DIST/'installer',E/'installer/security/results.json')
+    require_security_result(DIST/'installer',E/'installer/security/results.json',payload=R/'clean-install')
     run(sys.executable,H/'verify_player_sources.py')
     provenance=json.loads((R/'clean-install/app/build-info/standalone/provenance.json').read_text(encoding='utf-8'))
     if any(provenance.get(key)!=value for key,value in source.items()) or provenance['version']!=META['version']:

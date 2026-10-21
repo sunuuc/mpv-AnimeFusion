@@ -14,6 +14,7 @@ import zipfile
 from datetime import datetime, timezone, timedelta
 
 POLICY = Path(__file__).with_name('security-policy.json')
+RELEASE = Path(__file__).resolve().parents[2] / 'release.json'
 VERSION = '1.5.4'
 ARCHIVE = 'clamav-' + VERSION + '.win.x64.zip'
 URL = 'https://github.com/Cisco-Talos/clamav/releases/download/clamav-' + VERSION + '/' + ARCHIVE
@@ -47,6 +48,17 @@ def inventory(app):
     return result
 
 
+def owner_accepted(name, digest, vendor, policy):
+    tag = json.loads(RELEASE.read_text(encoding='utf-8'))['tag']
+    return any(row.get('path') == name and row.get('sha256') == digest
+               and re.fullmatch(r'[0-9a-f]{64}', digest or '')
+               and row.get('vendor') == vendor and row.get('tag') == tag
+               and row.get('scope') == 'public-release'
+               and row.get('decision') == 'publish-despite-unresolved-detection'
+               and isinstance(row.get('reason'), str) and row['reason'].strip()
+               for row in policy.get('owner_acceptances', []))
+
+
 def policy_issues(files, policy):
     if policy.get('schema') != 1:
         raise RuntimeError('Invalid security policy schema')
@@ -55,15 +67,16 @@ def policy_issues(files, policy):
     for name, digest in files.items():
         if digest in reported:
             row = reported[digest]
-            issues.append({'path': name, 'sha256': digest, 'reason': 'antivirus-report-unresolved',
-                           'vendor': row['vendor'], 'detection': row['detection']})
+            if not owner_accepted(name, digest, row['vendor'], policy):
+                issues.append({'path': name, 'sha256': digest, 'reason': 'antivirus-report-unresolved',
+                               'vendor': row['vendor'], 'detection': row['detection']})
     for required in policy['required_reviews']:
         name, vendor = required['path'], required['vendor']
         accepted = any(row.get('path') == name and row.get('vendor') == vendor
                        and row.get('sha256') == files.get(name) and row.get('verdict') == 'clean'
                        and isinstance(row.get('review_id'), str) and row['review_id'].strip()
                        for row in policy['reviews'])
-        if name not in files or not accepted:
+        if name not in files or not (accepted or owner_accepted(name, files.get(name), vendor, policy)):
             issues.append({'path': name, 'reason': 'official-review-required', 'vendor': vendor})
     return issues
 
@@ -79,22 +92,26 @@ def preflight(policy_path=POLICY):
                     and re.fullmatch(r'[0-9a-f]{64}', row.get('sha256', ''))
                     and isinstance(row.get('review_id'), str) and row['review_id'].strip()
                     and row['sha256'] not in reported]
-        if not approved:
+        accepted = any(owner_accepted(required['path'], row.get('sha256'), required['vendor'], policy)
+                       for row in policy.get('owner_acceptances', []))
+        if not approved and not accepted:
             raise RuntimeError('Release on security hold: official review pending for ' + required['path'])
     print('PASS release-security policy preflight')
 
 
-def require_result(app, evidence, policy_path=POLICY):
+def require_result(app, evidence, policy_path=POLICY, payload=None):
     policy = json.loads(policy_path.read_text(encoding='utf-8'))
     files = inventory(app)
-    if policy_issues(files, policy):
+    payload_files = inventory(payload) if payload is not None else None
+    if policy_issues(payload_files if payload_files is not None else files, policy):
         raise RuntimeError('Antivirus report or official review blocks publication')
     result = json.loads(evidence.read_text(encoding='utf-8'))
     if (result.get('schema') != 1 or result.get('passed') is not True
             or result.get('scanner_exit_code') != 0 or result.get('infected_files') != 0
             or result.get('engine_version') != VERSION or result.get('known_viruses', 0) <= 0
             or result.get('scanned_files') != len(files)
-            or result.get('files') != files or result.get('policy_sha256') != sha(policy_path)):
+            or result.get('files') != files or result.get('policy_sha256') != sha(policy_path)
+            or result.get('payload_files') != payload_files):
         raise RuntimeError('Missing, incomplete or changed antivirus evidence')
     checked = datetime.fromisoformat(result['checked_at'])
     if checked.tzinfo is None:
@@ -120,16 +137,18 @@ def scanner(cache):
     return root / ('clamav-' + VERSION + '.win.x64')
 
 
-def scan(app, out, cache, policy_path=POLICY):
+def scan(app, out, cache, policy_path=POLICY, payload=None):
     app, out, cache = app.resolve(), out.resolve(), cache.resolve()
     if out.is_relative_to(app) or cache.is_relative_to(app):
         raise RuntimeError('Antivirus tools and evidence must be outside the release payload')
     out.mkdir(parents=True, exist_ok=True)
     files = inventory(app)
     policy = json.loads(policy_path.read_text(encoding='utf-8'))
-    issues = policy_issues(files, policy)
+    payload_files = inventory(payload) if payload is not None else None
+    issues = policy_issues(payload_files if payload_files is not None else files, policy)
     result = {'schema': 1, 'passed': False, 'files': files, 'policy_sha256': sha(policy_path),
-              'checked_at': datetime.now(timezone.utc).isoformat(), 'issues': issues}
+              'checked_at': datetime.now(timezone.utc).isoformat(), 'issues': issues,
+              'payload_files': payload_files}
     dump(out / 'results.json', result)
     if issues:
         raise RuntimeError('Publication blocked: unresolved antivirus report or missing official review')
@@ -162,7 +181,7 @@ def scan(app, out, cache, policy_path=POLICY):
                         and inventory(app) == files)
     result['checked_at'] = datetime.now(timezone.utc).isoformat()
     dump(out / 'results.json', result)
-    require_result(app, out / 'results.json', policy_path)
+    require_result(app, out / 'results.json', policy_path, payload)
     print('PASS antivirus release check:', len(files), 'files; release policy verified')
 
 
@@ -172,10 +191,11 @@ if __name__ == '__main__':
     parser.add_argument('app', type=Path, nargs='?')
     parser.add_argument('out', type=Path, nargs='?')
     parser.add_argument('--cache', type=Path, default=Path('downloads/antivirus'))
+    parser.add_argument('--installer-payload', type=Path)
     args = parser.parse_args()
     if args.command == 'preflight':
         preflight()
     elif args.app is None or args.out is None:
         parser.error('scan requires app and out directories')
     else:
-        scan(args.app, args.out, args.cache)
+        scan(args.app, args.out, args.cache, payload=args.installer_payload)
