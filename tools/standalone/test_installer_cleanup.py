@@ -42,7 +42,7 @@ def check(condition, message):
         raise AssertionError(message)
 
 
-def definition(work):
+def definition(work, mutexes):
     text = SOURCE.read_text(encoding='utf-8')
     check('AppMutex=' + ','.join(MUTEXES) in text, 'All application owners must block uninstall')
     for path, name in (
@@ -52,6 +52,7 @@ def definition(work):
     ):
         check('"' + name + '"' in (ROOT / path).read_text(encoding='utf-8'),
               'Application must create its declared lifetime mutex: ' + name)
+    text = text.replace('AppMutex=' + ','.join(MUTEXES), 'AppMutex=' + ','.join(mutexes))
     text = text.replace('AppId={{F5D22654-9F97-480D-973C-586627E6E509}}',
                         'AppId={{' + str(uuid.uuid4()).upper() + '}}')
     text = text.replace('UsePreviousAppDir=yes',
@@ -102,16 +103,18 @@ def main(compiler, work):
                  'portable_config/shaders/shader.glsl', 'portable_config/mpv.conf',
                  'portable_config/script-opts/options.conf'):
         write(payload / name)
-    source = definition(work)
+    mutexes = tuple(name + '_Fixture_' + uuid.uuid4().hex for name in MUTEXES)
+    source = definition(work, mutexes)
+    version = json.loads((ROOT / 'release.json').read_text(encoding='utf-8'))['version']
     output = work / 'output'
     output.mkdir()
-    check(run([compiler, '/Qp', '/DMyAppSourceDir=' + str(payload), '/DMyAppVersion=1.3.5',
+    check(run([compiler, '/Qp', '/DMyAppSourceDir=' + str(payload), '/DMyAppVersion=' + version,
                '/DMyAppOutputDir=' + str(output), source], work / 'compile.log') == 0,
           'Fixture must compile with the pinned Inno compiler')
-    installer = output / 'mpv-AnimeFusion-1.3.5-setup-x64.exe'
+    installer = output / ('mpv-AnimeFusion-' + version + '-setup-x64.exe')
     silent = ['/SP-', '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART']
     install = work / 'installed'
-    for i, name in enumerate(MUTEXES):
+    for i, name in enumerate(mutexes):
         kernel, handle = hold_mutex(name)
         try:
             code = run([installer, *silent, '/DIR=' + str(install),
@@ -150,7 +153,7 @@ def main(compiler, work):
         options = [f'/test-{i}={int(value)}' for i, value in enumerate(selected)]
         uninstaller = install / 'unins000.exe'
         if tag == '000':
-            for i, name in enumerate(MUTEXES):
+            for i, name in enumerate(mutexes):
                 before = inventory(install), inventory(userdata)
                 kernel, handle = hold_mutex(name)
                 try:
