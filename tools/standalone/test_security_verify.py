@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from datetime import datetime, timezone, timedelta
 from unittest.mock import patch
-from security_verify import POLICY, VERSION, dump, inventory, policy_issues, preflight, require_result, scan, sha
+from security_verify import POLICY, RELEASE, VERSION, dump, inventory, policy_issues, preflight, require_result, scan, sha
 
 
 class SecurityChecks(unittest.TestCase):
@@ -49,7 +49,8 @@ class SecurityChecks(unittest.TestCase):
         policy = json.loads(POLICY.read_text(encoding='utf-8'))
         self.assertEqual(policy['reviews'], [])
         self.assertEqual(policy['release_assessment']['official_360_review'], 'not-obtained')
-        acceptance = policy['owner_acceptances'][0]
+        tag = json.loads(RELEASE.read_text(encoding='utf-8'))['tag']
+        acceptance = next(row for row in policy['owner_acceptances'] if row['tag'] == tag)
         self.assertEqual(policy_issues({acceptance['path']: acceptance['sha256']}, policy), [])
         release = self.root / 'release.json'
         dump(release, {'tag': 'standalone-v-next'})
@@ -79,7 +80,9 @@ class SecurityChecks(unittest.TestCase):
 
     def test_owner_acceptance_requires_exact_path_hash_vendor_and_scope(self):
         policy = json.loads(POLICY.read_text(encoding='utf-8'))
-        acceptance = policy['owner_acceptances'][0]
+        tag = json.loads(RELEASE.read_text(encoding='utf-8'))['tag']
+        acceptance = next(row for row in policy['owner_acceptances'] if row['tag'] == tag)
+        policy['owner_acceptances'] = [acceptance]
         files = {acceptance['path']: acceptance['sha256']}
         for key, value in [('path', 'renamed.exe'), ('sha256', '0' * 64),
                            ('vendor', 'other'), ('tag', 'another-release'),

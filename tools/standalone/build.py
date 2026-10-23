@@ -300,6 +300,8 @@ def release_notes():
 RUNTIME_CASES=('24fps','48fps','half-speed','slow-no-drop','slow-default','audio-thread','lua','frontend',
                *('close-'+str(i) for i in range(6)))
 SCRIPT_CASES=('control-tests','script-smoke')
+NETWORK_RESUME_CASES=('complete','resume','ignore-200','ignore-206','nonseekable','denied',
+                      'cache-stall','decoder-resume','decoder-ignore-200','decoder-ignore-206')
 DANMAKU_CASES=('test_danmaku_canvas','test_mpv_danmaku_viewport','test_danmaku_native','test_danmaku_flow')
 COMPLETE_CASES=('offline-included-components','no-release-update-logic','all-production-scripts-on-local-video',
                 'self-contained-player','self-contained-manager')
@@ -328,6 +330,9 @@ def package():
     require_results(E/'runtime/results.json',RUNTIME_CASES,() if desktop else ('frontend',))
     require_results(E/'runtime/scripts-results.json',SCRIPT_CASES)
     require_results(E/'danmaku/results.json',DANMAKU_CASES)
+    run(sys.executable,R/'tests/test_network_resume.py',ST/'app',E/'network-resume',
+        ST/'portable_config/scripts/network_playback.lua')
+    require_results(E/'network-resume/results.json',NETWORK_RESUME_CASES)
     # The manager requires completed-session positions from the native runtime.
     # Exercise the staged DLL so a stale native input cannot silently ship.
     run(sys.executable,R/'tests/test_native_watch_history.py',ST/'app',
@@ -377,6 +382,9 @@ def package():
         run(sys.executable,R/'tests/test_startup_playback.py',R/'clean-install',E/'fresh-install/startup')
         run(sys.executable,R/'tests/test_player_ui_empty_scope.py',R/'clean-install',E/'fresh-install/player_ui-handoff')
     run(sys.executable,H/'test_danmaku_package.py',R/'clean-install',E/'fresh-install/danmaku')
+    run(sys.executable,R/'tests/test_network_resume.py',R/'clean-install/app',
+        E/'fresh-install/network-resume',R/'clean-install/portable_config/scripts/network_playback.lua')
+    require_results(E/'fresh-install/network-resume/results.json',NETWORK_RESUME_CASES)
     require_results(E/'fresh-install/results.json',COMPLETE_CASES,() if desktop else COMPLETE_CASES[-2:])
     require_results(E/'fresh-install/runtime/results.json',RUNTIME_CASES,() if desktop else ('frontend',))
     require_results(E/'fresh-install/runtime/scripts-results.json',SCRIPT_CASES)

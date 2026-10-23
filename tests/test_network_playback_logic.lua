@@ -1,10 +1,12 @@
 local root=assert(arg[1])
+local diagnostic=(os.getenv('TEMP') or os.getenv('TMPDIR') or '/tmp')..
+    '/network-playback-'..tostring({}):gsub('[^%w]','')..'.json'
 local clock,events,hooks,timers,messages=0,{},{},{},{}
 local props={['stream-open-filename']='https://example.invalid/first',path='https://example.invalid/first',
     ['playlist-count']=2,['playlist-pos']=0,['idle-active']=false}
 local fake={}
 function fake.get_time()return clock end
-function fake.command_native()return root..'/_probe/playback-diagnostic-logic.json' end
+function fake.command_native()return diagnostic end
 function fake.get_property(name,default)return props[name] or default end
 function fake.get_property_number(name,default)return props[name] or default end
 function fake.get_property_bool(name,default)
@@ -13,7 +15,7 @@ function fake.get_property_bool(name,default)
 end
 fake.get_property_native=fake.get_property_bool
 function fake.set_property()return true end
-function fake.set_property_native()return true end
+function fake.set_property_native(name,value)props[name]=value;return true end
 function fake.commandv()return true end
 function fake.enable_messages()end
 function fake.get_script_name()return 'network_playback' end
@@ -87,6 +89,14 @@ assert(detail:find('permission denied',1,true),'redaction must retain the failur
 local visible=messages[#messages]
 assert(visible:find('HTTP 502',1,true) and visible:find('network failure',1,true)
     and not visible:find('private-',1,true),'error display keeps the reason without credentials')
+for _,text in ipairs({'Peer certificate failed verification','certificate verify failed',
+    'TLS certificate verification failed'}) do
+    hooks.on_load()
+    events['log-message']({prefix='ffmpeg',level='error',text=text})
+    events['end-file']({reason='error',error=-13,file_error='network failure'})
+    advance(1)
+    assert(props['user-data/player_ui/playback'].ssl_error,'native TLS failure must retain the explicit retry choice')
+end
 io.open=original_open
-os.remove(root..'/_probe/playback-diagnostic-logic.json')
+os.remove(diagnostic)
 print('PASS network playback error lifecycle')

@@ -1,7 +1,7 @@
 """Publish verified installer and portable assets from their committed source."""
 import hashlib,json,sys,urllib.request
 from build import (R,H,E,DIST,REPO,META,sha,dump,run,api,require_build_source,
-                   require_results,RUNTIME_CASES,SCRIPT_CASES,DANMAKU_CASES,COMPLETE_CASES)
+                   require_results,RUNTIME_CASES,SCRIPT_CASES,NETWORK_RESUME_CASES,DANMAKU_CASES,COMPLETE_CASES)
 from security_verify import require_result as require_security_result
 
 
@@ -40,6 +40,7 @@ def verify_validation(source):
         require_results(base/'runtime/results.json',RUNTIME_CASES,() if desktop else ('frontend',))
         require_results(base/'runtime/scripts-results.json',SCRIPT_CASES)
         require_results(base/'danmaku/results.json',DANMAKU_CASES)
+        require_results(base/'network-resume/results.json',NETWORK_RESUME_CASES)
     if not desktop:return scope
     for base in (E,E/'fresh-install'):
         for folder,count in (('player_ui',2),('network',None),('startup',7),('player_ui-handoff',3)):

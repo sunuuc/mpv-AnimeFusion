@@ -110,6 +110,9 @@ mp.add_hook('on_load',-1000,function()
     if state.network then
         for name,value in pairs({['sub-auto']='no',['audio-file-auto']='no',['cover-art-auto']='no',
             ['ytdl']='no',['demuxer-cache-wait']='no',['cache-pause-wait']='1',
+            -- The pinned curl transport validates only its first response.
+            -- Use mpv's lavf transport, which also checks each resumed byte range.
+            ['curl-enabled']='no',
             -- Do not hold the first frame for the configured startup cache. Keep
             -- cache-pause enabled so playback can still recover from later stalls.
             ['cache-pause-initial']='no',
@@ -135,6 +138,10 @@ mp.add_hook('on_load',-1000,function()
             ['network-timeout']='20'}) do
             set('file-local-options/'..name,value)
         end
+        for _,value in ipairs({'reconnect=1','reconnect_streamed=0','reconnect_at_eof=0',
+            'reconnect_max_retries=3','reconnect_delay_max=4','reconnect_delay_total_max=7'}) do
+            mp.commandv('change-list','file-local-options/stream-lavf-o','append',value)
+        end
         mp.commandv('change-list','demuxer-lavf-o','append','http_multiple=0')
     end
     record('opening')
@@ -148,6 +155,7 @@ mp.register_event('log-message',function(e)
     if (prefix=='curl' or prefix=='ffmpeg' or prefix=='stream') and
         (detail:find('certificate verification failed',1,true) or
          detail:find('certificate verify failed',1,true) or
+         detail:find('certificate failed verification',1,true) or
          detail:find('ssl peer certificate',1,true)) then certificate_failure=true end
     local code=e.text and (e.text:match('HTTP error (%d%d%d)') or e.text:match('HTTP/%d[%d.]* (%d%d%d)'))
     if code then state.http_status=tonumber(code) end
