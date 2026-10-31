@@ -2,7 +2,7 @@
 
 简体中文 | [English](README.en.md)
 
-动漫专用mpv，支持 AI 超分、补帧、弹幕和 Bangumi／Trakt／MyAnimeList(MAL) 观看进度同步。
+动漫专用mpv，支持 AI 超分、补帧、在线弹幕,在线字幕搜索和 Bangumi／Trakt／MyAnimeList(MAL) 观看进度同步。
 
 [下载](https://github.com/sunuuc/mpv-AnimeFusion/releases/latest) · [更新日志](CHANGELOG.md) · [问题反馈](https://github.com/sunuuc/mpv-AnimeFusion/issues)
 
