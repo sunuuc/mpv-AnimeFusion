@@ -41,20 +41,9 @@
 | [DanmakuFactory](https://github.com/hihkm/DanmakuFactory) | 弹幕排布、防碰撞及 ASS 转换 |
 | [libass](https://github.com/libass/libass) | ASS 字幕与弹幕渲染 |
 | [BangumiNet](https://github.com/ajtn123/BangumiNet) | Bangumi API 客户端 |
-| [Trakt API](https://github.com/trakt/trakt-api) | Trakt 接口与同步数据结构 |
 | [BangumiExtLinker](https://github.com/Rhilip/BangumiExtLinker) | 跨站作品 ID 和名称数据 |
 | [AnitomySharp](https://github.com/chu-shen/AnitomySharp) / [Anitomy](https://github.com/erengy/anitomy) | 动漫文件名解析 |
 | [mpv_bangumi_sync](https://github.com/x-Armin/mpv_bangumi_sync) | 标题、季度、集数识别与进度同步逻辑的来源 |
-| [czy0729/Bangumi](https://github.com/czy0729/Bangumi) | 收藏和剧集状态分离，以及“看过／看到”的交互参考 |
-| [OAuth apps for Windows](https://github.com/googlesamples/oauth-apps-for-windows) | 浏览器授权与回环回调流程参考 |
-| [.NET / ASP.NET Core](https://github.com/dotnet/aspnetcore) | Windows 运行库和授权服务 |
 | [RIFE](https://github.com/hzwer/ECCV2022-RIFE)、[Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN)、[ONNX Runtime](https://github.com/microsoft/onnxruntime) | 补帧、超分模型及推理组件 |
-| [FFmpeg](https://ffmpeg.org/)、[libplacebo](https://github.com/haasn/libplacebo)、[MSYS2](https://www.msys2.org/)、[PCRE2](https://github.com/PCRE2Project/pcre2) | 解码、视频输出、原生依赖与弹幕转换依赖 |
-| [Avalonia](https://github.com/AvaloniaUI/Avalonia)、[FluentAvalonia](https://github.com/amwx/FluentAvalonia)、[ReactiveUI](https://github.com/reactiveui/ReactiveUI) | 管理器界面及状态绑定 |
-| [SkiaSharp / HarfBuzzSharp](https://github.com/mono/SkiaSharp)、[Inter](https://github.com/rsms/inter) | 管理器绘制、文字排版、字体及同步图片解码 |
-| [Nginx](https://nginx.org/)、[Certbot](https://github.com/certbot/certbot) | 授权服务的 HTTPS 入口及证书续期 |
-| [Inno Setup](https://github.com/jrsoftware/issrc) | EXE 安装包与卸载程序 |
-| [curl](https://github.com/curl/curl) | 在线弹幕请求 |
-| [hdr-toys](https://github.com/natural-harmonia-gropius/hdr-toys) | GPU 镜像翻转着色器 |
 
 TensorRT、CUDA 和 DirectML 按各厂商许可证使用，相关声明随包保留。AnimeJaNai 模型及项目采用 CC BY-NC-SA 4.0，各组件分别遵循其原许可证。
