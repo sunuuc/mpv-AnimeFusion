@@ -6,7 +6,6 @@ An mpv-based player built for anime, bringing together features from many projec
 
 [Download](https://github.com/sunuuc/mpv-AnimeFusion/releases/latest) · [Changelog](CHANGELOG.md) · [Report an issue](https://github.com/sunuuc/mpv-AnimeFusion/issues)
 
-
 ## Features
 
 - **AI upscaling and interpolation**: improve image quality and playback smoothness.
