@@ -1,10 +1,10 @@
-name: animeve-auth
+name: animefusion-auth
 services:
   auth:
     build: ..
     restart: unless-stopped
     environment:
-      PublicOrigin: https://bangumi.sunuuc.de5.net
+      PublicOrigin: https://api.sunuuc.de5.net
     secrets:
       - app-id
       - app-secret
@@ -25,7 +25,7 @@ services:
     restart: unless-stopped
     environment:
       Provider: Trakt
-      PublicOrigin: https://trakt.sunuuc.de5.net
+      PublicOrigin: https://api.sunuuc.de5.net
       ClientId: wJFmEZxr0f3SjrRmtP_g71-zdzi0RT4edtie1hjka-I
     volumes:
       - ./trakt-data:/data
@@ -44,7 +44,7 @@ services:
     restart: unless-stopped
     environment:
       Provider: MyAnimeList
-      PublicOrigin: https://mal.sunuuc.de5.net
+      PublicOrigin: https://api.sunuuc.de5.net
       ClientId: 3d457be5f0bd9d5cf51c5b9c35888d60
     volumes:
       - ./mal-data:/data
@@ -63,6 +63,7 @@ services:
     ports: ["80:80", "443:443"]
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./update.html:/usr/share/nginx/html/update.html:ro
       - ./acme:/var/www/acme:ro
       - ./certificates:/etc/letsencrypt:ro
     networks:

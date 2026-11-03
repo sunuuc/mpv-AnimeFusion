@@ -1,5 +1,5 @@
 [Unit]
-Description=Schedule AnimeVE HTTPS certificate renewal
+Description=Schedule mpv-AnimeFusion HTTPS certificate renewal
 
 [Timer]
 OnCalendar=*-*-* 03,15:00:00

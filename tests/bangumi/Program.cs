@@ -34,6 +34,12 @@ static class Program
     {
         Environment.SetEnvironmentVariable("ANIMEVE_HOME", Directory.CreateDirectory(Path.Combine(Root, "player")).FullName);
         MpvNet.Windows.Sync.SyncPreferences.Initialize();
+        if (args.Contains("--oauth-only"))
+        {
+            OAuthAsync().GetAwaiter().GetResult();
+            Complete();
+            return;
+        }
         var store = Store("ui");
         var client = new BangumiClient(store, new HttpClient(new Handler()));
         Theme.Current = new() { Foreground = Brushes.White, Foreground2 = Brushes.Gray, Background = Brushes.Black, MenuBackground = Brushes.DarkSlateGray, MenuHighlight = Brushes.DimGray, Heading = Brushes.Purple };
@@ -59,6 +65,11 @@ static class Program
             "Episode dropdown template constructs without showing a popup");
         window.Close();
         RunAsync().GetAwaiter().GetResult();
+        Complete();
+    }
+
+    static void Complete()
+    {
         string expected = Path.TrimEndingDirectorySeparator(Path.GetFullPath(Path.GetTempPath())) + Path.DirectorySeparatorChar;
         Check(Path.GetFullPath(Root).StartsWith(expected, StringComparison.OrdinalIgnoreCase), "Cleanup target stays in temporary directory");
         if (Directory.Exists(Root)) Directory.Delete(Root, true);
@@ -358,7 +369,8 @@ static class Program
         var handler = new Handler();
         var oauth = new BangumiOAuth(new HttpClient(handler));
         var url = BangumiOAuth.AuthorizationUri("a&b", "challenge");
-        Check(url.Host == "bangumi.sunuuc.de5.net" && url.Query.Contains("state=a%26b") && !url.Query.Contains("secret"), "Authorization opens project service and escapes state");
+        Check(url.Host == "api.sunuuc.de5.net" && url.AbsolutePath == "/bangumi/authorize"
+            && url.Query.Contains("state=a%26b") && !url.Query.Contains("secret"), "Authorization opens the provider path and escapes state");
         Task? callback = null;
         var account = await oauth.AuthorizeAsync(authorization => callback = SendCallbacksAsync(authorization), CancellationToken.None);
         await callback!;
@@ -405,6 +417,23 @@ static class Program
         listener.Stop();
         Check(true, "Canceled authorization releases loopback listener");
 
+        var trakt = new MpvNet.Windows.Trakt.TraktOAuth(new HttpClient(handler));
+        Task? traktCallback = null;
+        var traktAccount = await trakt.AuthorizeAsync(authorization => traktCallback = SendCallbacksAsync(authorization,
+            MpvNet.Windows.Trakt.TraktOAuth.RedirectUri, "/trakt/authorize"), CancellationToken.None);
+        await traktCallback!;
+        await trakt.RefreshAsync(traktAccount, CancellationToken.None);
+        var mal = new MpvNet.Windows.MyAnimeList.MalOAuth(new HttpClient(handler));
+        Task? malCallback = null;
+        var malAccount = await mal.AuthorizeAsync(authorization => malCallback = SendCallbacksAsync(authorization,
+            MpvNet.Windows.MyAnimeList.MalOAuth.RedirectUri, "/mal/authorize"), CancellationToken.None);
+        await malCallback!;
+        await mal.RefreshAsync(malAccount, CancellationToken.None);
+        Check(handler.TokenUrls.All(uri => uri.Host == "api.sunuuc.de5.net")
+            && new[] { "/bangumi/token", "/bangumi/refresh", "/trakt/token", "/trakt/refresh", "/mal/token", "/mal/refresh" }
+                .All(path => handler.TokenUrls.Any(uri => uri.AbsolutePath == path)),
+            "All desktop authorization and refresh exchanges use the matching provider path");
+
         async Task SendFailureAsync(string authorization)
         {
             var query = System.Web.HttpUtility.ParseQueryString(new Uri(authorization).Query);
@@ -413,15 +442,18 @@ static class Program
             Check(failure.StatusCode == HttpStatusCode.BadRequest, "OAuth failure callback acknowledged without waiting for timeout");
         }
 
-        async Task SendCallbacksAsync(string authorization)
+        async Task SendCallbacksAsync(string authorization, string callbackUri = BangumiOAuth.RedirectUri, string authorizationPath = "/bangumi/authorize")
         {
-            var query = System.Web.HttpUtility.ParseQueryString(new Uri(authorization).Query);
+            var authorizationUri = new Uri(authorization);
+            Check(authorizationUri.Host == "api.sunuuc.de5.net" && authorizationUri.AbsolutePath == authorizationPath,
+                "Desktop browser opens the provider's new public path");
+            var query = System.Web.HttpUtility.ParseQueryString(authorizationUri.Query);
             string state = query["state"]!;
             handler.Challenge = query["challenge"]!;
             using var browser = new HttpClient();
-            using var bad = await browser.GetAsync(BangumiOAuth.RedirectUri + "?state=wrong&code=bad");
+            using var bad = await browser.GetAsync(callbackUri + "?state=wrong&code=bad");
             Check(bad.StatusCode == HttpStatusCode.BadRequest, "Forged callback state rejected");
-            using var good = await browser.GetAsync(BangumiOAuth.RedirectUri + "?state=" + state + "&code=" + new string('A', 43));
+            using var good = await browser.GetAsync(callbackUri + "?state=" + state + "&code=" + new string('A', 43));
             Check(good.IsSuccessStatusCode, "Expected callback accepted");
         }
     }
@@ -438,6 +470,7 @@ static class Program
         public string TokenBody = "", Challenge = "";
         public readonly List<(string Method, string Path, string Body)> Writes = [];
         public readonly List<(string Url, string Header)> Seen = [];
+        public readonly List<Uri> TokenUrls = [];
         public readonly TaskCompletionSource EpisodesStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -451,8 +484,10 @@ static class Program
                 bitmap.Save(stream, System.Drawing.Imaging.ImageFormat.Png);
                 return new(HttpStatusCode.OK) { Content = new ByteArrayContent(stream.ToArray()) };
             }
-            if (path is "/token" or "/refresh")
+            if (request.RequestUri.Host == "api.sunuuc.de5.net"
+                && path is "/bangumi/token" or "/bangumi/refresh" or "/trakt/token" or "/trakt/refresh" or "/mal/token" or "/mal/refresh")
             {
+                TokenUrls.Add(request.RequestUri);
                 TokenRequests++;
                 TokenBody = body;
                 return Json(JsonSerializer.Serialize(new { accessToken = "oauth-token", refreshToken = "refresh-token", expiresAt = DateTimeOffset.UtcNow.AddDays(7), username = "" }));

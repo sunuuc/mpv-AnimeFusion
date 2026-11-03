@@ -15,11 +15,12 @@ using Microsoft.AspNetCore.WebUtilities;
 var builder = WebApplication.CreateBuilder(args);
 builder.Logging.SetMinimumLevel(LogLevel.Warning);
 builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 8192);
-string origin = builder.Configuration["PublicOrigin"] ?? "https://bangumi.sunuuc.de5.net";
+string origin = builder.Configuration["PublicOrigin"] ?? "https://api.sunuuc.de5.net";
 string provider = builder.Configuration["Provider"] ?? "Bangumi";
 if (provider is not ("Bangumi" or "Trakt" or "MyAnimeList")) throw new InvalidOperationException("Unknown authorization provider.");
 bool trakt = provider == "Trakt";
 bool mal = provider == "MyAnimeList";
+string pathBase = mal ? "/mal" : trakt ? "/trakt" : "/bangumi";
 string loopback = mal ? "http://127.0.0.1:33167/" : trakt ? "http://127.0.0.1:33166/" : "http://127.0.0.1:33165/";
 var publicUri = new Uri(origin);
 if (publicUri.Scheme != "https" || publicUri.AbsolutePath != "/") throw new InvalidOperationException("PublicOrigin must be an HTTPS origin.");
@@ -128,13 +129,15 @@ else
 
 var app = builder.Build();
 app.UseForwardedHeaders();
+app.UsePathBase(pathBase);
 app.Use(async (context, next) =>
 {
     context.Response.Headers.CacheControl = "no-store";
     context.Response.Headers["Referrer-Policy"] = "no-referrer";
     context.Response.Headers["X-Content-Type-Options"] = "nosniff";
     context.Response.Headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'";
-    if (context.Request.Host.Value != publicUri.Authority || !context.Request.IsHttps)
+    if (context.Request.Host.Value != publicUri.Authority || !context.Request.IsHttps
+        || context.Request.PathBase != pathBase)
     { context.Response.StatusCode = 400; return; }
     try { await next(); }
     catch (Exception error) when (error is HttpRequestException or JsonException or InvalidOperationException or TaskCanceledException)
@@ -155,7 +158,7 @@ app.MapGet("/authorize", (string? state, string? challenge) =>
 {
     if (!configured) return Results.Json(new { error = "应用凭据尚未配置。" }, statusCode: 503);
     if (!Handoffs.ValidProof(state) || !Handoffs.ValidProof(challenge)) return Results.BadRequest();
-    var properties = new AuthenticationProperties { RedirectUri = "/", ExpiresUtc = DateTimeOffset.UtcNow.AddMinutes(3) };
+    var properties = new AuthenticationProperties { RedirectUri = pathBase + "/", ExpiresUtc = DateTimeOffset.UtcNow.AddMinutes(3) };
     properties.Items["device_state"] = state;
     properties.Items["device_challenge"] = challenge;
     return Results.Challenge(properties, [provider]);
@@ -172,14 +175,14 @@ app.MapPost("/refresh", async (RefreshRequest request, IHttpClientFactory client
     using HttpContent body = trakt ? JsonContent.Create(new
     {
         grant_type = "refresh_token", client_id = clientId, refresh_token = request.RefreshToken,
-        redirect_uri = origin + "/oauth/callback"
+        redirect_uri = origin + pathBase + "/oauth/callback"
     }) : mal ? new FormUrlEncodedContent(new Dictionary<string, string>
     {
         ["grant_type"] = "refresh_token", ["client_id"] = clientId, ["refresh_token"] = request.RefreshToken
     }) : new FormUrlEncodedContent(new Dictionary<string, string>
     {
         ["grant_type"] = "refresh_token", ["client_id"] = clientId, ["client_secret"] = clientSecret,
-        ["refresh_token"] = request.RefreshToken, ["redirect_uri"] = origin + "/oauth/callback"
+        ["refresh_token"] = request.RefreshToken, ["redirect_uri"] = origin + pathBase + "/oauth/callback"
     });
     using var response = await clients.CreateClient(provider).PostAsync(mal ? "https://myanimelist.net/v1/oauth2/token" : trakt ? "https://auth.trakt.tv/oauth/token" : "https://bgm.tv/oauth/access_token", body, cancellationToken);
     if (!response.IsSuccessStatusCode)

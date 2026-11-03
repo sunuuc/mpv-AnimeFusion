@@ -17,7 +17,7 @@ namespace MpvNet.Windows.Bangumi;
 
 public sealed class BangumiOAuth(HttpClient http)
 {
-    public const string ServiceOrigin = "https://bangumi.sunuuc.de5.net";
+    public const string ServiceOrigin = "https://api.sunuuc.de5.net/bangumi";
     public const string RedirectUri = "http://127.0.0.1:33165/";
     static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     static string Proof(byte[] bytes) => Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');

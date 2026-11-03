@@ -25,6 +25,6 @@
 
 ## 服务配置
 
-Trakt 回调为 `https://trakt.sunuuc.de5.net/oauth/callback`，公开 Client ID 配置在客户端和 `src/auth/deploy/compose.yml`，不需要 Client Secret。跨域 origins 留空；播放器通过原生 HTTP 客户端请求。
+Trakt 回调为 `https://api.sunuuc.de5.net/trakt/oauth/callback`，公开 Client ID 配置在客户端和 `src/auth/deploy/compose.yml`，不需要 Client Secret。跨域 origins 留空；播放器通过原生 HTTP 客户端请求。
 
-Docker 服务 `trakt-auth` 使用独立数据保护密钥目录 `trakt-data`，由现有 Nginx 提供 HTTPS。证书续期沿用已有 Certbot 定时任务，包含两个域名。Trakt 的本地交接监听为 `http://127.0.0.1:33166/`，Bangumi 保持原监听端口。
+Docker 服务 `trakt-auth` 使用独立数据保护密钥目录 `trakt-data`，由 Nginx 通过统一域名的 `/trakt` 路径提供 HTTPS。证书续期使用 Certbot 定时任务，包含新域名及显示更新提示的三个旧域名。Trakt 的本地交接监听为 `http://127.0.0.1:33166/`，Bangumi 保持原监听端口。

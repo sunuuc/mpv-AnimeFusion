@@ -13,7 +13,7 @@ namespace MpvNet.Windows.MyAnimeList;
 public sealed class MalOAuth(HttpClient http)
 {
     public const string ClientId = "3d457be5f0bd9d5cf51c5b9c35888d60";
-    public const string ServiceOrigin = "https://mal.sunuuc.de5.net";
+    public const string ServiceOrigin = "https://api.sunuuc.de5.net/mal";
     public const string RedirectUri = "http://127.0.0.1:33167/";
     static string Proof(byte[] bytes) => Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
     public async Task<MalAccount> AuthorizeAsync(Action<string> openBrowser, CancellationToken cancellationToken)

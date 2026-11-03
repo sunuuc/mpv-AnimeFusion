@@ -13,7 +13,7 @@ namespace MpvNet.Windows.Trakt;
 public sealed class TraktOAuth(HttpClient http)
 {
     public const string ClientId = "wJFmEZxr0f3SjrRmtP_g71-zdzi0RT4edtie1hjka-I";
-    public const string ServiceOrigin = "https://trakt.sunuuc.de5.net";
+    public const string ServiceOrigin = "https://api.sunuuc.de5.net/trakt";
     public const string RedirectUri = "http://127.0.0.1:33166/";
     static string Proof(byte[] bytes) => Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
     public async Task<TraktAccount> AuthorizeAsync(Action<string> openBrowser, CancellationToken cancellationToken)
