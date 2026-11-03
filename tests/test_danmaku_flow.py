@@ -896,12 +896,14 @@ local function fail(reason)
     mp.commandv('quit',1)
 end
 mp.add_timeout(.5,function()
-    mp.commandv('script-message','player_ui-danmaku-search-query','间谍过家家','1','2')
+    mp.commandv('script-message','player_ui-danmaku-search-query','间谍过家家','0','2')
 end)
 mp.add_periodic_timer(.15,function()
     local data=mp.get_property_native('user-data/player_ui/danmaku')
     if type(data)~='table' then return end
-    if phase==0 and type(data.results)=='table' and #data.results==2 then
+    -- Opening details cancels searches, so wait for both configured routes.
+    if phase==0 and data.search_pending==0 and data.search_responded==2
+        and type(data.results)=='table' and #data.results==2 then
         local second=data.results[2]
         if second.season~=2 or #second.platforms~=2 then fail('wrong season/platform groups');return end
         phase=1
