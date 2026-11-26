@@ -891,7 +891,7 @@ local function suite()
  end
  for i=1,3 do complete_async(ambiguous_searches[i],'ambiguous-works') end
  danmaku_state=props['user-data/player_ui/danmaku']
- check(next_async==before+3 and not danmaku_state.loaded and danmaku_state.autoload_state=='not-found',
+ check(next_async==before+3 and not danmaku_state.loaded and danmaku_state.autoload_state=='ambiguous',
   'ambiguous works never request episode details or comments, and each route is searched only once')
  check(danmaku_state.status=='有多个相近作品，请手动选择弹幕',
   'ambiguous automatic results explain the need for a manual selection')

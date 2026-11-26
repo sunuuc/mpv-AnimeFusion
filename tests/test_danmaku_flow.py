@@ -382,6 +382,7 @@ class DanmakuFlowTest(unittest.TestCase):
         try:
             with tempfile.TemporaryDirectory(prefix='danmaku-scoped-search-') as directory:
                 folder = Path(directory)
+                server.release_slow = folder / 'release-slow'
                 (data_directory(folder) / 'mpv-AnimeFusion-danmaku.conf').write_text('api_servers=' + ','.join(
                     f'http://127.0.0.1:{server.server_port}/{route}|{route}'
                     for route in ('failed', 'empty', 'slow')) + '\n', encoding='utf-8')
@@ -413,6 +414,7 @@ mp.add_periodic_timer(.05,function()
     elseif phase==3 and data.search_source==3 then
         if data.search_pending~=1 or data.search_failed~=0 then finish('loading route inherited stale failure',1);return end
         phase=4
+        local release=assert(io.open(%s,'wb'));release:close()
     elseif phase==4 and data.search_pending==0 and #data.results==1 then
         if data.search_failed~=0 or data.search_responded~=1 or data.results[1].season~=3 then
             finish('loaded route has inconsistent result state',1);return end
@@ -420,7 +422,7 @@ mp.add_periodic_timer(.05,function()
     end
 end)
 mp.add_timeout(15,function()finish('timeout',1)end)
-''' % lua_string(str(result_path)), encoding='utf-8')
+''' % (lua_string(str(result_path)), lua_string(str(server.release_slow))), encoding='utf-8')
                 env = {**os.environ, 'LOCALAPPDATA': directory}
                 proc = subprocess.run([str(MPV), f'--config-dir={self.config}', '--load-scripts=no',
                     '--idle=yes', '--vo=null', f'--script={SCRIPT}', f'--script={driver}'],
@@ -1161,7 +1163,11 @@ class ScopedSearchHandler(BaseHTTPRequestHandler):
         ScopedSearchHandler.seen.append(self.path)
         failed = self.path.startswith('/failed/')
         slow = self.path.startswith('/slow/')
-        if slow:
+        if slow and hasattr(self.server, 'release_slow'):
+            deadline = time.monotonic() + 12
+            while not self.server.release_slow.exists() and time.monotonic() < deadline:
+                time.sleep(.05)
+        elif slow:
             time.sleep(3)
         body = {'errorMessage': '服务器维护中'} if failed else {'animes': [
             {'animeId': 33, 'animeTitle': '无职转生Ⅲ ～到了异世界就拿出真本事～(2026)',

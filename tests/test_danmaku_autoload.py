@@ -152,7 +152,7 @@ end
 mp.observe_property('user-data/player_ui/danmaku','native',function(_,s)
  if not s then return end
  trace.states[#trace.states+1]={state=s.autoload_state,count=s.count,time=mp.get_time()}
- if s.autoload_state=='loaded' or s.autoload_state=='error' or s.autoload_state=='not-found'
+ if s.autoload_state=='loaded' or s.autoload_state=='error' or s.autoload_state=='not-found' or s.autoload_state=='ambiguous'
     or s.autoload_state=='empty' or s.autoload_state=='unconfigured' then
   mp.add_timeout(.5,function()finish(s.loaded and 0 or 1,'result')end)
  end

@@ -184,7 +184,7 @@ require(
     "match_current=function(quiet,automatic,failed_episodes)",
     "priority_fallback=true",
     "autoload_state=automatic and 'loading' or 'idle'",
-    "autoload_state=attempt.automatic and (failed and 'error' or 'not-found') or 'idle'",
+    "attempt.ambiguous and 'ambiguous' or 'not-found'",
     "match_by_file(attempt,position,index,server)",
     "mp.observe_property('media-title','string'",
     "entry.errors[request_index]=tostring(err or why",
@@ -253,8 +253,8 @@ require(
     "src/player/src/MpvNet/Player.cs",
     'if (!file.Contains("://") && file.Contains(\'|\'))',
     'string ext = file.Contains("://") ? "" : file.Ext();',
-    '"append-play" : "append"',
-    "loadfile replace starts playback itself",
+    'string flags = index == 0 && !append ? "replace"',
+    'index == 0 && GetPropertyInt("playlist-count") == 0 ? "append+play" : "append"',
 )
 require(
     "tests/test_player_ui_runtime.lua",

@@ -77,11 +77,12 @@ assert(commands[#commands][4]=='retry-match','failed match retry must invoke the
 account.resolving=true
 menu.invalidate();_,rows=menu.data('bangumi')
 assert(find(rows,'正在匹配…').spinner and not find(rows,'重新匹配'),'loading must spin without a redundant retry')
-for _,state in ipairs({'not-found','error'}) do
+for _,state in ipairs({'not-found','error','ambiguous'}) do
     danmaku.autoload_state=state
     menu.invalidate();_,rows=menu.data('danmaku')
     assert(find(rows,'重试匹配'),'failed and empty danmaku results must allow retry')
     assert(find(rows,'搜索弹幕').fn,'manual search must remain available')
+    if state=='ambiguous' then assert(find(rows,'有多个相近作品，请手动选择弹幕')) end
 end
 danmaku.autoload_state='loading'
 menu.invalidate();_,rows=menu.data('danmaku')

@@ -1142,31 +1142,30 @@ function M.auto_candidates(shows,media_name,known_title)
             if score>=.8 then
                 -- A wrong release year must not veto a title and season match.
                 local rank=score+(year and show.year==year and .03 or 0)
-                ranked[#ranked+1]={show=show,score=rank,order=order}
+                ranked[#ranked+1]={show=show,score=rank,order=order,exact=score==1,
+                    marked_season=season~=nil and M.season_number(show.label)==season}
             end
         end
     end
     table.sort(ranked,function(a,b)
-        if a.score==b.score then return a.order<b.order end
-        return a.score>b.score
+        if a.exact~=b.exact then return a.exact end
+        if a.score~=b.score then return a.score>b.score end
+        if a.marked_season~=b.marked_season then return a.marked_season end
+        return a.order<b.order
     end)
     local best=ranked[1]
     if not best then return {} end
-    -- Movie platforms can list different release years for the same title.
-    -- Prefer the requested year only among identical titles; a matching year
-    -- must never promote a weaker title match over a stronger one.
-    if movie and year and best.show.year==year then
-        for i=#ranked,2,-1 do
-            if ranked[i].show.year~=year
-                and movie_title(ranked[i].show.series)==movie_title(best.show.series) then
-                table.remove(ranked,i)
-            end
-        end
-    end
-    -- Different works within eight percentage points need a manual selection.
+    -- A catalogue can list a season, an undivided compilation and a rerelease
+    -- under the same name. Only use year and season evidence within that title.
+    local title_key=movie and movie_title or identity
     for i=2,#ranked do
-        if not same_work(best.show,ranked[i].show) and best.score-ranked[i].score<.08 then
-            return {},'ambiguous'
+        local other=ranked[i]
+        if not same_work(best.show,other.show) and best.score-other.score<.08 then
+            local same_title=title_key(best.show.series)==title_key(other.show.series)
+            local resolved=same_title and best.show.part==other.show.part and
+                (year and best.show.year==year and other.show.year~=year or
+                 best.marked_season and not other.marked_season and best.show.year==other.show.year)
+            if not resolved then return {},'ambiguous' end
         end
     end
     local out,seen={},{}
@@ -2131,7 +2130,7 @@ local function finish_match(attempt,detail)
         end
     end
     status=detail
-    autoload_state=attempt.automatic and (failed and 'error' or 'not-found') or 'idle'
+    autoload_state=attempt.automatic and (failed and 'error' or attempt.ambiguous and 'ambiguous' or 'not-found') or 'idle'
     publish()
     if attempt.automatic and mp.msg and mp.msg.warn then
         mp.msg.warn('弹幕自动匹配结束：'..tostring(status):gsub('https?://%S+','[线路]'))

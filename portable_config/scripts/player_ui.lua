@@ -833,8 +833,8 @@ return function(c)
             elseif not d.loaded and d.autoload_state=='error' then
                 row('自动加载失败',nil,false,{status=true})
                 row('重试匹配',function()c.command('script-message','player_ui-danmaku-retry-match')end,false,{stay=true})
-            elseif not d.loaded and d.autoload_state=='not-found' then
-                row('没有匹配到弹幕',nil,false,{status=true})
+            elseif not d.loaded and (d.autoload_state=='not-found' or d.autoload_state=='ambiguous') then
+                row(d.autoload_state=='ambiguous' and '有多个相近作品，请手动选择弹幕' or '没有匹配到弹幕',nil,false,{status=true})
                 row('重试匹配',function()c.command('script-message','player_ui-danmaku-retry-match')end,false,{stay=true})
             elseif not d.loaded and d.autoload_state=='empty' then
                 row('该集没有弹幕',nil,false,{status=true})

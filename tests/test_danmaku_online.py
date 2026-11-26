@@ -410,6 +410,38 @@ assert(online.match_verified({{episodeId='5',animeTitle='尼古喵喵(2026)from 
 assert(not online.auto_episode({{{{id='5',number_value=5}},{{id='6',number_value=5}}}},title))
 """)
 
+    def test_matching_season_and_year_resolve_same_title_provider_editions(self):
+        online_path = lua_long(str(ONLINE).replace(chr(92), "/"))
+        lua_eval(f"""
+local online=dofile({online_path})
+local title='间谍过家家 (2022) S1E7 - 目标的次子'
+local data={{animes={{
+    {{animeId=3,animeTitle='间谍过家家 第一季(2024)',source='360'}},
+    {{animeId=4,animeTitle='间谍过家家(2022)',source='360'}},
+    {{animeId=5,animeTitle='间谍过家家 第1季[普通话版](2022)',source='360'}},
+    {{animeId=6,animeTitle='间谍过家家 第二季(2023)',source='tencent'}},
+    {{animeId=7,animeTitle='间谍过家家 代号：白(2023)',typeDescription='电影',source='tencent'}},
+    {{animeId=7788809,animeTitle='间谍过家家 第一季(2022)【日番】from tencent',source='tencent'}},
+    {{animeId=2,animeTitle='间谍过家家 第一季(2022)',source='youku'}},
+}}}}
+local shows=online.search_results('x',online.search_keyword(title),function()return data end)
+local candidates=online.auto_candidates(shows,title)
+assert(#candidates>=2 and candidates[1].id=='7788809' and candidates[2].id=='2',
+    'The explicitly matching first season and year must take priority over a compilation or a different year')
+for _,candidate in ipairs(candidates) do
+    assert(candidate.id~='3' and candidate.id~='6' and candidate.id~='7')
+end
+local detail={{bangumi={{episodes={{
+    {{episodeId=10173,episodeNumber=6,episodeTitle='【qq】 间谍过家家 第1季[日语版] 第6话 交友行动'}},
+    {{episodeId=10174,episodeNumber=7,episodeTitle='【qq】 间谍过家家 第1季[日语版] 第7话 目标的次子'}},
+}}}}}}
+local episodes=online.bangumi_episodes('x',function()return detail end,nil,candidates[1].key)
+assert(online.auto_episode(episodes,title,candidates[1]).id=='10174')
+local undated='间谍过家家 S1E7 - 目标的次子'
+local ambiguous,why=online.auto_candidates(shows,undated)
+assert(#ambiguous==0 and why=='ambiguous','Explicit first seasons with different years still need the release year')
+""")
+
     def test_detail_separates_preview_and_corrects_interleaved_episode_numbers(self):
         online_path = lua_long(str(ONLINE).replace(chr(92), "/"))
         lua_eval(f"""

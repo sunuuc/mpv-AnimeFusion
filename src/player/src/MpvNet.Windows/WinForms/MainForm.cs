@@ -26,7 +26,6 @@ namespace MpvNet.Windows.WinForms;
 public partial class MainForm : Form
 {
     public SnapManager SnapManager = new SnapManager();
-    public IntPtr MpvWindowHandle { get; set; }
     public bool WasShown { get; set; }
     public static MainForm? Instance { get; set; }
     WpfControls.ContextMenu ContextMenu { get; } = new WpfControls.ContextMenu();
@@ -1074,14 +1073,14 @@ public partial class MainForm : Form
                         }
                     }
 
-                    if (MpvWindowHandle == IntPtr.Zero)
-                        MpvWindowHandle = FindWindowEx(Handle, IntPtr.Zero, "mpv", null);
-
                     bool keyboardMessage = m.Msg is 0x0100 or 0x0101 or 0x0104 or 0x0105;
-                    bool playerIsForeground = GetForegroundWindow() == Handle;
-                    if (MpvWindowHandle != IntPtr.Zero && !ignore
-                        && (!keyboardMessage || playerIsForeground))
-                        m.Result = SendMessage(MpvWindowHandle, m.Msg, m.WParam, m.LParam);
+                    if (!ignore && (!keyboardMessage || GetForegroundWindow() == Handle))
+                    {
+                        // Reinitializing the video output replaces mpv's child window.
+                        IntPtr videoWindow = FindWindowEx(Handle, IntPtr.Zero, "mpv", null);
+                        if (videoWindow != IntPtr.Zero)
+                            m.Result = SendMessage(videoWindow, m.Msg, m.WParam, m.LParam);
+                    }
                 }
                 break;
             case 0x001A: // WM_SETTINGCHANGE

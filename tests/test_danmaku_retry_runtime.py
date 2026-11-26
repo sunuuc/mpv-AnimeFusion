@@ -44,7 +44,8 @@ def verify(install, script_root):
                 # Distinct platform episode IDs, not an arithmetic ID assumption in the app.
                 base = {101: 1100, 102: 1200, 201: 2100, 202: 2200,
                         301: 3100, 302: 3200, 401: 4100, 402: 4200}[show]
-                data = {'bangumi': {'animeTitle': 'Series Season 1', 'episodes': [
+                title = 'Other Season 1' if show in (301, 302) else 'Series Season 2' if show in (201, 202) else 'Series Season 1'
+                data = {'bangumi': {'animeId': show, 'animeTitle': title, 'episodes': [
                     {'episodeId': base + n, 'episodeNumber': str(n), 'episodeTitle': f'第{n}集'}
                     for n in range(1, phase['episode_limit'] + 1)]}}
             elif route.startswith('/api/v2/comment/'):
@@ -74,7 +75,7 @@ def verify(install, script_root):
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
-        with tempfile.TemporaryDirectory(prefix='danmaku-sources-', dir=ROOT / '_probe') as directory:
+        with tempfile.TemporaryDirectory(prefix='danmaku-sources-') as directory:
             path = Path(directory)
             config = path / 'portable_config'
             scripts = config / 'scripts'
@@ -93,11 +94,14 @@ def verify(install, script_root):
             env = dict(os.environ, LOCALAPPDATA=str(localdata))
             saved_path = data / 'mpv-AnimeFusion-danmaku-sources.json'
 
-            def run(name, expected, manual=False):
+            def run(name, expected, manual=False, following=None):
                 start = len(requests)
                 media = path / f'{name}.y4m'
                 media.write_bytes(b'YUV4MPEG2 W160 H90 F24:1 Ip A1:1 C420jpeg\n'
                     + (b'FRAME\n' + b'\x60' * 14400 + b'\x80' * 7200) * 24)
+                next_media = path / f'{following}.y4m' if following else None
+                if next_media:
+                    shutil.copyfile(media, next_media)
                 acceptance = path / 'acceptance.lua'
                 manual_lua = """
     if stage==0 and state.loaded then
@@ -110,13 +114,22 @@ def verify(install, script_root):
 """ if manual else ''
                 acceptance.write_text(f"""
 local complete,stage=false,0
+local next_file={json.dumps(next_media.as_posix()) if next_media else 'nil'}
+local changing_file=false
 mp.observe_property('user-data/player_ui/danmaku','native',function(_,state)
     if not state then return end
+    if changing_file then
+        if state.autoload_state~='loaded' then changing_file=false end
+        return
+    end
 {manual_lua}
     if state.autoload_state=='empty' and {expected}==0 then
         complete=true;print('PASS runtime count 0');mp.commandv('quit',0);return
     end
     if not state.loaded or state.autoload_state~='loaded' then return end
+    if next_file and state.count=={expected} then
+        changing_file=true;mp.commandv('loadfile',next_file,'replace');next_file=nil;return
+    end
     complete=true
     if state.count=={expected} then
         print('PASS runtime count '..state.count);mp.commandv('quit',0)
@@ -132,18 +145,19 @@ mp.add_timeout(45,function()if not complete then print('FAIL loading did not fin
                 assert 'Lua error' not in output and 'stack traceback' not in output, output
                 return requests[start:]
 
-            calls = run('Series S1E1', 25)
+            calls = run('Series S1E1', 25, following='Series S1E2')
             assert sum('/search/' in p for p in calls) == 4, calls
             assert sum('/bangumi/' in p for p in calls) == 1, calls
-            assert sum('/comment/' in p for p in calls) == 1 and '/comment/1101?' in calls[-1], calls
+            assert calls[-2:] == ['/api/v2/comment/1101?withRelated=true', '/api/v2/comment/1102?withRelated=true'], calls
+            assert len(calls) == 7, calls
             saved = json.loads(saved_path.read_text(encoding='utf-8'))
             assert saved['series/s1/p0']['id'] == '101', saved
-            print('PASS: initial search retries three times; 25 comments accepted without switching', flush=True)
+            print('PASS: initial search retries three times; next episode in the same session only requests its comments', flush=True)
             phase['initial_retry'] = False
 
             calls = run('Series S1E2', 25)
-            assert calls == ['/api/v2/comment/1102?withRelated=true'], calls
-            print('PASS: next episode after restart uses one comment request, no search or episode-list request', flush=True)
+            assert calls == ['/api/v2/bangumi/101', '/api/v2/comment/1102?withRelated=true'], calls
+            print('PASS: next episode after restart verifies the remembered show and loads the episode without searching', flush=True)
 
             phase['failures'][1103] = 'error'
             calls = run('Series S1E3', 80)
@@ -151,7 +165,7 @@ mp.add_timeout(45,function()if not complete then print('FAIL loading did not fin
             assert sum('/search/' in p for p in calls) == 1 and '/comment/1203?' in calls[-1], calls
             assert json.loads(saved_path.read_text(encoding='utf-8'))['series/s1/p0']['id'] == '102'
             calls = run('Series S1E4', 80)
-            assert calls == ['/api/v2/comment/1204?withRelated=true'], calls
+            assert calls == ['/api/v2/bangumi/102', '/api/v2/comment/1204?withRelated=true'], calls
             print('PASS: remembered-source failure retries, searches and replaces platform; next episode uses replacement', flush=True)
 
             phase['episode_limit'] = 7
@@ -161,7 +175,7 @@ mp.add_timeout(45,function()if not complete then print('FAIL loading did not fin
 
             source_file.write_text(f'api_servers={base_url}/backup|Backup,{base_url}|Loopback\n', encoding='utf-8')
             calls = run('Series S1E4', 80)
-            assert calls == ['/api/v2/comment/1204?withRelated=true'], calls
+            assert calls == ['/api/v2/bangumi/102', '/api/v2/comment/1204?withRelated=true'], calls
             print('PASS: route reordering preserves the exact saved API URL', flush=True)
 
             phase['failures'][1206] = 'error'
@@ -171,7 +185,7 @@ mp.add_timeout(45,function()if not complete then print('FAIL loading did not fin
             assert sum('/comment/1206?' in p for p in calls) == 4, calls
             assert json.loads(saved_path.read_text(encoding='utf-8'))['series/s1/p0']['server_url'] == base_url + '/backup'
             calls = run('Series S1E7', 9)
-            assert calls == ['/backup/api/v2/comment/4107?withRelated=true'], calls
+            assert calls == ['/backup/api/v2/bangumi/401', '/backup/api/v2/comment/4107?withRelated=true'], calls
             print('PASS: failed source searches other API and persists its URL; nine comments are sufficient', flush=True)
 
             # Separate season and title keys must initiate their own search.
@@ -191,16 +205,16 @@ mp.add_timeout(45,function()if not complete then print('FAIL loading did not fin
             assert '/api/v2/comment/1202?withRelated=true' in calls, calls
             assert json.loads(saved_path.read_text(encoding='utf-8'))['series/s1/p0']['id'] == '102'
             calls = run('Series S1E4', 80)
-            assert calls == ['/api/v2/comment/1204?withRelated=true'], calls
+            assert calls == ['/api/v2/bangumi/102', '/api/v2/comment/1204?withRelated=true'], calls
             print('PASS: manual platform selection becomes the standard for following episodes', flush=True)
 
             phase['failures'][1204] = 'empty'
             calls = run('Series S1E4', 0)
-            assert calls == ['/api/v2/comment/1204?withRelated=true'], calls
+            assert calls == ['/api/v2/bangumi/102', '/api/v2/comment/1204?withRelated=true'], calls
             assert json.loads(saved_path.read_text(encoding='utf-8'))['series/s1/p0']['id'] == '102'
             del phase['failures'][1204]
             calls = run('Series S1E4', 80)
-            assert calls == ['/api/v2/comment/1204?withRelated=true'], calls
+            assert calls == ['/api/v2/bangumi/102', '/api/v2/comment/1204?withRelated=true'], calls
             print('PASS: successful empty response preserves original API/platform and does not search', flush=True)
 
     finally:
@@ -211,7 +225,7 @@ mp.add_timeout(45,function()if not complete then print('FAIL loading did not fin
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--install', type=Path, default=Path('D:/Apps/mpv-AnimeJaNai'))
+    parser.add_argument('--install', type=Path, default=Path('D:/Apps/mpv-AnimeFusion'))
     parser.add_argument('--script-root', type=Path, default=ROOT)
     args = parser.parse_args()
     verify(args.install, args.script_root)
