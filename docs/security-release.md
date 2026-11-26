@@ -73,3 +73,13 @@ python tools/standalone/security_verify.py scan stage complete-evidence/security
 ## 1.3.8 发布决定
 
 项目所有者继续要求将登录回调地址迁移发布到 GitHub。沿用此前已接受排查和独立扫描结果的同一转换器，路径、源码和字节均与 1.3.7 一致；本次策略单独绑定 `standalone-v1.3.8` 与 `46a2…19b6` 哈希。360 官方复核仍未取得，最终产物重新完整扫描和校验。
+
+## 1.3.9 发布决定
+
+本次授权限于以下版本和文件。只有本版最终产物通过独立扫描，且安装包和便携包内的转换器均与此 SHA-256 一致，才满足项目所有者的发布条件。
+
+- 版本标签 `standalone-v1.3.9`
+- 文件 `animejanai/danmaku/DanmakuFactory.exe`
+- SHA-256 `46a2ae0cf5897d816f9022b97dcb2f94fb53677aeedfdcc9e2b0c4e0db0a19b6`
+
+360 对该文件的检出仍待官方复核。核对 SHA-256 只能确认文件与记录一致，是否属于误报仍需等候 360 的结论。
