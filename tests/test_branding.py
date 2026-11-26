@@ -54,11 +54,20 @@ class BrandingTests(unittest.TestCase):
         for project, executable in zip(projects, ENTRY_POINTS):
             xml = ET.parse(ROOT / project)
             self.assertEqual(xml.findtext('.//AssemblyName'), Path(executable).stem)
-        for filename in ('portable_config/input.conf', 'portable_config/input-animejanai.conf',
-                         'portable_config/scripts/player_ui.lua'):
-            text = (ROOT / filename).read_text(encoding='utf-8')
-            self.assertIn(ENTRY_POINTS[1], text)
-            self.assertNotIn('AnimeJaNaiManager.exe', text)
+        for filename in ('input.conf', 'input-animejanai.conf'):
+            with self.subTest(filename=filename):
+                text = (ROOT / 'portable_config' / filename).read_text(encoding='utf-8')
+                commands = [line.partition('#')[0].split() for line in text.splitlines()]
+                self.assertEqual([row for row in commands if row[:1] == ['Ctrl+e']],
+                                 [['Ctrl+e', 'nonrepeatable', 'script-message', 'animefusion-manager']])
+                self.assertNotIn('AnimeJaNaiManager.exe', text)
+        launcher = (ROOT / 'portable_config/scripts/player_ui.lua').read_text(encoding='utf-8')
+        self.assertNotIn('AnimeJaNaiManager.exe', launcher)
+        self.assertIn('mp.register_script_message("animefusion-manager", open_manager)', launcher)
+        handler = re.search(r'(?ms)^local function open_manager\(\)\s*(.*?)^end\b', launcher)
+        self.assertIsNotNone(handler)
+        self.assertIn(f'cmd("run", mp.command_native({{"expand-path", "~~/../{ENTRY_POINTS[1]}"}}))',
+                      handler.group(1))
         self.assertIn(ENTRY_POINTS[2], ((ROOT / projects[1]).parent /
             'ViewModels/ComponentManagerViewModel.cs').read_text(encoding='utf-8'))
 
