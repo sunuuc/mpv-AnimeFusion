@@ -332,7 +332,7 @@ def release_notes():
 RUNTIME_CASES=('24fps','48fps','half-speed','slow-no-drop','slow-default','audio-thread','lua','frontend',
                *('close-'+str(i) for i in range(6)))
 SCRIPT_CASES=('control-tests','script-smoke')
-NETWORK_RESUME_CASES=('complete','resume','ignore-200','ignore-206','nonseekable','denied',
+NETWORK_RESUME_CASES=('policy-scope','complete','resume','ignore-200','ignore-206','nonseekable','denied',
                       'cache-stall','decoder-resume','decoder-ignore-200','decoder-ignore-206')
 DANMAKU_CASES=('test_danmaku_canvas','test_mpv_danmaku_viewport','test_danmaku_native','test_danmaku_flow')
 COMPLETE_CASES=('offline-included-components','no-release-update-logic','all-production-scripts-on-local-video',
