@@ -109,14 +109,18 @@ Check("current-maximize-minimize-restore", () => {
     form.NotifyMin(false); form.Pump();
     Expect(form.WindowState == FormWindowState.Normal, "unminimize ignored", form);
 });
-Check("resize-publishes-current-native-state-before-return", () => {
+Check("resize-publishes-native-state-without-blocking-ui", () => {
     var form = new TestForm();
     form.WindowState = FormWindowState.Maximized;
-    Expect(form.Player.NativeMaximized, "maximize write is still pending", form);
+    Expect(form.Player.PendingWrites > 0, "maximize should be asynchronous", form);
+    form.Player.DrainWrites();
+    Expect(form.Player.NativeMaximized, "maximize not applied", form);
     form.WindowState = FormWindowState.Normal;
+    form.Player.DrainWrites();
     Expect(!form.Player.NativeMaximized && !form.Player.NativeMinimized,
            "normal write is still pending", form);
     form.WindowState = FormWindowState.Minimized;
+    form.Player.DrainWrites();
     Expect(form.Player.NativeMinimized, "minimize write is still pending", form);
     Expect(form.Player.PendingWrites == 0, "resize accumulated native write backlog", form);
 });
@@ -196,10 +200,7 @@ class FakePlayer {
         else if (name == "window-minimized") NativeMinimized = value;
         else throw new Exception("unexpected native write: " + name);
     }
-    public void CommandVAsync(params string[] args) {
-        if (args.Length != 3 || args[0] != "set") throw new Exception("unexpected command");
-        writes.Enqueue(() => SetPropertyBool(args[1], args[2] == "yes"));
-    }
+    public void SetPropertyBoolAsync(string name, bool value) => writes.Enqueue(() => SetPropertyBool(name, value));
     public void DrainWrites() { while (writes.TryDequeue(out var write)) write(); }
 }
 class TestForm : Form {

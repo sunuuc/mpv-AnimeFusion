@@ -78,6 +78,56 @@ async Task WaitFor(Func<bool> ready,string message)
  while(!ready()&&DateTime.UtcNow<until)await Task.Delay(15);
  Check(ready(),message);
 }
+async Task MixedFileChecks()
+{
+ string directory=Path.Combine(temp,"mixed");Directory.CreateDirectory(directory);
+ string movie=Path.Combine(directory,"Mixed Movie (2020)"+Path.GetExtension(video));File.Copy(video,movie);
+ string first=Path.Combine(directory,"Manual,1.srt"),second=Path.Combine(directory,"Manual;2.srt");
+ File.Copy(supplied,first);File.Copy(supplied,second);
+ await Open("Previous Movie (2019)");
+ long previous=player.PlayingEntryId();
+ loaded=new(TaskCreationOptions.RunContinuationsAsynchronously);
+ player.LoadFiles([first,movie,second],false,false);
+ await loaded.Task.WaitAsync(TimeSpan.FromSeconds(10));
+ Check(player.GetPropertyString("path")==movie&&player.GetPropertyInt("playlist-count")==1,"The first media replaces the previous item regardless of subtitle position");
+ await WaitFor(()=>SubtitleCount()==2&&Path.GetFileName(Selected())==Path.GetFileName(second)
+  &&Selected().StartsWith(library.Root,StringComparison.OrdinalIgnoreCase),"Mixed-drop subtitles are imported into the new movie; the last selection is shown");
+ int trackCount=player.GetPropertyInt("track-list/count");
+ player.AddExternalTracks(previous,"sub-add",[supplied]);
+ player.AddExternalTracks(previous,"audio-add",[video]);
+ Check(!HasTrack(supplied)&&player.GetPropertyInt("track-list/count")==trackCount,
+  "Track pickers from the previous media cannot attach files to the new item");
+ player.SetPropertyBool("pause",true);
+ long beforeReopen=player.PlayingEntryId();
+ await Drop(movie);
+ Check(player.PlayingEntryId()!=beforeReopen,"Reopening the same path creates a new playback entry");
+ trackCount=player.GetPropertyInt("track-list/count");
+ player.AddExternalTracks(beforeReopen,"sub-add",[supplied]);
+ player.AddExternalTracks(beforeReopen,"audio-add",[video]);
+ Check(player.GetPropertyBool("pause")&&player.GetPropertyInt("track-list/count")==trackCount,
+  "Paused subtitle and audio pickers reject a different entry even when its path is identical");
+ long current=player.PlayingEntryId();
+ player.LoadFiles([first,video],false,true);
+ Check(player.PlayingEntryId()==current&&player.GetPropertyInt("playlist-count")==2,"Queueing a mixed batch leaves the playing entry untouched");
+ loaded=new(TaskCreationOptions.RunContinuationsAsynchronously);
+ player.CommandV("playlist-play-index","1");
+ await loaded.Task.WaitAsync(TimeSpan.FromSeconds(10));
+ Check(player.GetPropertyString("path")==video&&SubtitleCount()>0,"A queued attachment follows the queued media");
+ string one=Path.Combine(directory,"Batch Show S01E01"+Path.GetExtension(video)),two=Path.Combine(directory,"Batch Show S01E02"+Path.GetExtension(video));
+ File.Copy(video,one);File.Copy(video,two);
+ string subOne=Path.ChangeExtension(one,"zh.srt"),subTwo=Path.ChangeExtension(two,"en.srt");
+ File.Copy(supplied,subOne);File.Copy(supplied,subTwo);
+ loaded=new(TaskCreationOptions.RunContinuationsAsynchronously);
+ player.LoadFiles([subTwo,one,two,subOne],false,false);
+ await loaded.Task.WaitAsync(TimeSpan.FromSeconds(10));
+ Check(player.GetPropertyString("path")==one&&SubtitleCount()==1&&Path.GetFileName(Selected())==Path.GetFileName(subOne),
+  "A mixed batch matches the first video's subtitle regardless of the input order");
+ loaded=new(TaskCreationOptions.RunContinuationsAsynchronously);
+ player.CommandV("playlist-play-index","1");
+ await loaded.Task.WaitAsync(TimeSpan.FromSeconds(10));
+ Check(player.GetPropertyString("path")==two&&SubtitleCount()==1&&Path.GetFileName(Selected())==Path.GetFileName(subTwo),
+  "The second video receives its own language-suffixed subtitle");
+}
 async Task DownloadedSubtitleChecks()
 {
  string manifest=Environment.GetEnvironmentVariable("ANIMEFUSION_TEST_SUBTITLE_MANIFEST");
@@ -308,6 +358,12 @@ async Task SetRemovalChecks()
 }
 try
 {
+ if(args.Contains("--mixed-files-only"))
+ {
+  await MixedFileChecks();
+  Console.WriteLine($"Mixed file and track picker checks passed: {checks}");
+  return;
+ }
  if(args.Contains("--manual-selection-only"))
  {
   await ManualSelectionChecks();
@@ -1110,6 +1166,7 @@ try
  Check(SubtitleCount()==1&&Selected()==savedBatch&&!HasTrack(wrongEpisode),
   "Reopening after a partial batch failure restores only the successfully imported subtitle");
  await DownloadedSubtitleChecks();
+ await MixedFileChecks();
  await ManualSelectionChecks();
  await SetRemovalChecks();
  Console.WriteLine($"Native subtitle playback checks passed: {checks}; local generated video only; no desktop window or service calls.");

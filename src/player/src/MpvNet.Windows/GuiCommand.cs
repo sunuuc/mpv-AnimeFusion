@@ -74,6 +74,10 @@ public class GuiCommand
         ["show-keys"] = args => ShowKeys(),
         ["show-media-info"] = ShowMediaInfo,
         ["show-menu"] = args => ShowMenu?.Invoke(),
+        ["select-profile"] = args => MainForm.Instance?.ShowProfileMenu(),
+        ["show-recent"] = args => MainForm.Instance?.ShowRecentMenu(),
+        ["show-chapters"] = args => Player.Command("script-binding select/select-chapter"),
+        ["show-history"] = args => Player.Command("script-binding select/select-watch-history"),
         ["show-profiles"] = args => Msg.ShowInfo(Player.GetProfiles()),
         ["show-properties"] = args => Player.Command("script-binding select/show-properties"),
         ["show-protocols"] = args => ShowProtocols(),
@@ -81,9 +85,6 @@ public class GuiCommand
 
 
         // deprecated
-        ["show-recent"] = args => ShowRemoved(), // deprecated
-        ["quick-bookmark"] = args => QuickBookmark(), // deprecated
-        ["show-history"] = args => ShowHistory(), // deprecated
         ["show-playlist"] = args => Player.Command("script-binding select/select-playlist"), // deprecated
         ["show-command-palette"] = args => Player.Command("script-binding select/select-binding"), // deprecated
         ["show-audio-tracks"] = args => Player.Command("script-binding select/select-aid"), // deprecated
@@ -322,6 +323,7 @@ public class GuiCommand
 
     void LoadSubtitle(IList<string> args)
     {
+        long entry = Player.PlayingEntryId();
         string directory = MpvNet.Windows.Subtitles.SubtitlePlayback.Current.Library.Root;
         Directory.CreateDirectory(directory);
         using var dialog = new OpenFileDialog
@@ -331,8 +333,7 @@ public class GuiCommand
         };
 
         if (dialog.ShowDialog() == DialogResult.OK)
-            foreach (string filename in dialog.FileNames)
-                Player.CommandV("sub-add", filename);
+            Player.AddExternalTracks(entry, "sub-add", dialog.FileNames);
     }
 
     void PinSubtitle(IList<string> args)
@@ -503,6 +504,7 @@ public class GuiCommand
 
     void LoadAudio(IList<string> args)
     {
+        long entry = Player.PlayingEntryId();
         using var dialog = new OpenFileDialog();
         string path = Player.GetPropertyString("path");
 
@@ -514,10 +516,7 @@ public class GuiCommand
         if (dialog.ShowDialog() != DialogResult.OK)
             return;
 
-        foreach (string i in dialog.FileNames)
-        {
-            Player.CommandV("audio-add", i);
-        }
+        Player.AddExternalTracks(entry, "audio-add", dialog.FileNames);
     }
 
     void RegisterFileAssociations(IList<string> args)
@@ -582,8 +581,6 @@ public class GuiCommand
         bool editor = args.Contains("editor");
         bool osd = args.Contains("osd") || args == null || args.Count == 0;
 
-        long fileSize = 0;
-
         string text = "";
         string path = Player.GetPropertyString("path");
 
@@ -597,11 +594,12 @@ public class GuiCommand
             }
             else if (FileTypes.IsImage(path.Ext()))
             {
-                fileSize = new FileInfo(path).Length;
+                long bytes = new FileInfo(path).Length;
+                string size = bytes < 1024 ? $"{bytes} B" : $"{Math.Round(bytes / 1024m)} KB";
 
                 text = "Width: " + Player.GetPropertyInt("width") + "\n" +
                        "Height: " + Player.GetPropertyInt("height") + "\n" +
-                       "Size: " + Convert.ToInt32(fileSize / 1024.0) + " KB\n" +
+                       "Size: " + size + "\n" +
                        "Type: " + path.Ext().ToUpper();
 
                 Player.CommandV("show-text", text, "5000");
@@ -611,8 +609,7 @@ public class GuiCommand
 
         if (path.Contains("://"))
         {
-            if (path.Contains("://"))
-                path = Player.GetPropertyString("media-title");
+            path = Player.GetPropertyString("media-title");
             string videoFormat = Player.GetPropertyString("video-format").ToUpper();
             string audioCodec = Player.GetPropertyString("audio-codec-name").ToUpper();
             int width = Player.GetPropertyInt("video-params/w");
@@ -620,8 +617,6 @@ public class GuiCommand
             TimeSpan len = TimeSpan.FromSeconds(Player.GetPropertyDouble("duration"));
             text = path.FileName() + "\n";
             text += FormatTime(len.TotalMinutes) + ":" + FormatTime(len.Seconds) + "\n";
-            if (fileSize > 0)
-                text += Convert.ToInt32(fileSize / 1024.0 / 1024.0) + " MB\n";
             text += $"{width} x {height}\n";
             text += $"{videoFormat}\n{audioCodec}";
             Player.CommandV("show-text", text, "5000");
@@ -699,16 +694,4 @@ public class GuiCommand
         Msg.ShowInfo(_("mpv-AnimeFusion was successfully removed from the Path environment variable."));
     }
 
-    // deprecated
-    void QuickBookmark() =>
-        Msg.ShowInfo(_("This feature was removed, but there are user scripts:") + BR2 +
-            "https://github.com/stax76/mpv-scripts/blob/main/misc.lua");
-
-    // deprecated
-    void ShowHistory() =>
-        Msg.ShowInfo(_("This feature was removed, but there are user scripts:") + BR2 +
-            "https://github.com/stax76/mpv-scripts/blob/main/history.lua");
-
-    // deprecated
-    void ShowRemoved() => Msg.ShowInfo(_("This feature was removed."));
 }

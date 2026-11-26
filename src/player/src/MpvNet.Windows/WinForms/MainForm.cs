@@ -30,7 +30,7 @@ public partial class MainForm : Form
     public bool WasShown { get; set; }
     public static MainForm? Instance { get; set; }
     WpfControls.ContextMenu ContextMenu { get; } = new WpfControls.ContextMenu();
-    AutoResetEvent MenuAutoResetEvent { get; } = new AutoResetEvent(false);
+    readonly Dictionary<string, WpfControls.MenuItem> _menuPlaceholders = new();
     Point _lastCursorPosition;
     Taskbar? _taskbar;
     Point _mouseDownLocation;
@@ -39,7 +39,7 @@ public partial class MainForm : Form
     int _lastCursorChanged;
     int _taskbarButtonCreatedMessage;
     int _cursorAutohide = 1000;
-    double _playbackPosition;
+    bool _progressUpdatePending;
     string _geometry = "";
 
     bool _contextMenuIsReady;
@@ -48,6 +48,8 @@ public partial class MainForm : Form
     bool _isCursorVisible = true;
     bool _shutdownStarted;
     bool _shutdownCompleted;
+    bool _shutdownDelayed;
+    TaskDialogPage? _shutdownPrompt;
     bool _inputMediaKeys = true;
     bool _windowDragging = true;
 
@@ -65,6 +67,8 @@ public partial class MainForm : Form
             Player.Pause += Player_Pause;
             Player.PlaylistPosChanged += Player_PlaylistPosChanged;
             Player.Shutdown += Player_Shutdown;
+            Player.Seek += () => BeginInvoke(UpdateProgressBar);
+            Player.DoublePropertyReply += Player_DoublePropertyReply;
             Player.VideoSizeChanged += Player_VideoSizeChanged;
             Player.ClientMessage += Player_ClientMessage;
 
@@ -82,9 +86,8 @@ public partial class MainForm : Form
         MyAnimeList.MalPlayback.Initialize();
         Subtitles.SubtitlePlayback.Initialize();
 
-            Player.ObserveProperty("window-maximized", PropChangeWindowMaximized);
-            Player.ObserveProperty("window-minimized", PropChangeWindowMinimized);
-            Player.ObservePropertyDouble("time-pos", value => Volatile.Write(ref _playbackPosition, value));
+            Player.ObservePropertyBool("window-maximized", PropChangeWindowMaximized);
+            Player.ObservePropertyBool("window-minimized", PropChangeWindowMinimized);
             Player.ObservePropertyString("geometry", value => Volatile.Write(ref _geometry, value));
             Player.ObserveProperty("cursor-autohide", PropChangeCursorAutohide);
 
@@ -208,7 +211,11 @@ public partial class MainForm : Form
         });
     }
 
-    void Player_Shutdown() => BeginInvoke(Close);
+    void Player_Shutdown() => BeginInvoke(() =>
+    {
+        if (!_shutdownStarted)
+            Close();
+    });
 
     void Player_VideoSizeChanged(Size value) => BeginInvoke(() =>
     {
@@ -325,7 +332,7 @@ public partial class MainForm : Form
 
         lock (Player.MediaTracksLock)
         {
-            var trackMenuItem = FindMenuItem(_("Track"), "Track");
+            var trackMenuItem = _menuPlaceholders.GetValueOrDefault("Track");
 
             if (trackMenuItem != null)
             {
@@ -387,7 +394,7 @@ public partial class MainForm : Form
             }
         }
 
-        var chaptersMenuItem = FindMenuItem(_("Chapter"), "Chapters");
+        var chaptersMenuItem = _menuPlaceholders.GetValueOrDefault("Chapter");
 
         if (chaptersMenuItem != null)
         {
@@ -395,41 +402,24 @@ public partial class MainForm : Form
 
             foreach (Chapter chapter in Player.GetChapters())
             {
-                var menuItem = new WpfControls.MenuItem
-                {
-                    Header = chapter.Title,
-                    InputGestureText = chapter.TimeDisplay
-                };
-                
+                var menuItem = MenuHelp.AddLabel(chaptersMenuItem.Items, chapter.Title);
+                menuItem.InputGestureText = chapter.TimeDisplay;
+
                 menuItem.Click += (sender, args) =>
                     Player.CommandV("seek", chapter.Time.ToString(CultureInfo.InvariantCulture), "absolute");
-
-                chaptersMenuItem.Items.Add(menuItem);
             }
         }
 
-        var recentMenuItem = FindMenuItem(_("Recent Files"), "Recent");
+        var recentMenuItem = _menuPlaceholders.GetValueOrDefault("Recent Files");
 
         if (recentMenuItem != null)
         {
             recentMenuItem.Items.Clear();
 
-            foreach (string path in App.Settings.RecentFiles)
-            {
-                var file = AppClass.GetTitleAndPath(path);
-                var menuItem = MenuHelp.Add(recentMenuItem.Items, file.Title.ShortPath(100));
-
-                if (menuItem != null)
-                    menuItem.Click += (sender, args) => Player.LoadFiles(new[] { file.Path }, true, false);
-            }
-
-            recentMenuItem.Items.Add(new WpfControls.Separator());
-            var clearMenuItem = new WpfControls.MenuItem() { Header = _("Clear List") };
-            clearMenuItem.Click += (sender, args) => App.Settings.RecentFiles.Clear();
-            recentMenuItem.Items.Add(clearMenuItem);
+            AddRecentFiles(recentMenuItem.Items);
         }
 
-        var titlesMenuItem = FindMenuItem(_("Title"), "Titles");
+        var titlesMenuItem = _menuPlaceholders.GetValueOrDefault("Title");
 
         if (titlesMenuItem != null)
         {
@@ -462,34 +452,12 @@ public partial class MainForm : Form
             }
         }
 
-        var profilesMenuItem = FindMenuItem(_("Profile"), "Profile");
+        var profilesMenuItem = _menuPlaceholders.GetValueOrDefault("Profile");
 
         if (profilesMenuItem != null && !profilesMenuItem.HasItems)
-        {
-            foreach (string profile in Player.ProfileNames)
-            {
-                if (!profile.StartsWith("extension."))
-                {
-                    var menuItem = MenuHelp.Add(profilesMenuItem.Items, profile);
+            AddProfiles(profilesMenuItem.Items);
 
-                    if (menuItem != null)
-                    {
-                        menuItem.Click += (sender, args) =>
-                        {
-                            Player.CommandV("show-text", profile);
-                            Player.CommandV("apply-profile", profile);
-                        };
-                    }
-                }
-            }
-
-            profilesMenuItem.Items.Add(new WpfControls.Separator());
-            var showProfilesMenuItem = new WpfControls.MenuItem() { Header = _("Show Profiles") };
-            showProfilesMenuItem.Click += (sender, args) => Player.Command("script-message-to mpvnet show-profiles");
-            profilesMenuItem.Items.Add(showProfilesMenuItem);
-        }
-
-        var audioDevicesMenuItem = FindMenuItem(_("Audio Device"), "Audio Device");
+        var audioDevicesMenuItem = _menuPlaceholders.GetValueOrDefault("Audio Device");
 
         if (audioDevicesMenuItem != null)
         {
@@ -497,23 +465,18 @@ public partial class MainForm : Form
 
             foreach (var pair in Player.AudioDevices)
             {
-                var menuItem = MenuHelp.Add(audioDevicesMenuItem.Items, pair.Value);
-
-                if (menuItem != null)
+                var menuItem = MenuHelp.AddLabel(audioDevicesMenuItem.Items, pair.Value);
+                menuItem.IsChecked = pair.Name == Player.GetPropertyString("audio-device");
+                menuItem.Click += (sender, args) =>
                 {
-                    menuItem.IsChecked = pair.Name == Player.GetPropertyString("audio-device");
-
-                    menuItem.Click += (sender, args) =>
-                    {
-                        Player.SetPropertyString("audio-device", pair.Name);
-                        Player.CommandV("show-text", pair.Value);
-                        App.Settings.AudioDevice = pair.Name;
-                    };
-                }
+                    Player.SetPropertyString("audio-device", pair.Name);
+                    Player.CommandV("show-text", pair.Value);
+                    App.Settings.AudioDevice = pair.Name;
+                };
             }
         }
 
-        var customMenuItem = FindMenuItem(_("Custom"), "Custom");
+        var customMenuItem = _menuPlaceholders.GetValueOrDefault("Custom");
 
         if (customMenuItem != null && !customMenuItem.HasItems)
         {
@@ -540,35 +503,66 @@ public partial class MainForm : Form
         }
     }
 
-    public WpfControls.MenuItem? FindMenuItem(string text, string text2 = "") {
-        var ret = FindMenuItem(text, ContextMenu.Items);
-
-        if (ret == null && text2 != "")
-            return FindMenuItem(text2, ContextMenu.Items);
-
-        return ret;
+    public WpfControls.MenuItem? FindMenuItem(string text, string text2 = "")
+    {
+        var item = FindMenuItem(text, ContextMenu.Items);
+        return item ?? (text2 == "" ? null : FindMenuItem(text2, ContextMenu.Items));
     }
 
-    WpfControls.MenuItem? FindMenuItem(string text, WpfControls.ItemCollection? items)
+    static WpfControls.MenuItem? FindMenuItem(string text, WpfControls.ItemCollection items)
     {
-        foreach (object item in items!)
+        foreach (var item in items.OfType<WpfControls.MenuItem>())
         {
-            if (item is WpfControls.MenuItem mi)
-            {
-                if (mi.Header.ToString().StartsWithEx(text) && mi.Header.ToString().TrimEx() == text)
-                    return mi;
+            if (item.Header?.ToString()?.Trim() == text)
+                return item;
+            if (item.HasItems && FindMenuItem(text, item.Items) is { } child)
+                return child;
+        }
+        return null;
+    }
 
-                if (mi.Items.Count > 0)
-                {
-                    WpfControls.MenuItem? val = FindMenuItem(text, mi.Items);
-
-                    if (val != null)
-                        return val;
-                }
-            }
+    void AddRecentFiles(WpfControls.ItemCollection items)
+    {
+        foreach (string entry in App.Settings.GetRecentFiles())
+        {
+            var file = AppClass.GetTitleAndPath(entry);
+            var item = MenuHelp.AddLabel(items, file.Title.ShortPath(100));
+            item.Click += (sender, args) => Player.LoadFiles([file.Path], true, false);
         }
 
-        return null;
+        bool any = items.Count > 0;
+        if (any) items.Add(new WpfControls.Separator());
+        var clear = new WpfControls.MenuItem { Header = _("Clear List"), IsEnabled = any };
+        clear.Click += (sender, args) => App.Settings.ClearRecentFiles();
+        items.Add(clear);
+    }
+
+    void AddProfiles(WpfControls.ItemCollection items)
+    {
+        foreach (string profile in Player.ProfileNames.Where(name => !name.StartsWith("extension.")))
+        {
+            var item = MenuHelp.AddLabel(items, profile);
+            item.Click += (sender, args) =>
+            {
+                Player.CommandV("show-text", profile);
+                Player.CommandV("apply-profile", profile);
+            };
+        }
+
+        if (items.Count > 0) items.Add(new WpfControls.Separator());
+        var show = new WpfControls.MenuItem { Header = _("Show Profiles") };
+        show.Click += (sender, args) => Player.Command("script-message-to mpvnet show-profiles");
+        items.Add(show);
+    }
+
+    public void ShowRecentMenu() => OpenMenu(AddRecentFiles);
+    public void ShowProfileMenu() => OpenMenu(AddProfiles);
+
+    void OpenMenu(Action<WpfControls.ItemCollection> populate)
+    {
+        var menu = new WpfControls.ContextMenu { UseLayoutRounding = true };
+        populate(menu.Items);
+        menu.IsOpen = true;
     }
 
     void SetFormPosAndSize(bool force = false, bool checkAutofit = true, bool load = false)
@@ -885,7 +879,6 @@ public partial class MainForm : Form
 
     public void InitAndBuildContextMenu()
     {
-        ContextMenu.Closed += ContextMenu_Closed;
         ContextMenu.UseLayoutRounding = true;
 
         var (menuBindings, confBindings) = App.InputConf.GetBindings();
@@ -903,19 +896,16 @@ public partial class MainForm : Form
 
             if (menuItem != null)
             {
+                if (tempBinding.Command == "")
+                {
+                    if (MenuHelp.GetPlaceholderName((string)menuItem.Header) is string name)
+                        _menuPlaceholders.TryAdd(name, menuItem);
+                    continue;
+                }
                 menuItem.Click += (sender, args) => {
-                    try {
-                        TaskHelp.Run(() => {
-                            MenuAutoResetEvent.WaitOne();
-                            System.Windows.Application.Current.Dispatcher.Invoke(
-                                DispatcherPriority.Background, new Action(delegate { }));
-                            if (!string.IsNullOrEmpty(tempBinding.Command))
-                                Player.Command(tempBinding.Command);                
-                        });
-                    }
-                    catch (Exception ex) {
-                        Msg.ShowException(ex);
-                    }
+                    menuItem.Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() => {
+                        if (!_shutdownStarted) Player.Command(tempBinding.Command);
+                    }));
                 };
 
                 menuItem.InputGestureText = InputHelp.GetBindingsForCommand(activeBindings, tempBinding.Command);
@@ -955,15 +945,7 @@ public partial class MainForm : Form
         }
 
         if (!string.IsNullOrEmpty(path) && path != "-" && path != @"bd://" && path != @"dvd://")
-        {
-            if (App.Settings.RecentFiles.Contains(path))
-                App.Settings.RecentFiles.Remove(path);
-
-            App.Settings.RecentFiles.Insert(0, path);
-
-            while (App.Settings.RecentFiles.Count > App.RecentCount)
-                App.Settings.RecentFiles.RemoveAt(App.RecentCount);
-        }
+            App.Settings.AddRecentFile(path, App.RecentCount);
     }
 
     void SetTitle()
@@ -1141,15 +1123,11 @@ public partial class MainForm : Form
                         pos.Y.ToString(CultureInfo.InvariantCulture), "0", "double");
                 }
                 break;
-            case 0x2E0: // WM_DPICHANGED
-                {
-                    if (!WasShown)
-                        break;
-
-                    RECT rect = Marshal.PtrToStructure<RECT>(m.LParam);
-                    SetWindowPos(Handle, IntPtr.Zero, rect.Left, rect.Top, rect.Width, rect.Height, 0);
-                }
-                break;
+            case 0x007E: // WM_DISPLAYCHANGE
+                base.WndProc(ref m);
+                if (WasShown && !_shutdownStarted && Player.Fullscreen)
+                    FitFullscreenToScreen(Screen.FromHandle(Handle));
+                return;
             case 0x0112: // WM_SYSCOMMAND
                 {
                     // with title-bar=no when the window is restored from minimizing the height is too high  
@@ -1256,6 +1234,13 @@ public partial class MainForm : Form
                     string[] args = copyData.lpData.Split('\n');
                     string mode = args[0];
                     args = args.Skip(1).ToArray();
+                    if (mode is not ("single" or "queue" or "command") || (mode == "command" && args.Length == 0))
+                        return;
+
+                    // The payload is now owned by this process. Let the launcher
+                    // return even if opening media has to wait for the renderer.
+                    m.Result = new IntPtr(1);
+                    ReplyMessage(m.Result);
 
                     switch (mode)
                     {
@@ -1263,11 +1248,10 @@ public partial class MainForm : Form
                             Player.LoadFiles(args, true, false);
                             break;
                         case "queue":
-                            foreach (string file in args)
-                                Player.CommandV("loadfile", file, "append");
+                            Player.LoadFiles(args, false, true);
                             break;
                         case "command":
-                            Player.Command(args[0]);
+                            Player.Command(string.Join("\n", args));
                             break;
                     }
 
@@ -1328,8 +1312,21 @@ public partial class MainForm : Form
 
     void UpdateProgressBar()
     {
-        if (!_shutdownStarted && Player.TaskbarProgress && _taskbar != null)
-            _taskbar.SetValue(Volatile.Read(ref _playbackPosition), Player.Duration.TotalSeconds);
+        if (!_shutdownStarted && Player.TaskbarProgress && _taskbar != null && !_progressUpdatePending)
+            _progressUpdatePending = Player.RequestPropertyDouble("time-pos");
+    }
+
+    void Player_DoublePropertyReply(string name, double value)
+    {
+        if (name != "time-pos" || IsDisposed || Disposing)
+            return;
+
+        BeginInvoke(() =>
+        {
+            _progressUpdatePending = false;
+            if (!_shutdownStarted && Player.TaskbarProgress)
+                _taskbar?.SetValue(value, Player.Duration.TotalSeconds);
+        });
     }
 
     void PropChangeOnTop(bool value) => BeginInvoke(() => TopMost = value);
@@ -1344,17 +1341,16 @@ public partial class MainForm : Form
     
     void PropChangeEdition(int value) => Player.Edition = value;
     
-    void PropChangeWindowMaximized()
+    void PropChangeWindowMaximized(bool value)
     {
         if (!WasShown)
             return;
 
+        Player.WindowMaximized = value;
         BeginInvoke(() =>
         {
             if (_shutdownStarted)
                 return;
-
-            Player.WindowMaximized = Player.GetPropertyBool("window-maximized");
 
             if (Player.WindowMaximized && WindowState != FormWindowState.Maximized)
                 WindowState = FormWindowState.Maximized;
@@ -1363,17 +1359,16 @@ public partial class MainForm : Form
         });
     }
 
-    void PropChangeWindowMinimized()
+    void PropChangeWindowMinimized(bool value)
     {
         if (!WasShown)
             return;
 
+        Player.WindowMinimized = value;
         BeginInvoke(() =>
         {
             if (_shutdownStarted)
                 return;
-
-            Player.WindowMinimized = Player.GetPropertyBool("window-minimized");
 
             if (Player.WindowMinimized && WindowState != FormWindowState.Minimized)
                 WindowState = FormWindowState.Minimized;
@@ -1447,12 +1442,26 @@ public partial class MainForm : Form
         ShowCursor();
     }
 
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        if (WasShown && Program.InstanceWindowProperty is string property)
+            SetProp(Handle, property, new IntPtr(1));
+    }
+
+    protected override void OnHandleDestroyed(EventArgs e)
+    {
+        if (Program.InstanceWindowProperty is string property)
+            RemoveProp(Handle, property);
+        base.OnHandleDestroyed(e);
+    }
+
     protected override void OnShown(EventArgs e)
     {
         base.OnShown(e);
 
         if (WindowState == FormWindowState.Maximized)
-            Player.SetPropertyBool("window-maximized", true);
+            Player.SetPropertyBoolAsync("window-maximized", true);
 
         WpfApplication.Init();
         Theme.UpdateWpfColors();
@@ -1464,9 +1473,30 @@ public partial class MainForm : Form
         GlobalHotkey.RegisterGlobalHotkeys(Handle);
         StrongReferenceMessenger.Default.Send(new MainWindowIsLoadedMessage());
         WasShown = true;
+        if (Program.InstanceWindowProperty is string property)
+            SetProp(Handle, property, new IntPtr(1));
     }
 
-    void ContextMenu_Closed(object sender, System.Windows.RoutedEventArgs e) => MenuAutoResetEvent.Set();
+
+    void FitFullscreenToScreen(Screen screen)
+    {
+        Rectangle bounds = screen.Bounds;
+        const uint SWP_NOZORDER = 0x0004, SWP_NOACTIVATE = 0x0010;
+        SetWindowPos(Handle, IntPtr.Zero, bounds.X, bounds.Y, bounds.Width, bounds.Height,
+            SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+
+    protected override void OnDpiChanged(DpiChangedEventArgs e)
+    {
+        if (WasShown && !_shutdownStarted && Player.Fullscreen)
+        {
+            e.Cancel = true;
+            base.OnDpiChanged(e);
+            FitFullscreenToScreen(Screen.FromRectangle(e.SuggestedRectangle));
+        }
+        else
+            base.OnDpiChanged(e);
+    }
 
     protected override void OnResize(EventArgs e)
     {
@@ -1484,14 +1514,22 @@ public partial class MainForm : Form
         if (WasShown && !_shutdownStarted)
         {
             if (WindowState == FormWindowState.Minimized)
-                Player.SetPropertyBool("window-minimized", true);
+            {
+                Player.WindowMinimized = true;
+                Player.SetPropertyBoolAsync("window-minimized", true);
+            }
             else if (WindowState == FormWindowState.Normal)
             {
-                Player.SetPropertyBool("window-maximized", false);
-                Player.SetPropertyBool("window-minimized", false);
+                Player.WindowMaximized = false;
+                Player.WindowMinimized = false;
+                Player.SetPropertyBoolAsync("window-maximized", false);
+                Player.SetPropertyBoolAsync("window-minimized", false);
             }
             else if (WindowState == FormWindowState.Maximized)
-                Player.SetPropertyBool("window-maximized", true);
+            {
+                Player.WindowMaximized = true;
+                Player.SetPropertyBoolAsync("window-maximized", true);
+            }
         }
     }
 
@@ -1504,11 +1542,23 @@ public partial class MainForm : Form
 
         e.Cancel = true;
         if (_shutdownStarted)
+        {
+            if (_shutdownDelayed)
+                ShowShutdownTimeout();
             return;
+        }
 
         _shutdownStarted = true;
         CursorTimer.Stop();
         ProgressTimer.Stop();
+        using var timeout = new System.Windows.Forms.Timer { Interval = 10000 };
+        timeout.Tick += (_, _) =>
+        {
+            timeout.Stop();
+            _shutdownDelayed = true;
+            ShowShutdownTimeout();
+        };
+        timeout.Start();
         try
         {
             // Keep the window message pump alive while mpv releases its video
@@ -1521,12 +1571,42 @@ public partial class MainForm : Form
                 Player.Destroy();
             });
             _shutdownCompleted = true;
+            _shutdownPrompt?.BoundDialog?.Close();
             Close();
         }
         catch (Exception ex)
         {
+            _shutdownPrompt?.BoundDialog?.Close();
+            _shutdownDelayed = false;
             _shutdownStarted = false;
             Msg.ShowException(ex);
+        }
+    }
+
+    void ShowShutdownTimeout()
+    {
+        if (_shutdownCompleted || _shutdownPrompt != null)
+            return;
+
+        var wait = new TaskDialogButton("继续等待");
+        var force = new TaskDialogButton("强制退出");
+        _shutdownPrompt = new TaskDialogPage
+        {
+            Caption = Application.ProductName,
+            Heading = "播放器仍在退出",
+            Text = "强制退出可能丢失尚未保存的播放进度。",
+            Buttons = { wait, force },
+            DefaultButton = wait,
+            AllowCancel = true
+        };
+        try
+        {
+            if (TaskDialog.ShowDialog(this, _shutdownPrompt) == force && !_shutdownCompleted)
+                Process.GetCurrentProcess().Kill();
+        }
+        finally
+        {
+            _shutdownPrompt = null;
         }
     }
 

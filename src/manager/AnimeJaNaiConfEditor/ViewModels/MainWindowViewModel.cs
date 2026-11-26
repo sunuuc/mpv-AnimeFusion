@@ -1,3 +1,4 @@
+using AnimeJaNaiConfEditor.Services;
 using Avalonia.Collections;
 using ReactiveUI;
 using Salaros.Configuration;
@@ -19,6 +20,8 @@ namespace AnimeJaNaiConfEditor.ViewModels
     {
         private static readonly CultureInfo ENGLISH_CULTURE = CultureInfo.GetCultureInfo("en-US");
 
+        private static readonly StringComparer ProfileNumberOrder = StringComparer.Create(CultureInfo.InvariantCulture, CompareOptions.NumericOrdering);
+
         public static MainWindowViewModel? Instance { get; private set; }
 
         public MainWindowViewModel()
@@ -27,12 +30,12 @@ namespace AnimeJaNaiConfEditor.ViewModels
             AnimeJaNaiConf = ReadAnimeJaNaiConf(AnimeJaNaiConfPath, true);
 
 
-            for (var i = 0; i < AnimeJaNaiConf.UpscaleSlots.Count; i++)
-            {
-                AnimeJaNaiConf.UpscaleSlots[i].MpvProfileName = $"upscale-on-{i + 1}";
-            }
 
-            CheckAndDoBackup();
+            try { CheckAndDoBackup(); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Debug.WriteLine(ex);
+            }
 
             SelectedMpvProfile = ReadCurrentProfileFromMpvConf();
 
@@ -40,6 +43,9 @@ namespace AnimeJaNaiConfEditor.ViewModels
 
             RefreshComponentAwareness();
             ComponentManager.Refreshed += RefreshComponentAwareness;
+            ComponentManager.Refreshed += RaiseGpuChoice;
+            this.WhenAnyValue(x => x.AnimeJaNaiConf.SelectedBackend).Subscribe(_ => RaiseGpuChoice());
+            _ = LoadDxgiGpusAsync();
             _ = InitializeComponentManagerAsync();
         }
 
@@ -48,6 +54,22 @@ namespace AnimeJaNaiConfEditor.ViewModels
         // component engine once its refresh completes.
 
         public bool DirectMlAvailable => true;
+
+        // [global] reuse_held_frames, read as libaji's aji_reuse_held_frames_for_config reads it:
+        // on unless it says no/off/false/0, so an absent key (every conf before this setting) is on.
+        public static bool ParseReuseHeldFrames(string? value)
+        {
+            var v = (value ?? "").Trim().ToLowerInvariant();
+            return !(v == "no" || v == "off" || v == "false" || v == "0");
+        }
+
+        // [global] native, read as libaji's conf parser reads it: native unless it says off/no, so an
+        // absent key (every conf before this setting) is on.
+        public static bool ParseNative(string? value)
+        {
+            var v = (value ?? "").Trim().ToLowerInvariant();
+            return !(v == "off" || v == "no");
+        }
 
         public static bool TrtOnDisk() =>
             File.Exists(Path.Combine(DataDir, "inference", "nvinfer_11.dll"));
@@ -86,13 +108,13 @@ namespace AnimeJaNaiConfEditor.ViewModels
         public void RefreshComponentAwareness()
         {
             _rifeModels = null;
-            bool trtInstalled = TrtOnDisk();
+            bool trtInstalled = ComponentManager.Packs.FirstOrDefault(p => p.Name == "trt-runtime")?.Installed ?? TrtOnDisk();
             bool? nvidia = ComponentManager.GpuNvidia;
             bool trtUsable = trtInstalled && nvidia != false;
             TrtSelectable = trtUsable;
 
             string notice = "";
-            if (trtUsable && AnimeJaNaiConf != null && AnimeJaNaiConf.DirectMlSelected &&
+            if (nvidia == true && trtUsable && AnimeJaNaiConf != null && AnimeJaNaiConf.DirectMlSelected &&
                 AnimeJaNaiConf.BackendAutoFallback)
             {
                 // TensorRT is the natural path on NVIDIA: the DirectML selection was
@@ -127,10 +149,199 @@ namespace AnimeJaNaiConfEditor.ViewModels
                 foreach (var chain in slot.Chains)
                 {
                     chain.RifeModelList = new List<string>(RifeModels);
-                    foreach (var model in chain.Models) model.AllModels = GetAllModels();
+                    foreach (var model in chain.Models) model.AllModels = GetAllModels(model.Name);
+                    chain.RefreshTemporalChoices();
                     chain.RaisePropertyChanged(nameof(UpscaleChain.RifeToggleEnabled));
                 }
             }
+        }
+
+        // ---- GPU choice -------------------------------------------------------------------
+        // Which GPU upscales, per backend (AnimeJaNaiConf.GpuTensorRt / GpuDirectMl). The same
+        // safeguards as VideoJaNai: graphics cards first, integrated graphics labelled and last,
+        // a warning when one is chosen over a graphics card, and no claim about which card is
+        // fastest. The row is always there when the backend has a GPU, so the settings say which
+        // GPU upscales; it can only be changed with more than one.
+
+        // DXGI's adapters, enumerated once in the background (Direct3D 12 device creation per
+        // adapter takes a moment); null until then.
+        private List<DxgiGpu>? _dxgiGpus;
+
+        private async Task LoadDxgiGpusAsync()
+        {
+            _dxgiGpus = await Task.Run(GpuAdapters.Enumerate);
+            RaiseGpuChoice();
+        }
+
+        private sealed record GpuEntry(string Label, string Key, bool? Integrated);
+
+        private bool UsesDxgiAdapter => AnimeJaNaiConf?.SelectedBackend is Backend.DirectML or Backend.Vulkan;
+
+        // The GPUs the selected backend can upscale on. TensorRT: the NVIDIA GPUs, in NVML's
+        // order, keyed by device UUID. DirectML: every hardware adapter, keyed by PCI slot (by
+        // name when Windows reports none), in Windows' high-performance order with integrated
+        // graphics moved last. Two of the same model are numbered.
+        private List<GpuEntry> BackendGpus()
+        {
+            if (UsesDxgiAdapter)
+            {
+                var dxgi = _dxgiGpus ?? [];
+                return dxgi
+                    .Select((g, i) => new GpuEntry(Numbered(dxgi.Select(o => o.Name).ToList(), i), g.Key, g.Integrated))
+                    .OrderBy(g => g.Integrated == true)
+                    .ToList();
+            }
+            var nvidia = ComponentManager.NvidiaGpus;
+            return nvidia
+                .Select((g, i) => new GpuEntry(Numbered(nvidia.Select(o => o.Name).ToList(), i), g.Uuid, false))
+                .ToList();
+        }
+
+        // names[i], numbered when another GPU has the same name: "X (1)", "X (2)"
+        private static string Numbered(List<string> names, int i) =>
+            names.Count(n => n == names[i]) > 1
+                ? $"{names[i]} ({names.Take(i + 1).Count(n => n == names[i])})"
+                : names[i];
+
+        private string ChosenGpuKey
+        {
+            get => (UsesDxgiAdapter ? AnimeJaNaiConf?.GpuDirectMl : AnimeJaNaiConf?.GpuTensorRt) ?? "";
+            set
+            {
+                if (AnimeJaNaiConf == null)
+                {
+                    return;
+                }
+                if (UsesDxgiAdapter)
+                {
+                    AnimeJaNaiConf.GpuDirectMl = value;
+                }
+                else
+                {
+                    AnimeJaNaiConf.GpuTensorRt = value;
+                }
+            }
+        }
+
+        // The chosen GPU when this PC has it, else null (Auto, or a GPU no longer here: the
+        // player then uses its default GPU too).
+        private GpuEntry? ChosenGpu(List<GpuEntry> gpus)
+        {
+            var key = ChosenGpuKey;
+            return key.Length == 0 ? null
+                : gpus.FirstOrDefault(g => string.Equals(g.Key, key, StringComparison.OrdinalIgnoreCase));
+        }
+
+        // The GPU Auto means, where that's known: on DirectML the GPU Windows ranks first for high
+        // performance (the player's d3d11-adapter-preference), on TensorRT the only NVIDIA GPU.
+        private GpuEntry? AutoGpu(List<GpuEntry> gpus)
+        {
+            if (UsesDxgiAdapter)
+            {
+                return _dxgiGpus is { Count: > 0 } all
+                    ? gpus.FirstOrDefault(g => g.Key == all[0].Key)
+                    : null;
+            }
+            return gpus.Count == 1 ? gpus[0] : null;
+        }
+
+        public bool GpuChoiceVisible => BackendGpus().Count > 0;
+        public bool GpuChoiceEnabled => BackendGpus().Count > 1;
+
+        public bool GpuChoiceIntegratedWarning
+        {
+            get
+            {
+                var gpus = BackendGpus();
+                return ChosenGpu(gpus)?.Integrated == true && gpus.Any(g => g.Integrated == false);
+            }
+        }
+
+        // Auto, then each GPU. The same array while the labels are the same: the list clears its
+        // selection when its items are replaced, and would write that back.
+        private string[] _gpuChoices = [];
+        public string[] GpuChoices
+        {
+            get
+            {
+                var gpus = BackendGpus();
+                string auto = AutoGpu(gpus) is GpuEntry a ? AnimeJaNai.Localization.UiText.F($"Auto ({a.Label})") : AnimeJaNai.Localization.UiText.T("Auto");
+                string[] choices = [auto, .. gpus.Select(g => g.Integrated == true ? AnimeJaNai.Localization.UiText.F($"{g.Label} (integrated)") : g.Label)];
+                if (!choices.SequenceEqual(_gpuChoices))
+                {
+                    _gpuChoices = choices;
+                }
+                return _gpuChoices;
+            }
+        }
+
+        // True while SelectedGpuChoiceIndex reports -1 to put the list's selection back.
+        private bool _gpuChoiceResync;
+
+        // True while RaiseGpuChoice replaces the list's items: the list then writes back an index
+        // of its own (e.g. 0 after a backend change), which isn't the user's choice.
+        private bool _gpuChoiceRaising;
+
+        public int SelectedGpuChoiceIndex
+        {
+            get
+            {
+                if (_gpuChoiceResync)
+                {
+                    return -1;
+                }
+                var gpus = BackendGpus();
+                return ChosenGpu(gpus) is GpuEntry g ? gpus.IndexOf(g) + 1 : 0;
+            }
+            set
+            {
+                // The list clears its selection (-1) when its items are replaced (a GPU list
+                // arriving, a backend change). Raising the same index again doesn't restore it, so
+                // once the list has settled report -1 and then the index.
+                if (value < 0 || _gpuChoiceRaising)
+                {
+                    Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                    {
+                        _gpuChoiceResync = true;
+                        this.RaisePropertyChanged(nameof(SelectedGpuChoiceIndex));
+                        _gpuChoiceResync = false;
+                        this.RaisePropertyChanged(nameof(SelectedGpuChoiceIndex));
+                    });
+                    return;
+                }
+                var gpus = BackendGpus();
+                if (value == 0)
+                {
+                    // Auto clears the choice, unless the list just shows Auto because the chosen
+                    // GPU isn't (or isn't yet) in it
+                    if (ChosenGpu(gpus) != null)
+                    {
+                        ChosenGpuKey = "";
+                    }
+                }
+                else if (value <= gpus.Count)
+                {
+                    ChosenGpuKey = gpus[value - 1].Key;
+                }
+                this.RaisePropertyChanged(nameof(GpuChoiceIntegratedWarning));
+            }
+        }
+
+        private void RaiseGpuChoice()
+        {
+            _gpuChoiceRaising = true;
+            try
+            {
+                this.RaisePropertyChanged(nameof(GpuChoices));
+                this.RaisePropertyChanged(nameof(SelectedGpuChoiceIndex));
+            }
+            finally
+            {
+                _gpuChoiceRaising = false;
+            }
+            this.RaisePropertyChanged(nameof(GpuChoiceVisible));
+            this.RaisePropertyChanged(nameof(GpuChoiceEnabled));
+            this.RaisePropertyChanged(nameof(GpuChoiceIntegratedWarning));
         }
 
         public ComponentManagerViewModel ComponentManager { get; } = new();
@@ -390,10 +601,40 @@ namespace AnimeJaNaiConfEditor.ViewModels
             }
         }
 
-        public AvaloniaList<string> GetAllModels()
+        // Temporal fix (vs_temporalfix) model files, temporalfix_s<strength>_v<version>_*.onnx.
+        public static readonly Regex TemporalFixModelRegex = new(@"^temporalfix_s(\d+)_v(\d+(?:\.\d+)*)_", RegexOptions.IgnoreCase);
+        public static readonly List<int> TemporalFixStrengths = [1, 2, 3];
+        // The files shipped in onnx/; used when the folder has no model for a strength.
+        private static readonly Dictionary<int, string> BundledTemporalFixModels = new()
+        {
+            [1] = "temporalfix_s1_v1.1_op18_fp16",
+            [2] = "temporalfix_s2_v1_op18_fp16",
+            [3] = "temporalfix_s3_v1_op18_fp16",
+        };
+
+        // The newest temporalfix model for a strength in onnx/ (no extension), or null.
+        public static string? TemporalFixModelOnDisk(int strength)
+        {
+            var onnx = Path.Combine(DataDir, "onnx");
+            if (!Directory.Exists(onnx))
+                return null;
+            return Directory.EnumerateFiles(onnx, $"temporalfix_s{strength}_v*.onnx")
+                .Select(Path.GetFileNameWithoutExtension)
+                .Select(name => (name, m: TemporalFixModelRegex.Match(name!)))
+                .Where(x => x.m.Success && int.Parse(x.m.Groups[1].Value) == strength)
+                .OrderBy(x => Version.Parse(x.m.Groups[2].Value.Contains('.') ? x.m.Groups[2].Value : x.m.Groups[2].Value + ".0"))
+                .Select(x => x.name)
+                .LastOrDefault();
+        }
+
+        public static string TemporalFixModelName(int strength) =>
+            TemporalFixModelOnDisk(strength) ?? BundledTemporalFixModels.GetValueOrDefault(strength, $"temporalfix_s{strength}_v1_op18_fp16");
+
+        public AvaloniaList<string> GetAllModels(string? current = null)
         {
             return new AvaloniaList<string>((Directory.Exists(OnnxPath) ? Directory.GetFiles(OnnxPath) : Array.Empty<string>()).Where(filename => Path.GetExtension(filename).Equals(".onnx", StringComparison.CurrentCultureIgnoreCase))
                 .Select(filename => Path.GetFileNameWithoutExtension(filename))
+                .Where(name => name == current || !TemporalFixModelRegex.IsMatch(name))
                 .Order().ToList());
         }
 
@@ -566,21 +807,19 @@ namespace AnimeJaNaiConfEditor.ViewModels
             var slots = new Dictionary<string, UpscaleSlot>();
 
             animeJaNaiConf.EnableLogging = ParseBool(parser.GetValue("global", "logging", "no"));
+            animeJaNaiConf.GpuTensorRt = parser.GetValue("global", "gpu_tensorrt", "").Trim();
+            animeJaNaiConf.GpuDirectMl = parser.GetValue("global", "gpu_directml", "").Trim();
+            animeJaNaiConf.UseNativeKernels = ParseNative(parser.GetValue("global", "native", ""));
+            animeJaNaiConf.ReuseHeldFrames = ParseReuseHeldFrames(parser.GetValue("global", "reuse_held_frames", ""));
+            var displayRateMatch = parser.GetValue("global", "display_rate_match", "no");
+            animeJaNaiConf.AutoDisplayRefresh = ParseBool(displayRateMatch) ||
+                string.Equals(displayRateMatch, "true", StringComparison.OrdinalIgnoreCase);
             animeJaNaiConf.BackendAutoFallback = ParseBool(parser.GetValue("global", "backend_auto_fallback", "no"));
-            if (Enum.TryParse(parser.GetValue("global", "backend", "TensorRT"), out Backend backend))
-            {
-                switch (backend)
-                {
-                    case Backend.DirectML:
-                    case Backend.NCNN: // retired; the inference shim treats NCNN as DirectML
-                        animeJaNaiConf.SetDirectMlSelected();
-                        break;
-                    case Backend.TensorRT:
-                    default:
-                        animeJaNaiConf.SetTensorRtSelected();
-                        break;
-                }
-            }
+            var backendName = parser.GetValue("global", "backend", "TensorRT").Trim();
+            if (backendName.Equals("vk", StringComparison.OrdinalIgnoreCase))
+                backendName = nameof(Backend.Vulkan);
+            if (Enum.TryParse<Backend>(backendName, true, out var backend) && Enum.IsDefined(backend))
+                animeJaNaiConf.SelectedBackend = backend == Backend.NCNN ? Backend.DirectML : backend;
 
             if (int.TryParse(parser.GetValue("global", "default_slot", ""), out var defaultSlot))
             {
@@ -618,99 +857,17 @@ namespace AnimeJaNaiConfEditor.ViewModels
 
             foreach (var section in parser.Sections)
             {
-                if (section.SectionName != "global")
+                if (!TryGetSlotNumber(section.SectionName, out var number))
+                    continue;
+
+                slots[number] = new UpscaleSlot(autoSave)
                 {
-                    var currentSlotNumber = Regex.Match(section.SectionName, @"slot_(\d+)").Groups[1].Value;
-
-                    var chains = new Dictionary<string, UpscaleChain>();
-                    var models = new Dictionary<string, Dictionary<string, UpscaleModel>>();
-
-                    foreach (var key in section.Keys)
-                    {
-                        var matchCurrentChainNumber = Regex.Match(key.Name, @"chain_(\d+)_");
-
-                        if (matchCurrentChainNumber.Success)
-                        {
-                            var currentChainNumber = matchCurrentChainNumber.Groups[1].Value;
-
-                            chains[currentChainNumber] = new UpscaleChain(autoSave)
-                            {
-                                Vm = this,
-                                ChainNumber = currentChainNumber,
-                                MinResolution = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_min_resolution"),
-                                MaxResolution = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_max_resolution"),
-                                MinFps = NumericOr(parser, section.SectionName, $"chain_{currentChainNumber}_min_fps"),
-                                MaxFps = NumericOr(parser, section.SectionName, $"chain_{currentChainNumber}_max_fps"),
-                                EnableRife = ParseBool(parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_rife")),
-                                //RifeModel = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_rife_model"),
-                                RifeEnsemble = ParseBool(parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_rife_ensemble")),
-                                RifeBeforeUpscale = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_rife_before_upscale") is { } rbu ? ParseBool(rbu) : true,
-                            };
-
-                            if (int.TryParse(parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_rife_factor_numerator"), ENGLISH_CULTURE, out var numerator))
-                            {
-                                chains[currentChainNumber].RifeFactorNumerator = numerator;
-                            }
-
-                            if (int.TryParse(parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_rife_factor_denominator"), ENGLISH_CULTURE, out var denominator))
-                            {
-                                chains[currentChainNumber].RifeFactorDenominator = denominator;
-                            }
-
-                            if (decimal.TryParse(parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_rife_scene_detect_threshold"), ENGLISH_CULTURE, out var scene_detect_threshold))
-                            {
-                                chains[currentChainNumber].RifeSceneDetectThreshold = scene_detect_threshold;
-                            }
-
-                            var rifeModel = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_rife_model");
-
-                            if (rifeModel != null)
-                            {
-                                chains[currentChainNumber].RifeModel = RifeValueToLabel(rifeModel);
-                            }
-
-                            var matchCurrentModelNumber = Regex.Match(key.Name, @"_model_(\d+)_");
-
-                            if (matchCurrentModelNumber.Success)
-                            {
-                                var currentModelNumber = matchCurrentModelNumber.Groups[1].Value;
-
-                                if (!models.ContainsKey(currentChainNumber))
-                                {
-                                    models[currentChainNumber] = [];
-                                }
-
-                                if (models[currentChainNumber].ContainsKey(currentModelNumber))
-                                {
-                                    continue;
-                                }
-
-                                models[currentChainNumber][currentModelNumber] = new UpscaleModel(autoSave)
-                                {
-                                    Vm = this,
-                                    AllModels = GetAllModels(),
-                                    ModelNumber = currentModelNumber,
-                                    Name = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_model_{currentModelNumber}_name", "0x0"),
-                                    ResizeFactorBeforeUpscale = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_model_{currentModelNumber}_resize_factor_before_upscale", 100.ToString()),
-                                    ResizeHeightBeforeUpscale = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_model_{currentModelNumber}_resize_height_before_upscale", 0.ToString())
-                                };
-                            }
-                        }
-                    }
-
-                    foreach (var currentChainNumber in models.Keys)
-                    {
-                        chains[currentChainNumber].Models = new AvaloniaList<UpscaleModel>(models[currentChainNumber].Values.ToList());
-                    }
-
-                    slots[currentSlotNumber] = new UpscaleSlot(autoSave)
-                    {
-                        Vm = this,
-                        SlotNumber = currentSlotNumber,
-                        ProfileName = parser.GetValue(section.SectionName, "profile_name", AnimeJaNai.Localization.UiText.T("New Profile")),
-                        Chains = new AvaloniaList<UpscaleChain>(chains.Values.ToList())
-                    };
-                }
+                    Vm = this,
+                    SlotNumber = number,
+                    MpvProfileName = $"upscale-on-{number}",
+                    ProfileName = parser.GetValue(section.SectionName, "profile_name", AnimeJaNai.Localization.UiText.T("New Profile")),
+                    Chains = ReadChains(parser, section.SectionName, section.Keys.Select(k => k.Name), autoSave)
+                };
             }
 
             animeJaNaiConf.UpscaleSlots = new AvaloniaList<UpscaleSlot>(slots.Values);
@@ -718,124 +875,232 @@ namespace AnimeJaNaiConfEditor.ViewModels
             return animeJaNaiConf;
         }
 
-        public void ReadAnimeJaNaiConfToCurrentSlot(string fullPath, bool autoSave = false)
+        private static bool TryGetSlotNumber(string section, out string number)
         {
-            ReadAnimeJaNaiConfToCurrentSlot(new ConfigParser(fullPath), autoSave);
+            number = "";
+            if (!section.StartsWith("slot_", StringComparison.OrdinalIgnoreCase) ||
+                !int.TryParse(section.AsSpan(5), NumberStyles.None, ENGLISH_CULTURE, out var slot) || slot < 1)
+                return false;
+            number = slot.ToString(ENGLISH_CULTURE);
+            return true;
         }
 
-        public void ReadAnimeJaNaiConfToCurrentSlot(ConfigParser parser, bool autoSave = false)
+        private static int ReadRifeNumber(string? value, int fallback) =>
+            double.TryParse(value, NumberStyles.Float, ENGLISH_CULTURE, out var number) &&
+            number >= int.MinValue && number <= int.MaxValue ? (int)number : fallback;
+
+        private AvaloniaList<UpscaleChain> ReadChains(ConfigParser parser, string section, IEnumerable<string> keys, bool autoSave)
         {
-            var sectionKey = "slot";
-
-            foreach (var section in parser.Sections)
+            var chains = new Dictionary<string, UpscaleChain>();
+            var models = new Dictionary<string, Dictionary<string, UpscaleModel>>();
+            foreach (var key in keys)
             {
-                if (section.SectionName != sectionKey)
+                var match = Regex.Match(key, @"^chain_([0-9]+)_", RegexOptions.IgnoreCase);
+                if (!match.Success) continue;
+                var number = match.Groups[1].Value;
+                if (!chains.ContainsKey(number))
                 {
-                    return; // Invalid
-                }
-
-                var currentSlotNumber = Regex.Match(section.SectionName, @"slot_(\d+)").Groups[1].Value;
-
-                var chains = new Dictionary<string, UpscaleChain>();
-                var models = new Dictionary<string, Dictionary<string, UpscaleModel>>();
-
-                foreach (var key in section.Keys)
-                {
-                    var matchCurrentChainNumber = Regex.Match(key.Name, @"chain_(\d+)_");
-
-                    if (matchCurrentChainNumber.Success)
+                    string Get(string field) => parser.GetValue(section, $"chain_{number}_{field}");
+                    var chain = new UpscaleChain(autoSave)
                     {
-                        var currentChainNumber = matchCurrentChainNumber.Groups[1].Value;
-
-                        chains[currentChainNumber] = new UpscaleChain(autoSave)
-                        {
-                            Vm = this,
-                            ChainNumber = currentChainNumber,
-                            MinResolution = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_min_resolution"),
-                            MaxResolution = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_max_resolution"),
-                            MinFps = NumericOr(parser, section.SectionName, $"chain_{currentChainNumber}_min_fps"),
-                            MaxFps = NumericOr(parser, section.SectionName, $"chain_{currentChainNumber}_max_fps"),
-                            EnableRife = ParseBool(parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_rife")),
-                            RifeEnsemble = ParseBool(parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_rife_ensemble")),
-                            RifeBeforeUpscale = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_rife_before_upscale") is { } rbu ? ParseBool(rbu) : true,
-                        };
-
-                        if (int.TryParse(parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_rife_factor_numerator"), ENGLISH_CULTURE, out var numerator))
-                        {
-                            chains[currentChainNumber].RifeFactorNumerator = numerator;
-                        }
-
-                        if (int.TryParse(parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_rife_factor_denominator"), ENGLISH_CULTURE, out var denominator))
-                        {
-                            chains[currentChainNumber].RifeFactorDenominator = denominator;
-                        }
-
-                        if (decimal.TryParse(parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_rife_scene_detect_threshold"), ENGLISH_CULTURE, out var scene_detect_threshold))
-                        {
-                            chains[currentChainNumber].RifeSceneDetectThreshold = scene_detect_threshold;
-                        }
-
-                        var rifeModel = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_rife_model");
-
-                        if (rifeModel != null)
-                        {
-                            chains[currentChainNumber].RifeModel = RifeValueToLabel(rifeModel);
-                        }
-
-                        var matchCurrentModelNumber = Regex.Match(key.Name, @"_model_(\d+)_");
-
-                        if (matchCurrentModelNumber.Success)
-                        {
-                            var currentModelNumber = matchCurrentModelNumber.Groups[1].Value;
-
-                            if (!models.ContainsKey(currentChainNumber))
-                            {
-                                models[currentChainNumber] = [];
-                            }
-
-                            if (models[currentChainNumber].ContainsKey(currentModelNumber))
-                            {
-                                continue;
-                            }
-
-                            models[currentChainNumber][currentModelNumber] = new UpscaleModel(true)
-                            {
-                                Vm = this,
-                                AllModels = GetAllModels(),
-                                ModelNumber = currentModelNumber,
-                                Name = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_model_{currentModelNumber}_name", "0x0"),
-                                ResizeFactorBeforeUpscale = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_model_{currentModelNumber}_resize_factor_before_upscale", 100.ToString()),
-                                ResizeHeightBeforeUpscale = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_model_{currentModelNumber}_resize_height_before_upscale", 0.ToString())
-                            };
-                        }
-                    }
+                        Vm = this,
+                        ChainNumber = number,
+                        MinResolution = Get("min_resolution"),
+                        MaxResolution = Get("max_resolution"),
+                        MinFps = NumericOr(parser, section, $"chain_{number}_min_fps"),
+                        MaxFps = NumericOr(parser, section, $"chain_{number}_max_fps"),
+                        EnableRife = ParseBool(Get("rife")),
+                        RifeEnsemble = ParseBool(Get("rife_ensemble")),
+                        RifeEnhancedSceneDetection = ParseBool(Get("rife_scene_detect_enhanced")),
+                        RifeBeforeUpscale = Get("rife_before_upscale") is not { } before || ParseBool(before),
+                        RifeFactorNumerator = ReadRifeNumber(Get("rife_factor_numerator"), 1),
+                        RifeFactorDenominator = ReadRifeNumber(Get("rife_factor_denominator"), 1)
+                    };
+                    if (decimal.TryParse(Get("rife_scene_detect_threshold"), ENGLISH_CULTURE, out var threshold))
+                        chain.RifeSceneDetectThreshold = threshold;
+                    var rifeModel = ReadRifeNumber(Get("rife_model"), 414);
+                    chain.RifeModel = RifeValueToLabel((rifeModel >= 10 ? rifeModel : 414).ToString(ENGLISH_CULTURE));
+                    chains.Add(number, chain);
                 }
-
-                foreach (var currentChainNumber in models.Keys)
-                {
-                    chains[currentChainNumber].Models = new AvaloniaList<UpscaleModel>(models[currentChainNumber].Values.ToList());
-                }
-
-                CurrentSlot.Vm = this;
-                CurrentSlot.ProfileName = parser.GetValue(sectionKey, "profile_name", AnimeJaNai.Localization.UiText.T("New Profile"));
-                CurrentSlot.Chains = new AvaloniaList<UpscaleChain>(chains.Values.ToList());
+                ReadModelKey(parser, section, key, number, models, autoSave);
             }
+            foreach (var chain in chains.Values)
+                chain.Models = ReadChainFeatures(parser, section, chain, models);
+            return new AvaloniaList<UpscaleChain>(chains.Values.OrderBy(c => c.ChainNumber, ProfileNumberOrder));
+        }
+
+        private bool _importing;
+
+        public void ImportFullConfiguration(ConfigParser parser)
+        {
+            if (!parser.Sections.Any(s => TryGetSlotNumber(s.SectionName, out var n) && n.Length == 1) ||
+                parser.Sections.Any(s => !s.SectionName.Equals("global", StringComparison.OrdinalIgnoreCase) &&
+                    !TryGetSlotNumber(s.SectionName, out _)))
+                throw new InvalidDataException(AnimeJaNai.Localization.UiText.T("Select a full configuration with numbered slots."));
+
+            _importing = true;
+            try
+            {
+                var imported = ReadAnimeJaNaiConf(parser, true);
+                CheckAndDoBackup();
+                SaveConfiguration(ParsedAnimeJaNaiConf(imported)!, AnimeJaNaiConfPath);
+                AnimeJaNaiConf = imported;
+                SelectedMpvProfile = ReadCurrentProfileFromMpvConf();
+                if (!imported.UpscaleSlots.Any(s => s.ShowSlot && s.SlotNumber == SelectedSlotNumber))
+                    SelectedSlotNumber = imported.UpscaleSlots.First(s => s.ShowSlot).SlotNumber;
+                this.RaisePropertyChanged(nameof(CurrentSlot));
+                this.RaisePropertyChanged(nameof(AllSlots));
+            }
+            finally { _importing = false; }
+        }
+
+        public void ReadAnimeJaNaiConfToCurrentSlot(string fullPath, bool autoSave = true) =>
+            ReadAnimeJaNaiConfToCurrentSlot(new ConfigParser(fullPath), autoSave);
+
+        public void ReadAnimeJaNaiConfToCurrentSlot(ConfigParser parser, bool autoSave = true)
+        {
+            var sections = parser.Sections.ToArray();
+            if (sections.Length != 1 || !sections[0].SectionName.Equals("slot", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException(AnimeJaNai.Localization.UiText.T("Select a single profile file."));
+
+            var slot = CurrentSlot;
+            var oldName = slot.ProfileName;
+            var oldChains = slot.Chains;
+            _importing = true;
+            try
+            {
+                var section = sections[0];
+                var chains = ReadChains(parser, section.SectionName, section.Keys.Select(k => k.Name), autoSave);
+                if (autoSave && oldChains.Count > 0) CheckAndDoBackup();
+                slot.ProfileName = parser.GetValue(section.SectionName, "profile_name", AnimeJaNai.Localization.UiText.T("New Profile"));
+                slot.Chains = chains;
+                if (autoSave) WriteAnimeJaNaiConf(AnimeJaNaiConfPath);
+            }
+            catch
+            {
+                slot.ProfileName = oldName;
+                slot.Chains = oldChains;
+                throw;
+            }
+            finally { _importing = false; }
+        }
+
+        // One chain_N_model_M_* key: reads that model once.
+        private void ReadModelKey(ConfigParser parser, string section, string keyName, string chainNumber,
+            Dictionary<string, Dictionary<string, UpscaleModel>> models, bool autoSave)
+        {
+            var match = Regex.Match(keyName, @"^chain_\d+_model_(\d+)_", RegexOptions.IgnoreCase);
+            if (!match.Success)
+                return;
+            var modelNumber = match.Groups[1].Value;
+            if (!models.TryGetValue(chainNumber, out var chainModels))
+                models[chainNumber] = chainModels = [];
+            if (chainModels.ContainsKey(modelNumber))
+                return;
+
+            string Key(string field) => $"chain_{chainNumber}_model_{modelNumber}_{field}";
+            var modelName = parser.GetValue(section, Key("name"), "0x0");
+            chainModels[modelNumber] = new UpscaleModel(autoSave)
+            {
+                Vm = this,
+                AllModels = GetAllModels(modelName),
+                ModelNumber = modelNumber,
+                Name = modelName,
+                ResizeFactorBeforeUpscale = parser.GetValue(section, Key("resize_factor_before_upscale"), 100.ToString()),
+                ResizeHeightBeforeUpscale = parser.GetValue(section, Key("resize_height_before_upscale"), 0.ToString()),
+                Frames = parser.GetValue(section, Key("frames"), 0.ToString()),
+                TemporalSceneThreshold = parser.GetValue(section, Key("temporal_scene_threshold"), UpscaleModel.DefaultTemporalSceneThreshold)
+            };
+        }
+
+        // The chain's models plus its feature keys: chain_N_upscale=no (the engine skips the
+        // models but they stay in the conf) and chain_N_temporal_fix_model (the engine runs it
+        // after the models, or alone). Both need aji v0.17.0+; temporal_fix_before_upscale
+        // (run it before the models instead) needs v0.17.1+.
+        private static AvaloniaList<UpscaleModel> ReadChainFeatures(ConfigParser parser, string section, UpscaleChain chain,
+            Dictionary<string, Dictionary<string, UpscaleModel>> models)
+        {
+            string? Get(string key) => parser.GetValue(section, $"chain_{chain.ChainNumber}_{key}");
+
+            chain.EnableUpscale = Get("upscale") is not { } upscale || ParseBool(upscale);
+
+            if (Get("temporal_fix_model") is { Length: > 0 } tfix)
+            {
+                var match = TemporalFixModelRegex.Match(tfix);
+                if (match.Success && int.TryParse(match.Groups[1].Value, out var strength) && TemporalFixStrengths.Contains(strength))
+                    chain.TemporalFixStrength = strength;
+                if (decimal.TryParse(Get("temporal_fix_scene_threshold"), NumberStyles.Float, ENGLISH_CULTURE, out var threshold))
+                    chain.TemporalFixSceneThreshold = threshold;
+                // absent = the engine's default order, after the models
+                chain.TemporalFixBeforeUpscale = Get("temporal_fix_before_upscale") is { } before && ParseBool(before);
+                chain.ConfiguredTemporalFixModel = tfix;
+                chain.EnableTemporalFix = true;
+            }
+
+            return models.TryGetValue(chain.ChainNumber, out var m)
+                ? new AvaloniaList<UpscaleModel>(m.Values.OrderBy(model => model.ModelNumber, ProfileNumberOrder))
+                : [];
+        }
+
+        private static void WriteChainModels(ConfigParser parser, string section, UpscaleChain chain)
+        {
+            foreach (var model in chain.Models)
+            {
+                parser.SetValue(section, $"chain_{chain.ChainNumber}_model_{model.ModelNumber}_resize_height_before_upscale", string.Create(ENGLISH_CULTURE, $"{model.ResizeHeightBeforeUpscale}"));
+                parser.SetValue(section, $"chain_{chain.ChainNumber}_model_{model.ModelNumber}_resize_factor_before_upscale", string.Create(ENGLISH_CULTURE, $"{model.ResizeFactorBeforeUpscale}"));
+                parser.SetValue(section, $"chain_{chain.ChainNumber}_model_{model.ModelNumber}_name", string.Create(ENGLISH_CULTURE, $"{model.Name}"));
+                WriteTemporalKeys(parser, section, chain, model);
+            }
+
+            // write-minimal: these keys only appear while the feature differs from the default
+            if (!chain.EnableUpscale)
+                parser.SetValue(section, $"chain_{chain.ChainNumber}_upscale", "no");
+            if (chain.EnableTemporalFix)
+            {
+                parser.SetValue(section, $"chain_{chain.ChainNumber}_temporal_fix_model", chain.ConfiguredTemporalFixModel ?? TemporalFixModelName(chain.TemporalFixStrength));
+                parser.SetValue(section, $"chain_{chain.ChainNumber}_temporal_fix_scene_threshold", string.Create(ENGLISH_CULTURE, $"{chain.TemporalFixSceneThreshold}"));
+                // always written, so the Manager's default order can change without
+                // changing what existing confs mean
+                parser.SetValue(section, $"chain_{chain.ChainNumber}_temporal_fix_before_upscale", chain.TemporalFixBeforeUpscale ? "yes" : "no");
+            }
+        }
+
+
+        // Temporal model keys are optional: written only when they carry
+        // something, so confs without temporal models stay unchanged.
+        private static void WriteTemporalKeys(ConfigParser parser, string section, UpscaleChain chain, UpscaleModel model)
+        {
+            if (model.Frames != 0.ToString())
+                parser.SetValue(section, $"chain_{chain.ChainNumber}_model_{model.ModelNumber}_frames", string.Create(ENGLISH_CULTURE, $"{model.Frames}"));
+            if (model.IsTemporal || model.TemporalSceneThreshold != UpscaleModel.DefaultTemporalSceneThreshold)
+                parser.SetValue(section, $"chain_{chain.ChainNumber}_model_{model.ModelNumber}_temporal_scene_threshold", string.Create(ENGLISH_CULTURE, $"{model.TemporalSceneThreshold}"));
         }
 
         static bool ParseBool(string value)
         {
-            return value?.ToLower() == "yes";
+            return string.Equals(value?.Trim(), "yes", StringComparison.OrdinalIgnoreCase);
         }
 
         public void WriteAnimeJaNaiConf()
         {
-            WriteAnimeJaNaiConf(AnimeJaNaiConfPath);
+            if (!_importing) WriteAnimeJaNaiConf(AnimeJaNaiConfPath);
         }
 
         public void WriteAnimeJaNaiConf(string fullPath)
         {
             var parser = ParsedAnimeJaNaiConf(AnimeJaNaiConf);
-            parser?.Save(fullPath);
+            if (parser != null) SaveConfiguration(parser, fullPath);
+        }
+
+        private static void SaveConfiguration(ConfigParser parser, string fullPath)
+        {
+            var pending = fullPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                parser.Save(pending);
+                File.Move(pending, fullPath, true);
+            }
+            finally { File.Delete(pending); }
         }
 
         public static ConfigParser? ParsedAnimeJaNaiConf(AnimeJaNaiConf conf)
@@ -847,8 +1112,13 @@ namespace AnimeJaNaiConfEditor.ViewModels
 
             var parser = new ConfigParser();
 
+            parser.SetValue("global", "gpu_tensorrt", conf.GpuTensorRt);
+            parser.SetValue("global", "gpu_directml", conf.GpuDirectMl);
+            parser.SetValue("global", "native", conf.UseNativeKernels ? "on" : "off");
+            parser.SetValue("global", "reuse_held_frames", conf.ReuseHeldFrames ? "yes" : "no");
             parser.SetValue("global", "config_version", CONFIG_VERSION.ToString());
             parser.SetValue("global", "backend", conf.SelectedBackend.ToString());
+            if (conf.AutoDisplayRefresh) parser.SetValue("global", "display_rate_match", "yes");
             parser.SetValue("global", "backend_auto_fallback", conf.BackendAutoFallback ? "yes" : "no");
             parser.SetValue("global", "logging", conf.EnableLogging ? "yes" : "no");
             // Write-minimal: only persist default_slot when the user picked one (absent => the vf
@@ -881,12 +1151,7 @@ namespace AnimeJaNaiConfEditor.ViewModels
                     parser.SetValue(section, $"chain_{chain.ChainNumber}_min_fps", string.Create(ENGLISH_CULTURE, $"{chain.MinFps}"));
                     parser.SetValue(section, $"chain_{chain.ChainNumber}_max_fps", string.Create(ENGLISH_CULTURE, $"{chain.MaxFps}"));
 
-                    foreach (var model in chain.Models)
-                    {
-                        parser.SetValue(section, $"chain_{chain.ChainNumber}_model_{model.ModelNumber}_resize_height_before_upscale", string.Create(ENGLISH_CULTURE, $"{model.ResizeHeightBeforeUpscale}"));
-                        parser.SetValue(section, $"chain_{chain.ChainNumber}_model_{model.ModelNumber}_resize_factor_before_upscale", string.Create(ENGLISH_CULTURE, $"{model.ResizeFactorBeforeUpscale}"));
-                        parser.SetValue(section, $"chain_{chain.ChainNumber}_model_{model.ModelNumber}_name", string.Create(ENGLISH_CULTURE, $"{model.Name}"));
-                    }
+                    WriteChainModels(parser, section, chain);
 
                     parser.SetValue(section, $"chain_{chain.ChainNumber}_rife", chain.EnableRife ? "yes" : "no");
                     chain.RifeModel ??= chain.RifeModelList.FirstOrDefault("");
@@ -897,7 +1162,8 @@ namespace AnimeJaNaiConfEditor.ViewModels
                     parser.SetValue(section, $"chain_{chain.ChainNumber}_rife_factor_numerator", string.Create(ENGLISH_CULTURE, $"{chain.RifeFactorNumerator ?? 1}"));
                     parser.SetValue(section, $"chain_{chain.ChainNumber}_rife_factor_denominator", string.Create(ENGLISH_CULTURE, $"{chain.RifeFactorDenominator ?? 1}"));
                     parser.SetValue(section, $"chain_{chain.ChainNumber}_rife_scene_detect_threshold", string.Create(ENGLISH_CULTURE, $"{chain.RifeSceneDetectThreshold ?? 0.015M}"));
-                    parser.SetValue(section, $"chain_{chain.ChainNumber}_rife_ensemble", chain.RifeEnsemble ? "yes" : "no");
+                    parser.SetValue(section, $"chain_{chain.ChainNumber}_rife_ensemble", chain.RifeEnsembleForSave ? "yes" : "no");
+                    if (chain.RifeEnhancedSceneDetection) parser.SetValue(section, $"chain_{chain.ChainNumber}_rife_scene_detect_enhanced", "yes");
                     parser.SetValue(section, $"chain_{chain.ChainNumber}_rife_before_upscale", chain.RifeBeforeUpscale ? "yes" : "no");
                 }
             }
@@ -924,19 +1190,15 @@ namespace AnimeJaNaiConfEditor.ViewModels
                 parser.SetValue(section, $"chain_{chain.ChainNumber}_min_fps", string.Create(ENGLISH_CULTURE, $"{chain.MinFps}"));
                 parser.SetValue(section, $"chain_{chain.ChainNumber}_max_fps", string.Create(ENGLISH_CULTURE, $"{chain.MaxFps}"));
 
-                foreach (var model in chain.Models)
-                {
-                    parser.SetValue(section, $"chain_{chain.ChainNumber}_model_{model.ModelNumber}_resize_height_before_upscale", string.Create(ENGLISH_CULTURE, $"{model.ResizeHeightBeforeUpscale}"));
-                    parser.SetValue(section, $"chain_{chain.ChainNumber}_model_{model.ModelNumber}_resize_factor_before_upscale", string.Create(ENGLISH_CULTURE, $"{model.ResizeFactorBeforeUpscale}"));
-                    parser.SetValue(section, $"chain_{chain.ChainNumber}_model_{model.ModelNumber}_name", string.Create(ENGLISH_CULTURE, $"{model.Name}"));
-                }
+                WriteChainModels(parser, section, chain);
 
                 parser.SetValue(section, $"chain_{chain.ChainNumber}_rife", chain.EnableRife ? "yes" : "no");
-                parser.SetValue(section, $"chain_{chain.ChainNumber}_rife_factor_numerator", string.Create(ENGLISH_CULTURE, $"{chain.RifeFactorNumerator ?? 0}"));
+                parser.SetValue(section, $"chain_{chain.ChainNumber}_rife_factor_numerator", string.Create(ENGLISH_CULTURE, $"{chain.RifeFactorNumerator ?? 1}"));
                 parser.SetValue(section, $"chain_{chain.ChainNumber}_rife_factor_denominator", string.Create(ENGLISH_CULTURE, $"{chain.RifeFactorDenominator ?? 1}"));
                 parser.SetValue(section, $"chain_{chain.ChainNumber}_rife_model", string.Create(ENGLISH_CULTURE, $"{RifeLabelToValue(chain.RifeModel)}"));
-                parser.SetValue(section, $"chain_{chain.ChainNumber}_rife_ensemble", chain.RifeEnsemble ? "yes" : "no");
+                parser.SetValue(section, $"chain_{chain.ChainNumber}_rife_ensemble", chain.RifeEnsembleForSave ? "yes" : "no");
                 parser.SetValue(section, $"chain_{chain.ChainNumber}_rife_scene_detect_threshold", string.Create(ENGLISH_CULTURE, $"{chain.RifeSceneDetectThreshold ?? 0.015M}"));
+                if (chain.RifeEnhancedSceneDetection) parser.SetValue(section, $"chain_{chain.ChainNumber}_rife_scene_detect_enhanced", "yes");
                 parser.SetValue(section, $"chain_{chain.ChainNumber}_rife_before_upscale", chain.RifeBeforeUpscale ? "yes" : "no");
             }
 
@@ -945,38 +1207,14 @@ namespace AnimeJaNaiConfEditor.ViewModels
 
         public void CheckAndDoBackup()
         {
-            Task.Run(() =>
-            {
-                if (!Path.Exists(BackupPath))
-                {
-                    Directory.CreateDirectory(BackupPath);
-                }
-
-                var files = Directory.EnumerateFiles(BackupPath)
-                            .Where(f => Path.GetFileName(f).StartsWith("autobackup_"))
-                            .OrderByDescending(f => f)
-                            .ToList();
-
-                var currentConfStr = ParsedAnimeJaNaiConf(AnimeJaNaiConf)?.ToString();
-
-                if (files.Count >= 10)
-                {
-                    // Delete oldest backup
-                    File.Delete(files.Last());
-                }
-
-                if (files.Count > 0)
-                {
-                    var backupConf = ReadAnimeJaNaiConf(files.First());
-                    if (currentConfStr == ParsedAnimeJaNaiConf(backupConf)?.ToString())
-                    {
-                        // Backup already exists - no need to create another backup
-                        return;
-                    }
-                }
-
-                WriteAnimeJaNaiConf(Path.Join(BackupPath, $"autobackup_{DateTime.Now:yyyyMMdd-HHmmss}.conf"));
-            });
+            if (!File.Exists(AnimeJaNaiConfPath)) return;
+            Directory.CreateDirectory(BackupPath);
+            var files = Directory.GetFiles(BackupPath, "autobackup_*.conf").OrderDescending().ToArray();
+            var bytes = File.ReadAllBytes(AnimeJaNaiConfPath);
+            if (files.Length > 0 && bytes.AsSpan().SequenceEqual(File.ReadAllBytes(files[0]))) return;
+            var name = $"autobackup_{DateTime.Now:yyyyMMdd-HHmmss-fffffff}.conf";
+            File.WriteAllBytes(Path.Combine(BackupPath, name), bytes);
+            foreach (var old in files.Skip(9)) File.Delete(old);
         }
 
 #pragma warning disable CA1822 // Mark members as static
@@ -1040,17 +1278,12 @@ namespace AnimeJaNaiConfEditor.ViewModels
 
         private void InitializeSelectedSlot()
         {
-            if (SelectedMpvProfile == null || SelectedMpvProfile == "upscale-off")
-            {
-                return;
-            }
-
-            var customSlot = AnimeJaNaiConf.UpscaleSlots.Where(x => x.MpvProfileName == SelectedMpvProfile).FirstOrDefault();
-
-            if (customSlot != null)
-            {
-                HandleShowCustomProfile(customSlot.SlotNumber);
-            }
+            var slots = AnimeJaNaiConf.UpscaleSlots.Where(s => s.ShowSlot);
+            var selection = slots.FirstOrDefault(s => s.MpvProfileName == SelectedMpvProfile) ??
+                            slots.FirstOrDefault(s => s.SlotNumber == SelectedSlotNumber) ??
+                            slots.FirstOrDefault();
+            if (selection != null) HandleShowCustomProfile(selection.SlotNumber);
+            else HandleShowGlobalSettings();
         }
     }
 
@@ -1064,8 +1297,7 @@ namespace AnimeJaNaiConfEditor.ViewModels
             {
                 this.WhenAnyValue(
                     x => x.EnableLogging,
-                    x => x.TensorRtSelected,
-                    x => x.DirectMlSelected,
+                    x => x.SelectedBackend,
                     x => x.BackendAutoFallback,
                     x => x.TrtEngineSettings).Subscribe(x =>
                     {
@@ -1075,6 +1307,11 @@ namespace AnimeJaNaiConfEditor.ViewModels
                 // Separate subscription: WhenAnyValue's tuple overload doesn't extend to this many
                 // properties in one call.
                 this.WhenAnyValue(
+                    x => x.GpuTensorRt,
+                    x => x.GpuDirectMl,
+                    x => x.UseNativeKernels,
+                    x => x.ReuseHeldFrames,
+                    x => x.AutoDisplayRefresh,
                     x => x.GpuSubtitles).Subscribe(x =>
                     {
                         Vm?.WriteAnimeJaNaiConf();
@@ -1088,6 +1325,41 @@ namespace AnimeJaNaiConfEditor.ViewModels
         {
             get => _vm;
             set => this.RaiseAndSetIfChanged(ref _vm, value);
+        }
+
+        private string _gpuTensorRt = "";
+        [DataMember]
+        public string GpuTensorRt
+        {
+            get => _gpuTensorRt;
+            set => this.RaiseAndSetIfChanged(ref _gpuTensorRt, value);
+        }
+
+        private string _gpuDirectMl = "";
+        [DataMember]
+        public string GpuDirectMl
+        {
+            get => _gpuDirectMl;
+            set => this.RaiseAndSetIfChanged(ref _gpuDirectMl, value);
+        }
+
+        private bool _reuseHeldFrames = true;
+        [DataMember]
+        public bool ReuseHeldFrames
+        {
+            get => _reuseHeldFrames;
+            set => this.RaiseAndSetIfChanged(ref _reuseHeldFrames, value);
+        }
+
+        // Native kernels ([global] native=on|off): libaji runs the models it has kernels for on its
+        // own CUDA kernels (RTX 30 and newer) instead of building TensorRT engines. On by default;
+        // off makes every model use TensorRT. DirectML ignores it.
+        private bool _useNativeKernels = true;
+        [DataMember]
+        public bool UseNativeKernels
+        {
+            get => _useNativeKernels;
+            set => this.RaiseAndSetIfChanged(ref _useNativeKernels, value);
         }
 
         private bool _enableLogging = false;
@@ -1106,27 +1378,24 @@ namespace AnimeJaNaiConfEditor.ViewModels
             set => this.RaiseAndSetIfChanged(ref _defaultSlot, value);
         }
 
-        private bool _tensorRtSelected = true;
+        private Backend _selectedBackend = Backend.TensorRT;
         [DataMember]
-        public bool TensorRtSelected
+        public Backend SelectedBackend
         {
-            get => _tensorRtSelected;
+            get => _selectedBackend;
             set
             {
-                this.RaiseAndSetIfChanged(ref _tensorRtSelected, value);
+                if (value == _selectedBackend) return;
+                this.RaiseAndSetIfChanged(ref _selectedBackend, value);
+                this.RaisePropertyChanged(nameof(TensorRtSelected));
+                this.RaisePropertyChanged(nameof(DirectMlSelected));
+                this.RaisePropertyChanged(nameof(VulkanSelected));
             }
         }
 
-        private bool _directMlSelected = false;
-        [DataMember]
-        public bool DirectMlSelected
-        {
-            get => _directMlSelected;
-            set
-            {
-                this.RaiseAndSetIfChanged(ref _directMlSelected, value);
-            }
-        }
+        public bool TensorRtSelected => SelectedBackend == Backend.TensorRT;
+        public bool DirectMlSelected => SelectedBackend == Backend.DirectML;
+        public bool VulkanSelected => SelectedBackend == Backend.Vulkan;
 
         private string _trtEngineSettings = "--builderOptimizationLevel=5 --optShapes=input:%video_resolution% --skipInference";
         [DataMember]
@@ -1279,14 +1548,12 @@ namespace AnimeJaNaiConfEditor.ViewModels
 
         public void SetTensorRtSelected()
         {
-            TensorRtSelected = true;
-            DirectMlSelected = false;
+            SelectedBackend = Backend.TensorRT;
         }
 
         public void SetDirectMlSelected()
         {
-            DirectMlSelected = true;
-            TensorRtSelected = false;
+            SelectedBackend = Backend.DirectML;
         }
 
         public void UserSelectTensorRt()
@@ -1311,6 +1578,14 @@ namespace AnimeJaNaiConfEditor.ViewModels
 
         // Experimental GPU subtitle rendering ([global] sub_render_mode=gpu). Off => the player
         // uses the stable subtitle defaults from the managed [animejanai] profile.
+        private bool _autoDisplayRefresh;
+        [DataMember]
+        public bool AutoDisplayRefresh
+        {
+            get => _autoDisplayRefresh;
+            set => this.RaiseAndSetIfChanged(ref _autoDisplayRefresh, value);
+        }
+
         private bool _gpuSubtitles;
         [DataMember]
         public bool GpuSubtitles
@@ -1319,7 +1594,11 @@ namespace AnimeJaNaiConfEditor.ViewModels
             set => this.RaiseAndSetIfChanged(ref _gpuSubtitles, value);
         }
 
-        public Backend SelectedBackend => DirectMlSelected ? Backend.DirectML : Backend.TensorRT;
+        public void UserSelectVulkan()
+        {
+            BackendAutoFallback = false;
+            SelectedBackend = Backend.Vulkan;
+        }
     }
 
     [DataContract]
@@ -1425,6 +1704,7 @@ namespace AnimeJaNaiConfEditor.ViewModels
     {
         public UpscaleChain(bool autoSave = false)
         {
+            HookModels();
             AutoSave = autoSave;
 
             if (autoSave)
@@ -1444,11 +1724,20 @@ namespace AnimeJaNaiConfEditor.ViewModels
                     x => x.RifeFactorDenominator,
                     x => x.RifeModel,
                     x => x.RifeSceneDetectThreshold,
+                    x => x.RifeEnhancedSceneDetection,
                     x => x.RifeEnsemble,
                     x => x.RifeBeforeUpscale
                 );
 
-                g1.CombineLatest(g2).Subscribe(x =>
+                var g3 = this.WhenAnyValue(
+                    x => x.EnableUpscale,
+                    x => x.EnableTemporalFix,
+                    x => x.TemporalFixStrength,
+                    x => x.TemporalFixSceneThreshold,
+                    x => x.TemporalFixBeforeUpscale
+                );
+
+                g1.CombineLatest(g2, g3).Subscribe(x =>
                 {
                     Vm?.WriteAnimeJaNaiConf();
                 });
@@ -1499,12 +1788,48 @@ namespace AnimeJaNaiConfEditor.ViewModels
             set => this.RaiseAndSetIfChanged(ref _maxFps, value);
         }
 
+        private AvaloniaList<UpscaleModel>? _hookedModels;
+
+        private void HookModels()
+        {
+            if (_hookedModels != null)
+            {
+                _hookedModels.CollectionChanged -= ModelsCollectionChanged;
+                foreach (var model in _hookedModels)
+                    model.PropertyChanged -= ModelPropertyChanged;
+            }
+            _hookedModels = Models;
+            _hookedModels.CollectionChanged += ModelsCollectionChanged;
+            foreach (var model in _hookedModels)
+                model.PropertyChanged += ModelPropertyChanged;
+        }
+
+        private void ModelsCollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+        {
+            foreach (UpscaleModel model in e.OldItems ?? Array.Empty<UpscaleModel>())
+                model.PropertyChanged -= ModelPropertyChanged;
+            foreach (UpscaleModel model in e.NewItems ?? Array.Empty<UpscaleModel>())
+                model.PropertyChanged += ModelPropertyChanged;
+            this.RaisePropertyChanged(nameof(CanInterpolateFirst));
+        }
+
+        private void ModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(UpscaleModel.IsTemporal))
+                this.RaisePropertyChanged(nameof(CanInterpolateFirst));
+        }
+
         private AvaloniaList<UpscaleModel> _models = [];
         [DataMember]
         public AvaloniaList<UpscaleModel> Models
         {
             get => _models;
-            set => this.RaiseAndSetIfChanged(ref _models, value);
+            set
+            {
+                this.RaiseAndSetIfChanged(ref _models, value);
+                HookModels();
+                this.RaisePropertyChanged(nameof(CanInterpolateFirst));
+            }
         }
 
         private bool _enableRife = false;
@@ -1563,6 +1888,9 @@ namespace AnimeJaNaiConfEditor.ViewModels
             this.RaisePropertyChanged(nameof(RifeEnsemble));
         }
 
+        // Moving a profile to a PC without this model must preserve its selected variant.
+        public bool RifeEnsembleForSave => !RifeStandardAvailable && !RifeEnsembleAvailable ? _rifeEnsemble : RifeEnsemble;
+
         private bool _rifeEnsemble = false;
         [DataMember]
         public bool RifeEnsemble
@@ -1587,6 +1915,14 @@ namespace AnimeJaNaiConfEditor.ViewModels
             set => this.RaiseAndSetIfChanged(ref _rifeFactorDenominator, value ?? 1);
         }
 
+        private bool _rifeEnhancedSceneDetection;
+        [DataMember]
+        public bool RifeEnhancedSceneDetection
+        {
+            get => _rifeEnhancedSceneDetection;
+            set => this.RaiseAndSetIfChanged(ref _rifeEnhancedSceneDetection, value);
+        }
+
         private decimal? _rifeSceneDetectThreshold = 0.150M;
         [DataMember]
         public decimal? RifeSceneDetectThreshold
@@ -1603,6 +1939,86 @@ namespace AnimeJaNaiConfEditor.ViewModels
         {
             get => _rifeBeforeUpscale;
             set => this.RaiseAndSetIfChanged(ref _rifeBeforeUpscale, value);
+        }
+
+        private bool _enableUpscale = true;
+        [DataMember]
+        public bool EnableUpscale
+        {
+            get => _enableUpscale;
+            set
+            {
+                this.RaiseAndSetIfChanged(ref _enableUpscale, value);
+                this.RaisePropertyChanged(nameof(CanInterpolateFirst));
+            }
+        }
+
+        // Temporal fix: a vs_temporalfix model the engine runs after the chain's models, or
+        // before them (chain_N_temporal_fix_model; see MainWindowViewModel.ReadChainFeatures).
+        private bool _enableTemporalFix = false;
+        [DataMember]
+        public bool EnableTemporalFix
+        {
+            get => _enableTemporalFix;
+            set
+            {
+                if (value && ConfiguredTemporalFixModel == null && !TemporalFixStrengths.Contains(TemporalFixStrength) && TemporalFixStrengths.Count > 0)
+                    TemporalFixStrength = TemporalFixStrengths[0];
+                this.RaiseAndSetIfChanged(ref _enableTemporalFix, value);
+                this.RaisePropertyChanged(nameof(TemporalFixToggleEnabled));
+                this.RaisePropertyChanged(nameof(CanInterpolateFirst));
+            }
+        }
+
+        // Same rule as RifeToggleEnabled: locked only while unchecked and not installed.
+        public bool TemporalFixToggleEnabled =>
+            EnableTemporalFix || TemporalFixStrengths.Count > 0;
+
+        public List<int> TemporalFixStrengths => MainWindowViewModel.TemporalFixStrengths
+            .Where(strength => MainWindowViewModel.TemporalFixModelOnDisk(strength) != null).ToList();
+
+        public void RefreshTemporalChoices()
+        {
+            this.RaisePropertyChanged(nameof(TemporalFixStrengths));
+            this.RaisePropertyChanged(nameof(TemporalFixToggleEnabled));
+        }
+
+        public bool CanInterpolateFirst => !EnableTemporalFix && !(EnableUpscale && Models.Any(m => m.IsTemporal));
+
+
+        internal string? ConfiguredTemporalFixModel { get; set; }
+
+        private int _temporalFixStrength = 2;
+        [DataMember]
+        public int TemporalFixStrength
+        {
+            get => _temporalFixStrength;
+            set
+            {
+                if (value == _temporalFixStrength || !MainWindowViewModel.TemporalFixStrengths.Contains(value)) return;
+                ConfiguredTemporalFixModel = null;
+                this.RaiseAndSetIfChanged(ref _temporalFixStrength, value);
+            }
+        }
+
+        // Run temporal fix at the source resolution before the upscale models (much cheaper)
+        // instead of on the upscaled frames (also steadies shimmer the upscaler adds).
+        public const bool DefaultTemporalFixBeforeUpscale = true;
+
+        private bool _temporalFixBeforeUpscale = DefaultTemporalFixBeforeUpscale;
+        [DataMember]
+        public bool TemporalFixBeforeUpscale
+        {
+            get => _temporalFixBeforeUpscale;
+            set => this.RaiseAndSetIfChanged(ref _temporalFixBeforeUpscale, value);
+        }
+
+        private decimal? _temporalFixSceneThreshold = decimal.Parse(UpscaleModel.DefaultTemporalSceneThreshold, CultureInfo.InvariantCulture);
+        [DataMember]
+        public decimal? TemporalFixSceneThreshold
+        {
+            get => _temporalFixSceneThreshold;
+            set => this.RaiseAndSetIfChanged(ref _temporalFixSceneThreshold, value ?? decimal.Parse(UpscaleModel.DefaultTemporalSceneThreshold, CultureInfo.InvariantCulture));
         }
 
         public void AddModel()
@@ -1651,6 +2067,8 @@ namespace AnimeJaNaiConfEditor.ViewModels
                     x => x.ModelNumber,
                     x => x.ResizeHeightBeforeUpscale,
                     x => x.ResizeFactorBeforeUpscale,
+                    x => x.Frames,
+                    x => x.TemporalSceneThreshold,
                     x => x.Name
                 ).Subscribe(x =>
                 {
@@ -1715,7 +2133,51 @@ namespace AnimeJaNaiConfEditor.ViewModels
                 if (value.Length > 0 && !_allModels.Contains(value))
                     _allModels.Add(value);
                 this.RaiseAndSetIfChanged(ref _name, value);
+                RaiseTemporalChanged();
             }
+        }
+        // Temporal (multi-frame) models: the engine detects the frame count
+        // from the onnx input; Frames overrides it when nonzero.
+        public const string DefaultTemporalSceneThreshold = "0.15";
+
+        private string _frames = 0.ToString();
+        [DataMember]
+        public string Frames
+        {
+            get => _frames;
+            set
+            {
+                this.RaiseAndSetIfChanged(ref _frames, value);
+                RaiseTemporalChanged();
+            }
+        }
+
+        private string _temporalSceneThreshold = DefaultTemporalSceneThreshold;
+        [DataMember]
+        public string TemporalSceneThreshold
+        {
+            get => _temporalSceneThreshold;
+            set => this.RaiseAndSetIfChanged(ref _temporalSceneThreshold, value);
+        }
+
+        public int TemporalFrames
+        {
+            get
+            {
+                if (int.TryParse(Frames, NumberStyles.Integer, CultureInfo.InvariantCulture, out var frames) && frames > 0)
+                    return frames;
+                if (Vm == null || string.IsNullOrEmpty(Name))
+                    return 1;
+                return OnnxInputShape.TemporalFrames(Path.Combine(Vm.OnnxPath, Name + ".onnx"));
+            }
+        }
+
+        public bool IsTemporal => TemporalFrames > 1;
+
+        private void RaiseTemporalChanged()
+        {
+            this.RaisePropertyChanged(nameof(TemporalFrames));
+            this.RaisePropertyChanged(nameof(IsTemporal));
         }
     }
 
@@ -1723,6 +2185,7 @@ namespace AnimeJaNaiConfEditor.ViewModels
     {
         TensorRT,
         DirectML,
-        NCNN
+        NCNN,
+        Vulkan
     }
 }

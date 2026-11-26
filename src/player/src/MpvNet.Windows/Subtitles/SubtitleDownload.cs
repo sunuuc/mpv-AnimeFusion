@@ -460,7 +460,7 @@ public sealed class SubtitleDownload(HttpClient http, SubtitleLibrary library)
                 {
                     if (System.Diagnostics.Stopwatch.GetElapsedTime(lastUpdate).TotalSeconds < 1) return;
                     lastUpdate = System.Diagnostics.Stopwatch.GetTimestamp();
-                    progress?.Report($"下载字幕 {received / 1024} KB");
+                    progress?.Report(received < 1024 ? $"下载字幕 {received} B" : $"下载字幕 {received / 1024} KB");
                     return;
                 }
                 int percent = (int)Math.Min(100, received * 100L / total) / 10 * 10;

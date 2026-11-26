@@ -14,6 +14,28 @@ public class AppSettings
     public int MenuUpdateVersion;
     public int Volume = 70;
     public List<string> RecentFiles = new List<string>();
+    public string[] GetRecentFiles()
+    {
+        lock (RecentFiles) return RecentFiles.ToArray();
+    }
+
+    public void AddRecentFile(string entry, int limit)
+    {
+        lock (RecentFiles)
+        {
+            RecentFiles.Remove(entry);
+            RecentFiles.Insert(0, entry);
+            limit = Math.Max(0, limit);
+            if (RecentFiles.Count > limit)
+                RecentFiles.RemoveRange(limit, RecentFiles.Count - limit);
+        }
+    }
+
+    public void ClearRecentFiles()
+    {
+        lock (RecentFiles) RecentFiles.Clear();
+    }
+
     public Point WindowLocation;
     public Point WindowPosition;
     public Size WindowSize;

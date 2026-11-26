@@ -1,6 +1,6 @@
 """Prepare the model-free core with the pinned optional component catalog."""
 from pathlib import Path
-import configparser
+import hashlib
 import json
 import shutil
 
@@ -8,10 +8,6 @@ CATALOG = Path(__file__).with_name('component-catalog.json')
 
 def prepare(app):
     catalog = json.loads(CATALOG.read_text(encoding='utf-8'))
-    defaults = configparser.ConfigParser(interpolation=None)
-    defaults.read(app/'animejanai/animejanai.conf', encoding='utf-8-sig')
-    configured_models = {value for section in defaults.values() for key, value in section.items()
-                         if key.startswith('chain_') and '_model_' in key and key.endswith('_name') and value}
     # Reuse the published, hash-pinned packs instead of recreating the same
     # optional downloads for every player release.
     models = {model.relative_to(app).as_posix(): model
@@ -22,7 +18,10 @@ def prepare(app):
     for pack in model_packs:
         if sum(models[name].stat().st_size for name in pack['files']) != pack['installed_bytes']:
             raise RuntimeError('Pinned model size does not match the upstream core: '+pack['name'])
-        pack['recommended'] = any(models[name].stem in configured_models for name in pack['files'])
+        for name in pack['files']:
+            with models[name].open('rb') as f:
+                if hashlib.file_digest(f, 'sha256').hexdigest() != pack['file_sha256'][name]:
+                    raise RuntimeError('Pinned model digest does not match: '+name)
     # Recommendations never install a model without the user's Apply action.
     for folder in ('onnx', 'rife'):
         shutil.rmtree(app/'animejanai'/folder, ignore_errors=True)
@@ -49,7 +48,7 @@ def validate(app):
             # DirectML license is also a mandatory core notice, not a runtime.
             if any((app/f).exists() and 'LICENSE' not in f.upper() for f in pack['files']):
                 raise RuntimeError('Optional component bundled: '+pack['name'])
-    for name in ('aji.dll', 'aji_trt.dll', 'aji_dml.dll', 'DirectML.dll', 'onnxruntime.dll'):
+    for name in ('aji.dll', 'aji_trt.dll', 'aji_dml.dll', 'aji_vk.dll', 'DirectML.dll', 'onnxruntime.dll'):
         if not (app/'animejanai/inference'/name).is_file():
             raise RuntimeError('Missing inference backend: '+name)
     return {'distribution': 'portable', 'models_bundled': 0,

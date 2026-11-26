@@ -152,13 +152,18 @@ public class AppClass
 
     public static (string Title, string Path) GetTitleAndPath(string input)
     {
-        if (input.Contains('|'))
+        int separator = input.IndexOf('|');
+        string path = separator < 0 ? input : input[..separator];
+        string title = separator < 0 ? input : input[(separator + 1)..];
+        if (title.Contains("://"))
         {
-            var a = input.Split('|');
-            return (a[1], a[0]);
+            string url = title;
+            if (url.StartsWith("ytdl://", StringComparison.OrdinalIgnoreCase))
+                url = url["ytdl://".Length..];
+            if (Uri.TryCreate(url, UriKind.Absolute, out var uri) && !uri.IsFile)
+                title = uri.GetComponents(UriComponents.SchemeAndServer | UriComponents.Path, UriFormat.UriEscaped);
         }
-
-        return (input, input);
+        return (title, path);
     }
 
     InputConf? _inputConf;

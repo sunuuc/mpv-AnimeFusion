@@ -1,0 +1,27 @@
+diff --git a/src/vulkan/swapchain.c b/src/vulkan/swapchain.c
+--- a/src/vulkan/swapchain.c
++++ b/src/vulkan/swapchain.c
+@@ -786,6 +786,23 @@
+              sinfo.imageExtent.width,
+              sinfo.imageExtent.height);
+
++#ifdef PL_HAVE_WIN32
++    // Avoid overlapping old/new swapchains on NVIDIA Windows. A display mode
++    // change can leave the driver waiting inside vkCreateSwapchainKHR when
++    // oldSwapchain is supplied. Retire presentation resources first, using
++    // the same GPU/presentation completion rules as normal swapchain teardown.
++    // This only runs on recreation; rendering and queue depth are unchanged.
++    if (current && vk->props.vendorID == 0x10DE) {
++        PL_DEBUG(sw, "Draining NVIDIA swapchain before replacement");
++        pl_gpu_flush(sw->gpu);
++        vk_wait_idle(vk);
++        cleanup_retired_swapchains(sw, UINT64_MAX);
++        swapchain_destroy(sw, &p->current, UINT64_MAX);
++        current = NULL;
++        PL_DEBUG(sw, "NVIDIA swapchain drained; creating without oldSwapchain");
++    }
++#endif
++
+     // Calling `vkCreateSwapchainKHR` puts sinfo.oldSwapchain into a retired
+     // state whether the call succeeds or not, so we always need to garbage
+     // collect it afterwards - asynchronously as it may still be in use

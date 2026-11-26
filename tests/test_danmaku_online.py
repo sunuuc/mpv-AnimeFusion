@@ -492,6 +492,22 @@ local body='{{"comments":[{{"p":"4,1,16777215","m":"弹幕"}},null,{{"p":"-1,1,1
 local parsed,err=online.parse_comments(body,function()return {{comments={{
   {{p='4,1,16777215',m='弹幕'}},false,{{p='-1,1,1',m='bad'}}}}}} end,core)
 assert(parsed and #parsed==1 and parsed[1].text=='弹幕',err)
+local function comments_from(expected, ...)
+    local rows={{}}
+    for _,tag in ipairs({{...}}) do
+        rows[#rows+1]={{p='1,1,16777215,'..tag,m='测试'}}
+    end
+    return online.parse_comments('x',function() return {{comments=rows}} end,core,expected)
+end
+assert(not comments_from('renren','[youku]','[youku]'),'unanimous wrong platform must not be saved')
+assert(#comments_from('tencent','[qq]')==1,'supported platform aliases must match')
+assert(#comments_from('renren','[qq]','[youku]')==2,'mixed related sources remain valid')
+assert(#comments_from('renren','[youku]','untagged')==2,'unknown provenance remains valid')
+assert(#comments_from('unlisted','[youku]')==1 and #comments_from('renren')==0)
+local detail={{bangumi={{animeId='1',animeTitle='星海旅行记 第二季',episodes={{{{episodeId=42,episodeNumber=1}}}}}}}}
+local saved={{id='1',label='另一部作品 第二季'}}
+assert(not online.bangumi_episodes('x',function() return detail end,core.clean,'renren',saved),
+       'same platform and reused show ID must not prove the identity of a different work')
 local empty,empty_error=online.parse_comments('{{"comments":[]}}',function()return {{comments={{}}}} end,core)
 assert(type(empty)=='table' and #empty==0 and empty_error==nil,'valid empty episodes must be represented as no comments')
 local invalid,invalid_error=online.parse_comments('x',function()return {{comments='bad'}} end,core)

@@ -10,13 +10,22 @@ local function test()
   local seeks,polls=0,0
   local reads=0
   local idle,path,video,filters=true,nil,nil,{}
+  local rebuilt={}
+  local reject_add=false
   local statustext
+  local route_backend='TensorRT'
+  local opts={platform='windows',hwdec='d3d11va',['gpu-api']='d3d11',['vulkan-device']=''}
   package.loaded.mp={
     get_time=function() return 10 end,
-    get_property=function(name) if name=='path' then return path end end,
+    get_property=function(name) if name=='path' then return path end;return opts[name] end,
+    set_property=function(name,value)
+      assert(#filters==2,'old inference filter still attached during device transition')
+      opts[name]=value;return true
+    end,
     get_property_native=function(name)
       if name=='pause' then return paused elseif name=='vf' then return filters
       elseif name=='video-out-params' then return video end
+      return props[name]
     end,
     get_property_bool=function(name)
       if name=='pause' then return paused elseif name=='idle-active' then return idle end
@@ -25,7 +34,13 @@ local function test()
       assert(name=='pause');paused=value
       if observers.pause then observers.pause('pause',value) end
     end,
-    set_property_native=function(name,value) props[name]=value end,
+    msg=msg,
+    set_property_native=function(name,value)
+      if name=='vf' and reject_add and #value==3 then reject_add=false;return nil,'rejected' end
+      props[name]=value
+      if name=='vf' then filters=value;rebuilt[#rebuilt+1]=value end
+      return true
+    end,
     register_script_message=function(name,fn) messages[name]=fn end,
     register_event=function(name,fn) events[name]=fn end,
     enable_messages=function(level) assert(level=='error') end,
@@ -38,7 +53,10 @@ local function test()
       slots[#slots+1]=tonumber(slot);return true
     end,
     command=function(command) assert(command=='no-osd seek 0 exact');seeks=seeks+1 end,
-    command_native=function(command) assert(command[1]=='expand-path');return 'stats.log' end,
+    command_native=function(command)
+      if command.name=='subprocess' then return {status=0,stdout='GPU-test,12.0,Test GPU'} end
+      assert(command[1]=='expand-path');return 'stats.log'
+    end,
     osd_message=function(text) osd[#osd+1]=text end,
     add_periodic_timer=function(_,fn)
       local timer={callback=fn,enabled=true}
@@ -50,6 +68,9 @@ local function test()
   }
   package.loaded['mp.options']={read_options=function() end}
   io.open=function(path)
+    if path=='route.conf' then
+      return {lines=function() return ('[global]\nbackend='..route_backend):gmatch('[^\n]+') end,close=function() end}
+    end
     if path=='stats.log' then
       reads=reads+1
       if statustext then return {read=function() return statustext end,close=function() end} end
@@ -66,6 +87,33 @@ local function test()
   assert(#slots==3 and props['user-data/animejanai/requested-slot']==6,'failed command must not publish a new slot')
   paused=true;messages['aji-slot']('4')
   assert(slots[#slots]==4 and seeks==1,'paused switch refreshes once')
+  paused=false
+  filters={{name='scale'},{label='aji',name='animejanai',params={conf='original.conf'}},{name='format'}}
+  events['log-message']({prefix='vf',text='Disabling filter other because it has failed.'})
+  messages['aji-slot']('3');assert(#rebuilt==0 and slots[#slots]==3)
+  events['log-message']({prefix='vf',text='Disabling filter aji because it has failed.'})
+  messages['aji-slot']('2')
+  assert(#rebuilt==2 and #rebuilt[1]==2 and rebuilt[1][2].name=='format')
+  assert(#filters==3 and filters[2].params.slot=='2' and filters[2].params.conf=='original.conf')
+  assert(props['user-data/animejanai/requested-slot']==2 and seeks==1)
+  messages['aji-slot']('1');assert(#rebuilt==2 and slots[#slots]==1)
+  events['log-message']({prefix='vf',text='Disabling filter aji because it has failed.'})
+  reject_add=true
+  messages['aji-slot']('6')
+  assert(props['user-data/animejanai/requested-slot']==1 and filters[2].params.slot=='2',
+         'rejected rebuild restores the previous graph and never publishes the rejected slot')
+  local route_key='user-data/animejanai/backend-route'
+  props[route_key]={path='route.conf',backend='directml',device='',owned={hwdec='d3d11va',['gpu-api']='d3d11'}}
+  messages['aji-slot']('1')
+  assert(props[route_key].backend=='tensorrt' and opts.hwdec=='nvdec' and opts['gpu-api']=='vulkan,auto')
+  assert(filters[2].params.slot=='1' and #filters==3 and seeks==1,'hot install preserves the current video')
+  local count=#rebuilt
+  messages['aji-slot']('2');assert(#rebuilt==count,'normal same-backend slot must not rebuild')
+  route_backend='DirectML'
+  props['option-info/hwdec']={['set-from-config']=true};opts.hwdec='no'
+  messages['aji-slot']('1')
+  assert(props[route_key].backend=='directml' and opts.hwdec=='no' and opts['gpu-api']=='d3d11',
+         'switching back preserves explicitly configured software decoding')
   dofile(root..'/portable_config/scripts/animejanai_session.lua')
   assert(#timers==0,'slot and retired session controllers must not start polling')
   dofile(root..'/portable_config/scripts/animejanai_engine_monitor.lua')

@@ -7,7 +7,7 @@ using System.Text.Json;
 
 namespace AnimeJaNaiConfEditor.Services;
 
-public sealed record PlaybackHistorySnapshot(string Path, long Length);
+public sealed record PlaybackHistorySnapshot(string Path, long Length, DateTime LastWriteTime = default);
 public sealed record PlaybackHistoryPage(IReadOnlyList<PlaybackHistoryItem> Items, long? NextCursor);
 
 internal sealed class PlaybackHistoryChangedException : IOException { }
@@ -29,7 +29,7 @@ public static class PlaybackHistory
             // Native appends always end in LF. Leave an unfinished tail for
             // the next refresh instead of racing the writer on this page.
             while (end > 0 && lines.ByteAt(end - 1) != '\n') end--;
-            return new(path, end);
+            return new(path, end, File.GetLastWriteTimeUtc(stream.SafeFileHandle));
         }
         catch (FileNotFoundException) { return new(path, 0); }
         catch (DirectoryNotFoundException) { return new(path, 0); }

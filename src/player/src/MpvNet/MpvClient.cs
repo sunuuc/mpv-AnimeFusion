@@ -12,6 +12,7 @@ public class MpvClient
     public event Action<mpv_end_file_reason>? EndFile;       // end-file            MPV_EVENT_END_FILE
     public event Action? Shutdown;                           // shutdown            MPV_EVENT_SHUTDOWN
     public event Action? GetPropertyReply;                   // get-property-reply  MPV_EVENT_GET_PROPERTY_REPLY
+    public event Action<string, double>? DoublePropertyReply;
     public event Action? SetPropertyReply;                   // set-property-reply  MPV_EVENT_SET_PROPERTY_REPLY
     public event Action? CommandReply;                       // command-reply       MPV_EVENT_COMMAND_REPLY
     public event Action? StartFile;                          // start-file          MPV_EVENT_START_FILE
@@ -80,9 +81,18 @@ public class MpvClient
                         }
                         break;
                     case mpv_event_id.MPV_EVENT_GET_PROPERTY_REPLY:
+                        if (DoublePropertyReply != null && evt.data != IntPtr.Zero)
+                        {
+                            var data = Marshal.PtrToStructure<mpv_event_property>(evt.data);
+                            if (data.format is mpv_format.MPV_FORMAT_DOUBLE or mpv_format.MPV_FORMAT_NONE)
+                                DoublePropertyReply?.Invoke(data.name, evt.error >= 0 && data.data != IntPtr.Zero
+                                    ? Marshal.PtrToStructure<double>(data.data) : 0);
+                        }
                         OnGetPropertyReply();
                         break;
                     case mpv_event_id.MPV_EVENT_SET_PROPERTY_REPLY:
+                        if (evt.error < 0)
+                            HandleError((mpv_error)evt.error, "error applying asynchronous property");
                         OnSetPropertyReply();
                         break;
                     case mpv_event_id.MPV_EVENT_COMMAND_REPLY:
@@ -233,7 +243,7 @@ public class MpvClient
 
     public void CommandVAsync(params string[] args) => CommandV(true, args);
 
-    void CommandV(bool async, string[] args)
+    mpv_error CommandV(bool async, string[] args, nint result = 0)
     {
         int count = args.Length + 1;
         IntPtr[] pointers = new IntPtr[count];
@@ -251,7 +261,8 @@ public class MpvClient
             }
 
             Marshal.Copy(pointers, 0, rootPtr, count);
-            err = async ? mpv_command_async(Handle, 0, rootPtr) : mpv_command(Handle, rootPtr);
+            err = result != 0 ? mpv_command_ret(Handle, rootPtr, result)
+                : async ? mpv_command_async(Handle, 0, rootPtr) : mpv_command(Handle, rootPtr);
         }
         finally
         {
@@ -263,6 +274,31 @@ public class MpvClient
 
         if (err < 0)
             HandleError(err, "error executing command: " + string.Join("\n", args));
+        return err;
+    }
+
+    protected long LoadPlaylistEntry(string file, string flags, string options)
+    {
+        nint result = Marshal.AllocHGlobal(Marshal.SizeOf<mpv_node>());
+        try
+        {
+            if (CommandV(false, ["loadfile", file, flags, "-1", options], result) < 0) return -1;
+            try
+            {
+                var node = Marshal.PtrToStructure<mpv_node>(result);
+                if (node.format != mpv_format.MPV_FORMAT_NODE_MAP) return -1;
+                var map = Marshal.PtrToStructure<mpv_node_list>(node.list);
+                for (int i = 0; i < map.num; i++)
+                {
+                    if (ConvertFromUtf8(Marshal.ReadIntPtr(map.keys, i * IntPtr.Size)) != "playlist_entry_id") continue;
+                    var id = Marshal.PtrToStructure<mpv_node>(map.values + i * Marshal.SizeOf<mpv_node>());
+                    return id.format == mpv_format.MPV_FORMAT_INT64 ? id.int64 : -1;
+                }
+                return -1;
+            }
+            finally { mpv_free_node_contents(result); }
+        }
+        finally { Marshal.FreeHGlobal(result); }
     }
 
     public string Expand(string? value)
@@ -311,6 +347,9 @@ public class MpvClient
         return ret;
     }
 
+    public bool RequestPropertyDouble(string name) =>
+        mpv_get_property_async(Handle, 0, GetUtf8Bytes(name), mpv_format.MPV_FORMAT_DOUBLE) >= 0;
+
     public bool GetPropertyBool(string name)
     {
         mpv_error err = mpv_get_property(Handle, GetUtf8Bytes(name),
@@ -329,6 +368,14 @@ public class MpvClient
 
         if (err < 0)
             HandleError(err, $"error setting property: {name} = {value}");
+    }
+
+    public void SetPropertyBoolAsync(string name, bool value)
+    {
+        int val = value ? 1 : 0;
+        mpv_error err = mpv_set_property_async(Handle, 0, GetUtf8Bytes(name), mpv_format.MPV_FORMAT_FLAG, ref val);
+        if (err < 0)
+            HandleError(err, $"error queueing property: {name} = {value}");
     }
 
     public int GetPropertyInt(string name)

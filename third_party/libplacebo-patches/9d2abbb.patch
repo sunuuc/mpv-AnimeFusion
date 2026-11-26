@@ -1,0 +1,26 @@
+From 9d2abbb26849d3387d570fb96b5111683d9ed99e Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Kacper=20Michaj=C5=82ow?= <kasper93@gmail.com>
+Date: Thu, 29 Oct 2026 02:25:59 +0100
+Subject: [PATCH] utils/upload: bound the component index for components
+ without a size
+
+A component of size 0 still takes a slot in the map, but only the sized
+ones checked that a texture component was left for it, so padding before
+it could make it write past the end of map.
+---
+ src/utils/upload.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/utils/upload.c b/src/utils/upload.c
+index cc41d6d46d..615d98e888 100644
+--- a/src/utils/upload.c
++++ b/src/utils/upload.c
+@@ -202,7 +202,7 @@ pl_fmt pl_plane_find_fmt(pl_gpu gpu, int out_map[4], const struct pl_plane_data
+ 
+             // Otherwise, try and match this component
+             int size = data->component_size[i];
+-            if (size && (idx >= 4 || fmt->host_bits[idx] != size))
++            if (idx >= 4 || (size && fmt->host_bits[idx] != size))
+                 goto next_fmt;
+             map[idx++] = data->component_map[i];
+         }

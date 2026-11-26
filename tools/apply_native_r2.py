@@ -3,7 +3,7 @@ from pathlib import Path
 import subprocess
 import sys
 root=Path(sys.argv[1] if len(sys.argv)>1 else 'mpv-source')
-expected='d4c06dd3424dc06d90d4ea15b0fa92fa3ceeb62f'
+expected='41868e1757bea768b07b0e020aa11b9654772c22'
 actual=subprocess.check_output(['git','-C',str(root),'rev-parse','HEAD'],text=True).strip()
 if actual!=expected: raise RuntimeError('Unexpected native source: '+actual)
 subprocess.run(['git','-C',str(root),'config','core.autocrlf','true'],check=True)
@@ -58,76 +58,10 @@ edit('player/command.c','static int mp_property_frame_drop_vo(','''static int mp
 
 static int mp_property_frame_drop_vo(''')
 edit('player/command.c','    {"frame-drop-count", mp_property_frame_drop_vo},','    {"vo-presented-frame-count", mp_property_presented_frame_count},\n    {"frame-drop-count", mp_property_frame_drop_vo},')
-# Synchronous property reads may run on a short-lived Lua/client thread.
-# Create, unregister, release and CoUninitialize notifications on one MTA
-# thread which lives until hotplug_uninit. Its event wait does not poll.
-edit('audio/out/ao_wasapi.h','    change_notify change;\n','''    HANDLE hHotplugThread;
-    HANDLE hHotplugReady;
-    HANDLE hHotplugStop;
-    HRESULT hotplug_result;
-    change_notify change;
-''')
-s=(root/'audio/out/ao_wasapi.c').read_text(encoding='utf-8')
-a=s.index('static void hotplug_uninit(struct ao *ao)\n')
-b=s.index('#define OPT_BASE_STRUCT struct wasapi_state',a)
-edit('audio/out/ao_wasapi.c',s[a:b],'''// Notification objects must not outlive the apartment which created them.
-static DWORD WINAPI HotplugThread(LPVOID opaque)
-{
-    struct ao *ao = opaque;
-    struct wasapi_state *state = ao->priv;
-    HRESULT hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
-    bool com_initialized = SUCCEEDED(hr);
-    if (com_initialized)
-        hr = wasapi_change_init(ao, true);
-    state->hotplug_result = hr;
-    SetEvent(state->hHotplugReady);
-    if (SUCCEEDED(hr))
-        WaitForSingleObject(state->hHotplugStop, INFINITE);
-    // wasapi_change_init cleans up partial initialization on failure.
-    if (SUCCEEDED(hr))
-        wasapi_change_uninit(ao);
-    if (com_initialized)
-        CoUninitialize();
-    return 0;
-}
-
-static void hotplug_uninit(struct ao *ao)
-{
-    MP_DBG(ao, "Hotplug uninit\\n");
-    struct wasapi_state *state = ao->priv;
-    if (state->hHotplugStop)
-        SetEvent(state->hHotplugStop);
-    if (state->hHotplugThread)
-        WaitForSingleObject(state->hHotplugThread, INFINITE);
-    SAFE_DESTROY(state->hHotplugThread, CloseHandle(state->hHotplugThread));
-    SAFE_DESTROY(state->hHotplugReady, CloseHandle(state->hHotplugReady));
-    SAFE_DESTROY(state->hHotplugStop, CloseHandle(state->hHotplugStop));
-}
-
-static int hotplug_init(struct ao *ao)
-{
-    MP_DBG(ao, "Hotplug init\\n");
-    struct wasapi_state *state = ao->priv;
-    state->log = ao->log;
-    state->hotplug_result = E_FAIL;
-    state->hHotplugReady = CreateEventW(NULL, TRUE, FALSE, NULL);
-    state->hHotplugStop = CreateEventW(NULL, TRUE, FALSE, NULL);
-    if (!state->hHotplugReady || !state->hHotplugStop)
-        goto fail;
-    state->hHotplugThread = CreateThread(NULL, 0, HotplugThread, ao, 0, NULL);
-    if (!state->hHotplugThread)
-        goto fail;
-    if (WaitForSingleObject(state->hHotplugReady, INFINITE) != WAIT_OBJECT_0 ||
-        FAILED(state->hotplug_result))
-        goto fail;
-    return 0;
-fail:
-    MP_ERR(ao, "Failed to initialize audio-device notifications\\n");
-    hotplug_uninit(ao);
-    return -1;
-}
-
-''')
+edit('player/command.c', '            {"set-from-commandline",    SUB_PROP_BOOL(co->is_set_from_cmdline)},',
+     '''            {"set-from-commandline",    SUB_PROP_BOOL(co->is_set_from_cmdline)},
+            {"set-from-config",         SUB_PROP_BOOL(co->is_set_from_config)},''')
+# Upstream keeps the notification MTA alive with CoIncrementMTAUsage.
 # Enumeration is synchronous; balance COM on its calling thread as well.
 edit('audio/out/ao_wasapi_utils.c','''void wasapi_list_devs(struct ao *ao, struct ao_device_list *list)
 {
@@ -171,3 +105,8 @@ apply(root)
 
 from apply_animejanai_pre_resize import apply
 apply(root)
+
+for name in ('subtitle-stability-test.patch', 'scene-reply-timeout.patch'):
+    patch = Path(__file__).parent / 'standalone' / name
+    subprocess.run(['git', '-C', str(root), 'apply', '--ignore-space-change', '-'],
+                   input=patch.read_bytes().replace(b'\r\n', b'\n'), check=True)

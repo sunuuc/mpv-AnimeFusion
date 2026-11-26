@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace AnimeJaNaiConfEditor.ViewModels;
@@ -74,11 +75,16 @@ public sealed class PlaybackHistoryViewModel : ViewModelBase
         ErrorText = "";
         try
         {
+            bool readingOlderRecords = _pageIndex > 0 || Items.Any(item => item.IsExpanded);
             var result = await Task.Run(() =>
             {
                 var snapshot = cursor.HasValue ? _snapshot! : PlaybackHistory.CreateSnapshot(_historyPath);
                 long start = cursor ?? snapshot.Length;
                 bool reset = !cursor.HasValue;
+                // Keep the existing item instances and scroll position while browsing a snapshot.
+                if (reset && _snapshot is { } previous && (snapshot == previous ||
+                    (readingOlderRecords && snapshot.Length > previous.Length)))
+                    return (snapshot, start, page: (PlaybackHistoryPage?)null, reset);
                 PlaybackHistoryPage page;
                 try
                 {
@@ -95,6 +101,7 @@ public sealed class PlaybackHistoryViewModel : ViewModelBase
                 }
                 return (snapshot, start, page, reset);
             });
+            if (result.page == null) return;
             if (result.reset)
             {
                 _pageCursors.Clear();

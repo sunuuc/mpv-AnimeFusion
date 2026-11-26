@@ -343,7 +343,10 @@ public static class InputHelp
                 continue;
             }
 
-            binding.Input = line[..line.IndexOf(" ")];
+            int separator = line.IndexOf(' ');
+            if (separator < 0)
+                continue;
+            binding.Input = line[..separator];
 
             if (binding.Input == "_")
                 binding.Input = "";
@@ -363,7 +366,7 @@ public static class InputHelp
             if (binding.Input.Contains("alt+"))
                 binding.Input = binding.Input.Replace("alt+", "Alt+");
 
-            line = line[(line.IndexOf(' ') + 1)..];
+            line = line[(separator + 1)..];
 
             if (line.Contains(App.MenuSyntax))
             {
@@ -450,10 +453,13 @@ public static class InputHelp
 
         foreach (Binding binding in bindings)
         {
-            if (binding.Input == "" || binding.Command == "")
+            if (binding.Input == "")
                 continue;
 
-            ret[binding.Input] = binding;
+            if (binding.Command == "")
+                ret.Remove(binding.Input);
+            else
+                ret[binding.Input] = binding;
         }
 
         return ret;

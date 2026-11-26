@@ -15,7 +15,7 @@
     "origin": "GitHub Actions source build 38705973751 from cbf00a849c1264550a47634c24b9e0794303224e; continuous secondary ASS timeline, cached subtitle switching, statistics header and libplacebo fixes; provenance and source patches in build-info/native."
   },
   "libass": {
-    "repo": "libass/libass",
+    "repo": "the-database/libass",
     "source_commit": "896614fa263f9f64944f7b8650ff6806d5328c4d",
     "source_path": "third_party/libass",
     "build": "tools/standalone/build_libass.py"
@@ -29,5 +29,11 @@
     "executable_sha256": "66b6fb12ef3394ce94fd83eb06e5146cf58f5af5007cac533e66c4c4aae1e066",
     "source_path": "third_party/danmaku-factory",
     "build": "tools/standalone/build_danmaku_factory.py"
+  },
+  "inference": {
+    "repo": "the-database/animejanai-inference",
+    "tag": "v0.32.0",
+    "name": "aji-windows-x64.zip",
+    "sha256": "694257edb9b0eea9ea517fc0cbd287527540c25a403ce913362484173edb69c0"
   }
 }

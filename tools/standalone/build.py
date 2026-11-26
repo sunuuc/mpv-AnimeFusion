@@ -145,16 +145,49 @@ def stage():
     base=download(LOCK['bootstrap_core']);extract(base,R/'base-unpack')
     cp(app_root(R/'base-unpack'),ST);shutil.rmtree(R/'base-unpack')
     native=download(LOCK['native_and_ui_resources']);extract(native,ST)
-    # Releases use the reviewed, hash-pinned native runtime. An explicitly
-    # supplied native build is reserved for preparing a new runtime revision.
-    native_output=os.environ.get('MPV_NATIVE_OUTPUT')
-    if native_output:
-        native_output=Path(native_output)
-        if not all((native_output/name).is_file() for name in ('mpv.exe','libmpv-2.dll','libass-9.dll')):
-            raise RuntimeError('MPV_NATIVE_OUTPUT is missing native runtime files')
-        for path in native_output.rglob('*'):
-            if path.is_file() and (path.suffix.lower() in ('.dll','.exe') or 'build-info' in path.relative_to(native_output).parts):
-                cp(path,ST/path.relative_to(native_output))
+    native_directory=os.environ.get('MPV_NATIVE_OUTPUT')
+    if not native_directory:
+        raise RuntimeError('Build the pinned mpv source locally and set MPV_NATIVE_OUTPUT')
+    from build_native import COMMIT, GENERATORS, check_ass_features, check_placebo, check_ggml
+    native_output=Path(native_directory)
+    info=native_output/'build-info'
+    record=json.loads((info/'local-native-build.json').read_text(encoding='utf-8'))
+    if record['mpv_source_commit'] != COMMIT:
+        raise RuntimeError('Native player and inference library versions do not match')
+    if (record['configuration_sha256'] != sha(info/'mpv-config.h') or
+            record['native_patch_sha256'] != sha(info/'native-r2.patch') or
+            record['patch_generators'] != {'tools/'+name:sha(R/'tools'/name) for name in GENERATORS}):
+        raise RuntimeError('Native build configuration or source patches do not match')
+    check_ass_features(info/'mpv-config.h')
+    check_placebo(native_output,info/'libplacebo-source.json')
+    check_ggml(native_output,info/'ggml-reload.json')
+    if json.loads((info/'libass-source.json').read_bytes()) != json.loads((R/'third_party/libass/UPSTREAM.json').read_bytes()):
+        raise RuntimeError('Unexpected native subtitle renderer source')
+    files=record['files']
+    if not all(name in files for name in ('mpv.exe','libmpv-2.dll','libass-9.dll','libplacebo-387.dll','ggml-base-1.dll','ajn-mvtools.dll')):
+        raise RuntimeError('MPV_NATIVE_OUTPUT is missing native runtime files')
+    for name,digest in files.items():
+        if Path(name).name != name or sha(native_output/name) != digest:
+            raise RuntimeError('Native runtime checksum mismatch: '+name)
+        cp(native_output/name,ST/name)
+    native_info = ST/'build-info/native'
+    if native_info.is_dir():
+        shutil.rmtree(native_info)
+    cp(info,native_info)
+    cp(info/'ajn-mvtools',ST/'THIRD_PARTY_LICENSES/ajn-mvtools')
+    inference=ST/'animejanai/inference'
+    extract(download(LOCK['inference']),inference)
+    native_inference = os.environ.get('AJI_INFERENCE_OUTPUT')
+    if not native_inference:
+        raise RuntimeError('Set AJI_INFERENCE_OUTPUT to the inference build with the configuration reader fixes')
+    for dll in ('aji.dll', 'aji_trt.dll', 'aji_dml.dll', 'aji_vk.dll'):
+        cp(Path(native_inference)/dll, inference/dll)
+    require_release_inference(inference/'aji_trt.dll')
+    dump(ST/'build-info/inference/source.json',{
+        'source': LOCK['inference'], 'distribution': 'upstream bundle with locally compiled inference DLLs',
+        'patches': {name:sha(H/name) for name in ('inference-config.patch','inference-release.patch')},
+        'files': {p.relative_to(ST).as_posix():sha(p) for p in inference.iterdir()
+                  if p.is_file() and p.suffix.lower() in ('.dll','.exe')}})
     shutil.rmtree(ST/'portable_config',ignore_errors=True)
     for path in source_release_files(('portable_config',)):
         cp(path,ST/path.relative_to(R))
@@ -182,7 +215,6 @@ def stage():
         if p.is_file():p.unlink()
     # libass is part of the same pinned native input, so a frontend release
     # cannot silently change its renderer or compiler output.
-    cp(R/'third_party/libass/UPSTREAM.json',ST/'build-info/native/libass-source.json')
     cp(R/'third_party/libass/COPYING',ST/'THIRD_PARTY_LICENSES/libass-ISC.txt')
     candidates=list(Path(r'C:\Program Files\Microsoft Visual Studio\2022').glob('*/VC/Redist/MSVC/*/x64/Microsoft.VC143.CRT'))
     if candidates:
@@ -200,7 +232,7 @@ def stage():
         p.write_text(s,encoding='utf-8')
     prepare_components(ST)
 
-    dump(ST/'manifest.json',{'name':META['name'],'version':META['version'],'distribution':'portable','repository':REPO,'component_version':'3.6.0','platform':'win-x64'})
+    dump(ST/'manifest.json',{'name':META['name'],'version':META['version'],'distribution':'portable','repository':REPO,'component_version':json.loads((H/'component-catalog.json').read_text())['package_version'],'platform':'win-x64'})
     cp(R/'docs/standalone.md',ST/'使用说明.md')
     for name in ('README.md','README.en.md','CHANGELOG.md'):cp(R/name,ST/name)
     for name in ('standalone.md','build.md','danmaku-renderer.md','open-source-notices.md','bangumi-sources.md','trakt-sources.md','myanimelist-research.md','online-subtitles.md'):cp(R/'docs'/name,ST/'docs'/name)

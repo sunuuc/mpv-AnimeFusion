@@ -7,6 +7,8 @@ local core=dofile(assert(root)..'/portable_config/script-modules/player_ui_core.
 local checks=0
 local function check(v,label) checks=checks+1;assert(v,label) end
 local function suite()
+ local named=core.parse_presets('\239\187\191[ SLOT_2 ]\r\nPROFILE_NAME = Mixed Case Name  \r\n[global]\nprofile_name=other')
+ check(named[2]=='Mixed Case Name','mixed-case or BOM-prefixed preset name')
  local storage=dofile(root..'/portable_config/script-modules/player_ui_danmaku_online.lua')
  for _,case in ipairs({
   {'摇曳百合 S2E1 - 归来的主人公.mp4','摇曳百合','第 2 季','第 1 集'},
@@ -174,6 +176,7 @@ local function suite()
   add_forced_key_binding=function(key,n,f)bindings[n]=f;binding_keys[n]=key end,
   remove_key_binding=function(n)bindings[n]=nil;binding_keys[n]=nil end,register_script_message=function(n,f)messages[n]=f end,
   observe_property=function(n,_,f)observers[n]=f end,
+  add_hook=function(n,_,f)event_handlers[n]=f end,
   register_event=function(n,f)event_handlers[n]=event_handlers[n] or {};event_handlers[n][#event_handlers[n]+1]=f end}
  local saved={mp=package.loaded.mp,opts=package.loaded['mp.options'],utils=package.loaded['mp.utils']}
   package.loaded.mp=fake
@@ -216,6 +219,32 @@ local function suite()
   return false
  end
  check(ui().version=='1.3.0','production layout revision')
+ do
+  props.playlist={{id=11},{id=12}}
+  local function retry(id,first)
+   local failure={phase='failed',ssl_error=true,failure_id=id,retry_entry_id=11}
+   props['user-data/player_ui/playback']=failure
+   observers['user-data/player_ui/playback'](nil,failure);advance(.1)
+   if first then click(row('记住选择')) end
+   click(row('跳过校验并重试'))
+   check(props['tls-verify']==true,'a one-time retry keeps the session preference')
+  end
+  retry(1,true)
+  props['playlist-playing-pos']=0;props['playlist/0/id']=11
+  event_handlers.on_load()
+  check(props['file-local-options/tls-verify']==false,'the retry applies only to its playlist entry')
+  props['file-local-options/tls-verify']=nil
+  event_handlers.on_load()
+  check(props['file-local-options/tls-verify']==nil,'the one-time exception has been consumed')
+  retry(2,false)
+  props['playlist-playing-pos']=1;props['playlist/1/id']=12
+  event_handlers.on_load()
+  props['playlist-playing-pos']=0;event_handlers.on_load()
+  check(props['file-local-options/tls-verify']==nil,'an intervening file discards a pending exception')
+  props.playlist=nil
+  observers['user-data/player_ui/playback'](nil,nil)
+  messages['player_ui-show']();advance(.1)
+ end
  check(button('bangumi')~=nil,'logged-out account entry is in the bottom control bar')
  click('bangumi')
  check(ui().menu=='bangumi' and has_row('登录 Bangumi'),'account entry opens a bottom-bar popover')

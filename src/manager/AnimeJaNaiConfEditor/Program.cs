@@ -2,7 +2,10 @@ using Avalonia;
 using Avalonia.Threading;
 using ReactiveUI.Avalonia;
 using System;
+using System.IO;
 using System.IO.Pipes;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading;
 
 namespace AnimeJaNaiConfEditor
@@ -12,7 +15,16 @@ namespace AnimeJaNaiConfEditor
         // Shared id for both the single-instance mutex and the activation pipe. Mutex and named
         // pipes are cross-platform in .NET (pipes are Unix domain sockets on Linux/macOS), so this
         // works without any OS-specific code.
-        private const string SingleInstanceId = "mpv-AnimeFusionManager_SingleInstance";
+        private const string InstallerMutex = "mpv-AnimeFusionManager_SingleInstance";
+        private static readonly string SingleInstanceId = InstanceId(ViewModels.MainWindowViewModel.RootDir);
+
+        internal static string InstanceId(string directory)
+        {
+            var path = Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory));
+            if (OperatingSystem.IsWindows()) path = path.ToUpperInvariant();
+            var digest = SHA256.HashData(Encoding.UTF8.GetBytes(path));
+            return InstallerMutex + "_" + Convert.ToHexString(digest.AsSpan(0, 16));
+        }
 
         // Held in a static field for the process lifetime so the mutex stays owned until exit.
         private static Mutex? _singleInstanceMutex;
@@ -37,6 +49,7 @@ namespace AnimeJaNaiConfEditor
                 return;
             }
 
+            using var installerMutex = new Mutex(false, InstallerMutex);
             StartActivationListener();
             BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
         }

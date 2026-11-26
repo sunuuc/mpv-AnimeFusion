@@ -109,7 +109,12 @@ class ComponentContracts(unittest.TestCase):
             self.assertEqual(len(p['sha256']),64)
             release = ('https://github.com/sunuuc/mpv-AnimeFusion/releases/download/standalone-v1.3.4/'
                        if p['name'].startswith('upscale-model-') else
-                       'https://github.com/the-database/mpv-AnimeJaNai/releases/download/3.6.0/')
+                       'https://github.com/the-database/mpv-AnimeJaNai/releases/download/3.12.5/'
+                       if p['name']=='rife' else
+                       'https://raw.githubusercontent.com/the-database/mpv-AnimeJaNai/6b700f2954e80045e1d890a57a9cbab1327c49e2/BuildMpvUpscale2xAnimeJaNai/mpv-upscale-2x_animejanai/animejanai/onnx/'
+                       if p['name'].startswith('temporalfix-') else
+                       'https://github.com/the-database/animejanai-inference/releases/download/runtime-2/')
+            self.assertEqual(set(p['files']),set(p['file_sha256']))
             self.assertEqual(p['url'],release+p['asset'])
             self.assertGreater(p['bytes'],0)
         self.assertEqual(sum(p['name'].startswith('upscale-model-') for p in catalog['packs']),5)
@@ -127,13 +132,20 @@ class ComponentContracts(unittest.TestCase):
             runtime=app/'animejanai/inference/nvinfer_11.dll';runtime.parent.mkdir()
             runtime.write_bytes(b'optional runtime')
             notice=app/'animejanai/inference/DirectML_LICENSE.txt';notice.write_text('core notice')
-            prepare(app)
+            # The fixture contains synthetic model bytes, with its own catalog.
+            test_catalog=root/'components.json'
+            for pack in models:
+                name=pack['files'][0]
+                pack['file_sha256'][name]=hashlib.sha256((app/name).read_bytes()).hexdigest()
+            test_catalog.write_text(json.dumps(catalog))
+            with patch('components.CATALOG',test_catalog):
+                corrupted=app/models[0]['files'][0]
+                with corrupted.open('r+b') as stream: stream.write(b'y')
+                with self.assertRaisesRegex(RuntimeError,'digest'): prepare(app)
+                with corrupted.open('r+b') as stream: stream.write(b'x')
+                prepare(app)
             prepared=json.loads((app/'app/build-info/standalone/components.json').read_text())
-            for original,current in zip(catalog['packs'],prepared['packs']):
-                self.assertEqual({k:v for k,v in original.items() if k!='recommended'},
-                                 {k:v for k,v in current.items() if k!='recommended'})
-            self.assertEqual([p['name'] for p in prepared['packs']
-                              if p['name'].startswith('upscale-model-') and p['recommended']],['upscale-model-1'])
+            self.assertEqual(prepared, catalog)
             self.assertFalse(list(app.rglob('*.onnx')))
             self.assertFalse(list(root.rglob('*.7z')))
             self.assertFalse(runtime.exists())
@@ -167,9 +179,9 @@ class ComponentContracts(unittest.TestCase):
     def test_runtime_size_counts_binary_payload_without_shared_notice(self):
         catalog=json.loads((ROOT/'tools/standalone/component-catalog.json').read_text())
         runtime=next(p for p in catalog['packs'] if p['name']=='trt-runtime')
-        self.assertIn('animejanai/inference/DirectML_LICENSE.txt',runtime['files'])
+        self.assertIn('animejanai/inference/CUDA_LICENSE.txt',runtime['files'])
         # Sizes from the pinned upstream archive; its notice is also shipped by the core.
-        self.assertEqual(runtime['installed_bytes'],551024+388010096+45488240+2251888+918528)
+        self.assertEqual(runtime['installed_bytes'],551024+394814576+45633136+2241648+981104+327505)
     def test_ui_uses_component_owner_and_about_tab(self):
         text=(ROOT/'src/manager/AnimeJaNaiConfEditor/Views/MainWindow.axaml').read_text(encoding='utf-8')
         self.assertIn('ComponentManager.Apply',text)
@@ -191,7 +203,7 @@ class ComponentContracts(unittest.TestCase):
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
-def verify_updater(updater, seven, live=False, model_assets=None, package=None):
+def verify_updater(updater, seven, live=False, model_assets=None, package=None, live_small=False):
     with tempfile.TemporaryDirectory(prefix='neko-components-') as temp:
         root=Path(temp);app=root/'package';runtime_dir=app/'app';runtime_dir.mkdir(parents=True)
         # Updater publish directory contains runtime files, but no GUI is launched.
@@ -216,7 +228,7 @@ def verify_updater(updater, seven, live=False, model_assets=None, package=None):
             cache=app/'app/.component-downloads'/name;cache.mkdir(parents=True);shutil.copy2(archive,cache/'package.7z')
             return {'name':name,'asset':archive.name,'url':'https://github.com/sunuuc/mpv-AnimeFusion/releases/download/standalone-v1.3.4/'+archive.name,
                     'sha256':digest(archive),'bytes':archive.stat().st_size,'installed_bytes':len(content),'files':files,
-                    'requires':requires,'recommended':False}
+                    'file_sha256':{f:digest(root/'source'/f) for f in files},'requires':requires,'recommended':False}
         runtime=pack('fixture-runtime',b'test runtime')
         model=pack('fixture-model',b'test model',['fixture-runtime'])
         write([runtime,model])
@@ -227,6 +239,9 @@ def verify_updater(updater, seven, live=False, model_assets=None, package=None):
         call('--install','fixture-model')
         assert (app/model['files'][0]).read_bytes()==b'test model'
         assert all(p['installed'] for p in json.loads(call('--components','--json').stdout)['packs'])
+        (app/model['files'][0]).write_bytes(b'fake model')
+        assert not next(p for p in json.loads(call('--components').stdout)['packs'] if p['name']=='fixture-model')['installed']
+        (app/model['files'][0]).write_bytes(b'test model')
         call('--remove','fixture-runtime',ok=1)
         call('--remove','fixture-model');call('--remove','fixture-runtime')
         assert custom.read_bytes()==b'user content'
@@ -263,7 +278,7 @@ def verify_updater(updater, seven, live=False, model_assets=None, package=None):
         (root/'source'/first).write_bytes(b'new one');(root/'source'/second).write_bytes(b'new two')
         archive=root/'rollback.7z'
         subprocess.run([str(seven),'a','-t7z','-bd',str(archive),first,second],cwd=root/'source',stdout=subprocess.DEVNULL,check=True)
-        rollback={**model,'name':'rollback','requires':[], 'files':[first,second], 'installed_bytes':14,
+        rollback={**model,'name':'rollback','requires':[], 'files':[first,second], 'file_sha256':{f:digest(root/'source'/f) for f in (first,second)}, 'installed_bytes':14,
                   'bytes':archive.stat().st_size,'sha256':digest(archive)}
         cache=app/'app/.component-downloads/rollback';cache.mkdir(parents=True);shutil.copy2(archive,cache/'package.7z')
         (app/first).write_bytes(b'original one');(app/second).write_bytes(b'original two')
@@ -279,6 +294,24 @@ def verify_updater(updater, seven, live=False, model_assets=None, package=None):
         finally:kernel.CloseHandle(handle)
         assert (app/first).read_bytes()==b'original one' and (app/second).read_bytes()==b'original two'
         print('PASS failed commit restores existing files')
+        for relative in (first,second):
+            shutil.copy2(root/'source'/relative,app/relative)
+        (app/model['files'][0]).write_bytes(b'test model')
+        write([rollback,{**model,'requires':['rollback']}])
+        call('--remove','rollback',ok=1)
+        handle=kernel.CreateFileW(str(app/second),0x80000000,1,None,3,0,None)
+        assert handle not in (None,C.c_void_p(-1).value)
+        try:
+            call('--remove','fixture-model','rollback',ok=1)
+            assert all(p['installed'] for p in json.loads(call('--components').stdout)['packs'])
+        finally:
+            kernel.CloseHandle(handle)
+        assert (app/first).read_bytes()==b'new one' and (app/second).read_bytes()==b'new two'
+        assert not list(runtime_dir.glob('.component-removal-*'))
+        call('--remove','rollback','fixture-model')
+        assert not any(p['installed'] for p in json.loads(call('--components').stdout)['packs'])
+        assert all(not (app/f).exists() for f in [first,second,*model['files']])
+        print('PASS locked file restores every selected pack and the same batch can be retried')
         cancel=pack('cancel',b'cancel fixture');write([cancel])
         p=subprocess.run([str(runtime_dir/updater.name),'--install','cancel'],input=b'cancel\n',capture_output=True,timeout=20)
         assert p.returncode==3,(p.returncode,p.stdout,p.stderr)
@@ -287,12 +320,23 @@ def verify_updater(updater, seven, live=False, model_assets=None, package=None):
         catalog=json.loads((ROOT/'tools/standalone/component-catalog.json').read_text())
         write(catalog['packs'])
         state=json.loads(call('--components','--json').stdout)
-        sm=state['gpu']['sm']
+        expected = {'rife', 'upscale-model-1', 'upscale-model-2', 'upscale-model-5'}
         if state['gpu']['nvidia']:
-            kernel='trt-'+sm if 'trt-'+sm in {p['name'] for p in catalog['packs']} else 'trt-ptx'
-            assert {p['name'] for p in state['packs'] if p['recommended']}=={'trt-runtime',kernel}
-        else:assert not any(p['recommended'] for p in state['packs'])
-        print('PASS recommendations select the detected GPU generation without selecting models')
+            available = {p['name'] for p in catalog['packs']}
+            expected.add('trt-runtime')
+            for sm in state['gpu']['sm'].split(', '):
+                expected.add('trt-' + sm if 'trt-' + sm in available else 'trt-ptx')
+        def recommendations(result):
+            return {p['name'] for p in result['packs'] if p['recommended']}
+        assert recommendations(state) == expected
+        config_path = app/'animejanai/animejanai.conf'
+        for enabled in ('yes', 'no'):
+            config_path.write_text('[slot_1]\nchain_1_rife=' + enabled +
+                '\nchain_1_temporal_fix_model=temporalfix_s2_v1_op18_fp16\n', encoding='utf-8')
+            assert recommendations(json.loads(call('--components', '--json').stdout)) == expected
+        config_path.unlink()
+        assert recommendations(json.loads(call('--components', '--json').stdout)) == expected
+        print('PASS hardware recommendations for new, configured and missing profiles')
         if model_assets:
             catalog=json.loads((package/'app/build-info/standalone/components.json').read_text())
             models=[p for p in catalog['packs'] if p['name'].startswith('upscale-model-')]
@@ -307,6 +351,20 @@ def verify_updater(updater, seven, live=False, model_assets=None, package=None):
                 assert next(x for x in json.loads(call('--components','--json').stdout)['packs'] if x['name']==p['name'])['installed']
                 call('--remove',p['name']);assert not (app/p['files'][0]).exists()
             print('PASS all separate upstream model assets install, register and remove:',len(models))
+        if live or live_small:
+            small=next(p for p in catalog['packs'] if p['name']=='upscale-model-2')
+            write([small])
+            download=call('--install',small['name'])
+            progress=[line for line in download.stdout.decode('utf-8').splitlines()
+                      if line.startswith('Downloading '+small['name']+': ')]
+            total=small['bytes']//1024
+            assert progress and all(line.endswith(f'/ {total} KB)') for line in progress),progress
+            assert progress[-1].endswith(f'100% ({total} / {total} KB)'),progress[-1]
+            for name, expected in small['file_sha256'].items():
+                assert digest(app/name)==expected
+            call('--remove',small['name'])
+            assert all(not (app/name).exists() for name in small['files'])
+            print('PASS small official component download, size, SHA-256 and removal:',progress[0],progress[-1])
         if live:
             catalog=json.loads((ROOT/'tools/standalone/component-catalog.json').read_text())
             p=next(p for p in catalog['packs'] if p['name']=='trt-sm75').copy()
@@ -318,9 +376,10 @@ def verify_updater(updater, seven, live=False, model_assets=None, package=None):
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('app',nargs='?');parser.add_argument('--updater',type=Path);parser.add_argument('--seven',type=Path);parser.add_argument('--live',action='store_true');parser.add_argument('--model-assets',type=Path)
+    parser.add_argument('--live-small',action='store_true',help='download only the small real model for the live progress check')
     args=parser.parse_args()
     suite=unittest.defaultTestLoader.loadTestsFromTestCase(ComponentContracts)
     if not unittest.TextTestRunner().run(suite).wasSuccessful():raise SystemExit(1)
     if args.app:print('PASS model-free package:',validate(Path(args.app)))
     if args.model_assets and not args.app:parser.error('--model-assets requires the package directory')
-    if args.updater:verify_updater(args.updater.resolve(),args.seven.resolve(),args.live,args.model_assets,Path(args.app) if args.app else None)
+    if args.updater:verify_updater(args.updater.resolve(),args.seven.resolve(),args.live,args.model_assets,Path(args.app) if args.app else None,args.live_small)

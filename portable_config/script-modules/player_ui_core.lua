@@ -226,11 +226,13 @@ end
 function M.inside(b,x,y) return b and x>=b.x0 and x<=b.x1 and y>=b.y0 and y<=b.y1 end
 function M.parse_presets(text)
     local out,section={},''
-    for line in tostring(text):gmatch('[^\r\n]+') do
-        local s=line:match('^%s*%[([^%]]+)%]'); if s then section=s end
+    text=tostring(text):gsub('^\239\187\191','')
+    for line in text:gmatch('[^\r\n]+') do
+        local s=line:match('^%s*%[%s*(.-)%s*%]%s*$')
+        if s then section=s:lower() end
         local id=section:match('^slot_(%d+)$')
-        local name=line:match('^%s*profile_name%s*=%s*(.-)%s*$')
-        if id and name and tonumber(id)>=1 and tonumber(id)<=9 then out[tonumber(id)]=name end
+        local key,name=line:match('^%s*([%w_]+)%s*=%s*(.-)%s*$')
+        if id and key and key:lower()=='profile_name' and tonumber(id)>=1 and tonumber(id)<=9 then out[tonumber(id)]=name end
     end
     return out
 end

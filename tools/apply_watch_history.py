@@ -24,7 +24,23 @@ def apply(root):
          '#include <libavutil/avutil.h>\n#include <libavcodec/codec_par.h>\n')
     edit('player/loadfile.c', '#include "misc/json.h"\n',
          '#include "misc/json.h"\n#include "misc/node.h"\n')
-    edit('player/loadfile.c', 'static void append_to_watch_history(struct MPContext *mpctx)\n', '''// Snapshot the same in-memory stream headers used by track-list and
+    edit('player/loadfile.c', 'static void append_to_watch_history(struct MPContext *mpctx)\n', '''// Keep local filenames verbatim. Network history only needs the source host and path.
+static char *watch_history_source(void *ctx, char *value)
+{
+    bstr rest;
+    bstr proto = mp_split_proto(bstr0(value), &rest);
+    if (!proto.len)
+        return value;
+    // Some input protocols wrap another URL, e.g. ytdl://https://...
+    while (mp_is_url(rest))
+        proto = mp_split_proto(rest, &rest);
+    rest = bstr_splice(rest, 0, bstrcspn(rest, "?#"));
+    bstr authority = bstr_splice(rest, 0, bstrcspn(rest, "/"));
+    rest = bstr_cut(rest, bstrrchr(authority, '@') + 1);
+    return talloc_asprintf(ctx, "%.*s://%.*s", BSTR_P(proto), BSTR_P(rest));
+}
+
+// Snapshot the same in-memory stream headers used by track-list and
 // file-format. Do not probe the stream, query its size, or open another input.
 static void append_history_media_info(struct MPContext *mpctx, mpv_node *entry)
 {
@@ -82,6 +98,19 @@ static void append_history_media_info(struct MPContext *mpctx, mpv_node *entry)
 
 static void append_to_watch_history(struct MPContext *mpctx)
 ''')
+    edit('player/loadfile.c', '    mpv_node_list *list = talloc_zero(ctx, mpv_node_list);\n',
+         '''    char *source = watch_history_source(ctx, mpctx->filename);
+    if (title && mp_is_url(bstr0(title))) {
+        title = watch_history_source(ctx, title);
+    } else if (title && mp_is_url(bstr0(mpctx->filename)) &&
+               strcmp(title, mp_basename(mpctx->filename)) == 0) {
+        title = (char *)mp_basename(source);
+    }
+
+    mpv_node_list *list = talloc_zero(ctx, mpv_node_list);
+''')
+    edit('player/loadfile.c', '        .u.string = mpctx->filename,\n',
+         '        .u.string = source,\n')
     edit('player/loadfile.c', '    bstr dst = {0};\n',
          '    append_history_media_info(mpctx, &node);\n\n    bstr dst = {0};\n')
     edit('player/loadfile.c', '''    if (!mpctx->opts->save_watch_history)

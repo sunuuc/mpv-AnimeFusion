@@ -250,7 +250,9 @@ def main():
         # reopen it, read another byte, seek, or even ask for its file size.
         stream = MemoryStream(player, media.read_bytes())
         player.set('demuxer-readahead-secs', '60')
-        player.load('history-memory://fixture.y4m', 0)
+        signed = 'history-memory://test:private@fixture/clip@2.y4m?api_key=private#private'
+        player.set('force-media-title', signed)
+        player.load(signed, 0)
         assert stream.eof.wait(5), 'Original input did not reach EOF while buffering'
         before = stream.calls.copy()
         player.stop()
@@ -258,7 +260,10 @@ def main():
         assert {k: v for k, v in stream.calls.items() if k != 'close'} == {
             k: v for k, v in before.items() if k != 'close'}, stream.calls
         assert stream.calls['close'] == 1
-        assert records()[-1]['media_info']['tracks'][0]['width'] == 16
+        entry = records()[-1]
+        assert entry['media_info']['tracks'][0]['width'] == 16
+        assert entry['path'] == entry['title'] == 'history-memory://fixture/clip@2.y4m'
+        assert 'private' not in history.read_text(encoding='utf-8')
         stream_access = {'before_history': before, 'after_history': stream.calls.copy()}
     finally:
         player.close()
@@ -266,7 +271,7 @@ def main():
               'cases': ['initial-seek', 'forward-range', 'backward-range', 'final-not-furthest',
                         'duplicate-open', 'watch-later-resume', 'eof', 'failed-open',
                         'paused-quit', 'history-opt-out', 'unicode-title',
-                        'video-metadata', 'audio-metadata', 'no-extra-stream-access']}
+                        'video-metadata', 'audio-metadata', 'no-extra-stream-access', 'private-url-history']}
     (output / 'results.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
     print(json.dumps(report, ensure_ascii=False))
 

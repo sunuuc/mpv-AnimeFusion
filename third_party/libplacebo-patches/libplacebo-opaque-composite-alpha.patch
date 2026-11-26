@@ -1,0 +1,22 @@
+diff --git a/src/vulkan/swapchain.c b/src/vulkan/swapchain.c
+index 2470d68f..7f900326 100644
+--- a/src/vulkan/swapchain.c
++++ b/src/vulkan/swapchain.c
+@@ -594,8 +594,16 @@ caps_ready:
+         {VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR,         PL_ALPHA_UNKNOWN},
+     };
+ 
++    // Without requested alpha bits, prefer an opaque swapchain. A blended one
++    // forces the compositor to composite the window; on Windows this keeps the
++    // DXGI swapchain the driver presents through out of independent flip, and
++    // with it VRR and tearing.
++    VkCompositeAlphaFlagsKHR alpha_caps = caps.supportedCompositeAlpha;
++    if (!p->params.alpha_bits && (alpha_caps & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR))
++        alpha_caps = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
++
+     for (int i = 0; i < PL_ARRAY_SIZE(alphaModes); i++) {
+-        if (caps.supportedCompositeAlpha & alphaModes[i].vk_mode) {
++        if (alpha_caps & alphaModes[i].vk_mode) {
+             info->compositeAlpha = alphaModes[i].vk_mode;
+             p->color_repr.alpha = alphaModes[i].pl_mode;
+             PL_DEBUG(vk, "Requested alpha compositing mode: %s",

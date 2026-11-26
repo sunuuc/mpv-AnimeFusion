@@ -38,13 +38,29 @@ public static class WinApi
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     public static extern IntPtr FindWindowEx(
-        IntPtr parentHandle, IntPtr childAfter, string lclassName, string? windowTitle);
+        IntPtr parentHandle, IntPtr childAfter, string? lclassName, string? windowTitle);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern bool SetProp(IntPtr hwnd, string name, IntPtr data);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern IntPtr GetProp(IntPtr hwnd, string name);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern IntPtr RemoveProp(IntPtr hwnd, string name);
+
+    [DllImport("user32.dll")]
+    public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out int processId);
+
+    [DllImport("user32.dll")]
+    public static extern bool ReplyMessage(IntPtr result);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     public static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    public static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, ref CopyDataStruct lParam);
+    public static extern IntPtr SendMessageTimeout(IntPtr hWnd, int msg, IntPtr wParam, ref CopyDataStruct lParam,
+        uint flags, uint timeout, out IntPtr result);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     public static extern IntPtr PostMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
@@ -143,7 +159,7 @@ public static class WinApi
         public WINDOWPOS lppos;
     }
 
-    [StructLayout(LayoutKind.Sequential)]
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     public struct CopyDataStruct
     {
         public IntPtr dwData;

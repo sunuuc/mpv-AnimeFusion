@@ -1,0 +1,22 @@
+diff --git a/src/vulkan/context.c b/src/vulkan/context.c
+--- a/src/vulkan/context.c
++++ b/src/vulkan/context.c
+@@ -1353,6 +1353,18 @@ static bool device_init(struct vk_ctx *vk, const struct pl_vulkan_params *params)
+             flags[i] &= flags_sup[i];
+     }
+ 
++    // NVIDIA RTX HDR can deadlock inside vkQueuePresentKHR when the driver
++    // owns queue synchronization. Keep the normal libplacebo queue locks.
++#if defined(PL_HAVE_WIN32) && defined(VK_KHR_internally_synchronized_queues)
++    if (vk->props.vendorID == 0x10DE) { // NVIDIA PCI vendor ID
++        VkPhysicalDeviceInternallySynchronizedQueuesFeaturesKHR *isq =
++            (void *) vk_find_struct(&features,
++                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_INTERNALLY_SYNCHRONIZED_QUEUES_FEATURES_KHR);
++        if (isq)
++            isq->internallySynchronizedQueues = false;
++    }
++#endif
++
+     // Construct normalized output chain
+     vk->features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+     vk_features_normalize(vk->alloc, &features, vk->api_ver, &vk->features);

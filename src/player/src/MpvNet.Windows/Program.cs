@@ -11,6 +11,8 @@ namespace MpvNet.Windows;
 
 static class Program
 {
+    internal static string? InstanceWindowProperty { get; private set; }
+
     [STAThread]
     static void Main()
     {
@@ -41,7 +43,6 @@ static class Program
             StartupDiagnostics.Begin();
             App.Init();
             Theme.Init();
-            Mutex mutex = new Mutex(true, StringHelp.GetMD5Hash(App.ConfPath), out bool isFirst);
 
             if (Control.ModifierKeys == Keys.Shift ||
                 App.CommandLine.Contains("--process-instance=multi") ||
@@ -53,51 +54,15 @@ static class Program
                     App.AutoLoadFolder = false;
             }
 
-            if ((App.ProcessInstance == "single" || App.ProcessInstance == "queue") && !isFirst)
+            bool first = true;
+            if (App.ProcessInstance is "single" or "queue")
+                InstanceWindowProperty = "mpv-AnimeFusion-" + StringHelp.GetMD5Hash(App.ConfPath);
+            using var mutex = InstanceWindowProperty == null ? null : new Mutex(false, InstanceWindowProperty, out first);
+            bool commandOnly = CommandLine.Parsed.GlobalOptions.Any(option => option.Name == "command");
+            if (!first && (ForwardToExistingInstance(InstanceWindowProperty!) || commandOnly))
             {
-                List<string> args2 = new List<string> { App.ProcessInstance };
-
-                foreach (string arg in args)
-                {
-                    if (!arg.StartsWith("--") && (arg == "-" || arg.Contains("://") ||
-                        arg.Contains(":\\") || arg.StartsWith("\\\\")))
-
-                        args2.Add(arg);
-                    else if (arg == "--queue")
-                        args2[0] = "queue";
-                    else if (arg.StartsWith("--command="))
-                    {
-                        args2[0] = "command";
-                        args2.Add(arg[10..]);
-                    }
-                }
-
-                Process[] procs = Process.GetProcessesByName(Path.GetFileNameWithoutExtension(Environment.ProcessPath!));
-
-                for (int i = 0; i < 20; i++)
-                {
-                    foreach (Process proc in procs)
-                    {
-                        if (proc.MainWindowHandle != IntPtr.Zero)
-                        {
-                            WinApi.AllowSetForegroundWindow(proc.Id);
-                            var data = new WinApi.CopyDataStruct();
-                            data.lpData = string.Join("\n", args2.ToArray());
-                            data.cbData = data.lpData.Length * 2 + 1;
-                            WinApi.SendMessage(proc.MainWindowHandle, 0x004A /*WM_COPYDATA*/, IntPtr.Zero, ref data);
-                            mutex.Dispose();
-
-                            if (App.IsTerminalAttached)
-                                WinApi.FreeConsole();
-
-                            return;
-                        }
-                    }
-
-                    Thread.Sleep(50);
-                }
-
-                mutex.Dispose();
+                if (App.IsTerminalAttached)
+                    WinApi.FreeConsole();
                 return;
             }
 
@@ -119,13 +84,55 @@ static class Program
             if (App.IsTerminalAttached)
                 WinApi.FreeConsole();
 
-            mutex.Dispose();
         }
         catch (Exception ex)
         {
             StartupDiagnostics.Failed(ex);
             Terminal.WriteError(ex);
         }
+    }
+
+    static bool ForwardToExistingInstance(string windowProperty)
+    {
+        var parsed = CommandLine.Parsed;
+        var command = parsed.GlobalOptions.LastOrDefault(option => option.Name == "command");
+        var queue = parsed.GlobalOptions.LastOrDefault(option => option.Name == "queue");
+        var mode = queue == null ? App.ProcessInstance : queue.Value == "yes" ? "queue" : "single";
+        var payload = command == null
+            ? new[] { mode }.Concat(parsed.Entries.Select(entry => entry.Path.Contains("://")
+                ? entry.Path : Path.GetFullPath(entry.Path)))
+            : new[] { "command", command.Value };
+        var data = new WinApi.CopyDataStruct { lpData = string.Join("\n", payload) };
+        data.cbData = (data.lpData.Length + 1) * sizeof(char);
+
+        // The configured instance may still be creating its window.
+        for (int attempt = 0; attempt < 20; attempt++)
+        {
+            IntPtr window = IntPtr.Zero;
+            bool found = false;
+            while ((window = WinApi.FindWindowEx(IntPtr.Zero, window, null, null)) != IntPtr.Zero)
+            {
+                if (WinApi.GetProp(window, windowProperty) == IntPtr.Zero)
+                    continue;
+
+                found = true;
+                WinApi.GetWindowThreadProcessId(window, out int processId);
+                WinApi.AllowSetForegroundWindow(processId);
+                const uint abortIfHung = 0x0002, errorOnExit = 0x0020;
+                if (WinApi.SendMessageTimeout(window, 0x004A, IntPtr.Zero, ref data,
+                    abortIfHung | errorOnExit, 2000, out var accepted) != IntPtr.Zero && accepted != IntPtr.Zero)
+                    return true;
+            }
+            if (found)
+                break;
+            Thread.Sleep(50);
+        }
+        if (command != null)
+        {
+            Terminal.WriteError("播放器没有接收命令。");
+            Environment.ExitCode = 1;
+        }
+        return false;
     }
 
     static bool ProcessCommandLineArguments()

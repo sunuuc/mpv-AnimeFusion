@@ -1,0 +1,16 @@
+diff --git a/src/vulkan/swapchain.c b/src/vulkan/swapchain.c
+--- a/src/vulkan/swapchain.c
++++ b/src/vulkan/swapchain.c
+@@ -984,7 +984,11 @@ static bool vk_sw_submit_frame(pl_swapchain sw)
+     pl_rc_ref(&p->frames_in_flight);
+     vk_cmd_callback(cmd, VK_CB_FUNC(present_cb), p, NULL);
+-    int qidx = cmd->qindex;
++    // Present requests are ordered within one queue. Keep this order across
++    // frames even when rendering rotates between several graphics queues.
++    // The per-image sem_out still waits for rendering on its chosen queue;
++    // vk_rotate_queues below preserves rendering/compute/transfer parallelism.
++    int qidx = 0;
+     if (!CMD_SUBMIT(&cmd)) {
+         pl_mutex_unlock(&p->lock);
+         return false;
+     }

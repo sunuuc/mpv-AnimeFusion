@@ -231,11 +231,13 @@ end
 function M.inside(b,x,y) return b and x>=b.x0 and x<=b.x1 and y>=b.y0 and y<=b.y1 end
 function M.parse_presets(text)
     local out,section={},''
-    for line in tostring(text):gmatch('[^\r\n]+') do
-        local s=line:match('^%s*%[([^%]]+)%]'); if s then section=s end
+    text=tostring(text):gsub('^\239\187\191','')
+    for line in text:gmatch('[^\r\n]+') do
+        local s=line:match('^%s*%[%s*(.-)%s*%]%s*$')
+        if s then section=s:lower() end
         local id=section:match('^slot_(%d+)$')
-        local name=line:match('^%s*profile_name%s*=%s*(.-)%s*$')
-        if id and name and tonumber(id)>=1 and tonumber(id)<=9 then out[tonumber(id)]=name end
+        local key,name=line:match('^%s*([%w_]+)%s*=%s*(.-)%s*$')
+        if id and key and key:lower()=='profile_name' and tonumber(id)>=1 and tonumber(id)<=9 then out[tonumber(id)]=name end
     end
     return out
 end
@@ -936,6 +938,10 @@ function M.search_results(text, keyword, parse_json, clean)
 end
 
 local PLATFORM_PREFIXES={tencent='qq',iqiyi='qiyi',bilibili='bilibili',migu='migu'}
+local function known_platform(value)
+    local key=tostring(value or ''):lower()
+    if PLATFORM_NAMES[key] or key=='renren' then return PLATFORM_PREFIXES[key] or key end
+end
 local function is_extra_episode(title,number)
     local lower=title_width(title):lower():gsub('^%s*【.-】%s*',''):gsub('^%s*%[.-%]%s*','')
     local short=trim(title_width(number)):lower()
@@ -952,11 +958,24 @@ local function is_extra_episode(title,number)
         or lower:match('%f[%a]pv%f[%A]')
 end
 
-function M.bangumi_episodes(text, parse_json, clean, platform_key)
+function M.bangumi_episodes(text, parse_json, clean, platform_key, expected_show)
     local data, err = decode_json(text, parse_json)
     if not data then return nil, err end
     local bangumi=data.bangumi
     if type(bangumi)~='table' or type(bangumi.episodes)~='table' then return {},nil end
+    if expected_show then
+        local id=M.episode_id(bangumi.animeId)
+        if id and id~=M.episode_id(expected_show.id) then return nil,'作品信息已变化' end
+        local wanted=M.show_info(expected_show.label or '',clean)
+        local actual=M.show_info(bangumi.animeTitle or '',clean)
+        if wanted.series~='' and actual.series~='' and
+            (identity(wanted.series)~=identity(actual.series) or
+             wanted.year and actual.year and wanted.year~=actual.year or
+             wanted.season and actual.season and wanted.season~=actual.season or
+             wanted.part and actual.part and wanted.part~=actual.part) then
+            return nil,'作品信息已变化'
+        end
+    end
     local out={}
     local selected_prefix=PLATFORM_PREFIXES[platform_key] or tostring(platform_key or ''):lower()
     for _,episode in ipairs(bangumi.episodes) do
@@ -1193,13 +1212,15 @@ function M.auto_episode(episodes,media_name,show)
     return selected
 end
 
-function M.parse_comments(text, parse_json, core)
+function M.parse_comments(text, parse_json, core, expected_key)
     if type(text) ~= 'string' or text == '' then return nil, '服务器响应为空' end
     text = text:gsub('^\239\187\191', '')
     local data, err = decode_json(text, parse_json)
     if not data then return nil, err end
     if type(data.comments) ~= 'table' then return nil, '响应中没有弹幕列表' end
     local out, scanned = {}, 0
+    local expected=known_platform(expected_key)
+    local observed,ambiguous=nil,false
     for _, comment in ipairs(data.comments) do
         scanned = scanned + 1
         if type(comment) == 'table' then
@@ -1213,12 +1234,20 @@ function M.parse_comments(text, parse_json, core)
                 and core.finite(mode) and mode>=1 and mode<=9 and mode==math.floor(mode) then
                 local value = core.clean(tostring(comment.m or '')):gsub('[\r\n]+', ' ')
                 if value ~= '' then
+                    if expected and not ambiguous then
+                        local platform=known_platform((fields[4] or ''):match('^%[([%w_-]+)%]'))
+                        if not platform or observed and platform~=observed then ambiguous=true end
+                        observed=platform
+                    end
                     out[#out + 1] = {t = time, mode = mode, text = value,
                         color = core.finite(color) and core.clamp(math.floor(color), 0, 16777215) or 16777215}
                 end
             end
         end
         if #out >= 50000 or scanned >= 50000 then break end
+    end
+    if expected and observed and not ambiguous and observed~=expected then
+        return nil,'弹幕平台与所选来源不符',true
     end
     table.sort(out, function(a, b) return a.t < b.t end)
     return out
@@ -1312,6 +1341,8 @@ local function read_series_sources()
 end
 local servers=read_private_servers()
 local series_sources=read_series_sources()
+-- A compatible server may recycle episode IDs when its catalogue changes.
+local verified_series={}
 local function remember_source(name,index,show,available)
     local key=online.series_source_key(name)
     local server=servers[index]
@@ -1323,6 +1354,7 @@ local function remember_source(name,index,show,available)
     end
     series_sources[key]={server_url=server.url,id=show.id,key=show.key,
         label=show.label,kind=show.kind,episodes=saved_episodes}
+    verified_series[server.url]=key
     if not write_private_file(series_sources_path(),utils.format_json(series_sources)) then
         mp.msg.warn('弹幕来源记录保存失败')
     end
@@ -1813,6 +1845,8 @@ local function run_request(spec,callback,shared_serial,error_label)
 end
 local unsupported_api_error
 local function request(url,body,callback,shared_serial)
+    local catalogue=url:match('^(.-)/api/v2/search/anime%?') or url:match('^(.-)/api/v2/match$')
+    if catalogue then verified_series[catalogue]=nil end
     local serial=shared_serial or cancel_request()
     local file_generation=generation
     local function attempt(number)
@@ -1944,8 +1978,8 @@ local function finish_search_batch(batch)
         callback(#visible>0,status)
     end
 end
-local function parse_remote(text)
-    return online.parse_comments(text,utils.parse_json,core)
+local function parse_remote(text,platform_key)
+    return online.parse_comments(text,utils.parse_json,core,platform_key)
 end
 local function adopt(list,label,platform_key)
 
@@ -1969,12 +2003,12 @@ local function fetch_episode(episode_id,label,server_index,quiet,on_missing,shar
     if not quiet then prepare_notice() end
     status='获取弹幕中…';publish()
     request(sv.url..'/api/v2/comment/'..id..'?withRelated=true',nil,function(body,err)
-        local list,why=parse_remote(body or '')
+        local list,why,wrong_source=parse_remote(body or '',platform_key)
         if not list then
             cancel_preparation()
             route_log(server_index or source,'弹幕读取',err or why or '响应无效',true)
             if on_missing then
-                if err or why then on_missing(server_error('获取弹幕',err or why)) else on_missing() end
+                if err or why then on_missing(server_error('获取弹幕',err or why),wrong_source) else on_missing() end
                 return
             end
             status=server_error('获取弹幕',err or why);autoload_state='error';publish()
@@ -2304,7 +2338,7 @@ local function automatic_match_all_routes(attempt)
                 request(servers[index].url..'/api/v2/comment/'..episode.id..'?withRelated=true',nil,function(comments,comment_error)
                     if attempt.finished then return end
                     local list,parse_error
-                    if not comment_error then list,parse_error=parse_remote(comments or '') end
+                    if not comment_error then list,parse_error=parse_remote(comments or '',candidate.key) end
                     if list and #list>0 then
                         remember_source(attempt.name,index,candidate,available)
                         attempt.finished=true;cancel_request();source=index
@@ -2388,8 +2422,9 @@ local function load_remembered_source(attempt,on_missing)
         if not episode or not online.episode_id(episode.id) then on_missing();return end
         route_log(index,'来源复用','直接读取已记住平台的对应剧集')
         fetch_episode(episode.id,online.limit_text(saved.label..' · '..episode.label,220,core.clean),
-            index,attempt.quiet,function(err)
-                attempt.failed_episodes={[index..':'..episode.id]=true}
+            index,attempt.quiet,function(err,wrong_source)
+                verified_series[saved.server_url]=nil
+                if not wrong_source then attempt.failed_episodes={[index..':'..episode.id]=true} end
                 if err then append_attempt_error(attempt,index,'弹幕读取',err) end
                 on_missing()
             end,attempt.serial,function()
@@ -2399,12 +2434,13 @@ local function load_remembered_source(attempt,on_missing)
                 status='该集没有弹幕';autoload_state='empty';publish()
             end,saved.key)
     end
-    if online.auto_episode(saved.episodes,attempt.name,saved) then load(saved.episodes);return end
-    -- An ongoing series can gain episodes. Refresh this platform's list directly,
-    -- without searching the work again, before declaring the source unavailable.
+    if verified_series[saved.server_url]==online.series_source_key(attempt.name) and
+        online.auto_episode(saved.episodes,attempt.name,saved) then load(saved.episodes);return end
+    -- Across works or sessions the saved numeric episode may now belong to
+    -- another title on the very same platform. Recheck the saved show directly.
     request(servers[index].url..'/api/v2/bangumi/'..saved.id,nil,function(body,err)
         local available,why
-        if not err then available,why=online.bangumi_episodes(body or '',utils.parse_json,core.clean,saved.key) end
+        if not err then available,why=online.bangumi_episodes(body or '',utils.parse_json,core.clean,saved.key,saved) end
         if not available then
             if err or why then append_attempt_error(attempt,index,'剧集核验',err or why) end
             on_missing();return

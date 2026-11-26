@@ -9,6 +9,8 @@ Check(p.Entries.Count==2,"two episodes");
 Check(p.GlobalOptions.Count==2,"no local option leaked globally");
 Check(p.EmptyGroupOptionsPromoted==0 && p.PromotedOptions.Count==0,"ordinary media scopes are not promoted");
 Check(p.NeedsDedicatedProcess,"dedicated IPC process");
+Check(ScopedCommandLine.Parse(new[] { "-" }).NeedsDedicatedProcess, "stdin stays attached to its process");
+Check(!ScopedCommandLine.Parse(new[] { "第 一 集.mkv" }).NeedsDedicatedProcess, "relative local media can be forwarded");
 Check(p.Entries[0].Options.Single(o=>o.Name=="start").Value=="5","first resume position");
 Check(p.Entries[1].Options.Single(o=>o.Name=="start").Value=="12","second resume position");
 Check(p.Entries[0].Options.Single(o=>o.Name=="force-media-title").Value=="第 1 集","first title");

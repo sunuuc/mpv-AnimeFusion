@@ -98,6 +98,7 @@ local timer
 local samples = {}
 local status, status_time = nil, -math.huge
 local filter_errors = {}
+local confirmed_slot, confirmed_width, confirmed_height
 local WINDOW, INTERVAL = 2.0, 0.25
 
 local function reset()
@@ -122,23 +123,46 @@ end
 local function ai_status(now)
     if status and now - status_time < 2 then return status end
     status_time = now
-    local active
+    local active, last
     for _, f in ipairs(mp.get_property_native('vf', {}) or {}) do
-        if f.name == 'animejanai' or f.name == 'vapoursynth' then active = f;break end
+        if not active and (f.name == 'animejanai' or f.name == 'vapoursynth') then active = f end
+        if f.enabled ~= false then last = f end
     end
     if not active then status = 'AI 已关闭'; return status end
     if #filter_errors > 0 then
         status = '超分与补帧失败：\n' .. table.concat(filter_errors, '\n')
         return status
     end
+    if active.enabled == false then status = '超分与补帧已停用'; return status end
+    local requested = mp.get_property_number('user-data/animejanai/requested-slot')
+    if active.name == 'animejanai' and
+            (not confirmed_slot or requested and requested ~= confirmed_slot) then
+        status = requested == 0 and 'AI 已关闭' or '等候当前滤镜状态'
+        return status
+    end
+    if active.name == 'animejanai' and active == last then
+        local output = mp.get_property_native('video-out-params')
+        if output and output.w and output.h and
+                (output.w ~= confirmed_width or output.h ~= confirmed_height) then
+            status = string.format('当前视频输出：%d×%d', output.w, output.h)
+            return status
+        end
+    end
     local path = active.params and active.params.stats
     path = mp.command_native({'expand-path', path or '~~/../animejanai/currentanimejanai.log'})
     local file = path and io.open(path, 'r')
     status = file and file:read(65536) or nil
     if file then file:close() end
-    if active.enabled == false or not status or status == '' then
-        status = active.enabled == false and '超分与补帧已停用' or '未读取到超分与补帧状态'
+    if active.name == 'animejanai' and status then
+        local width, height
+        for w, h in status:gmatch('New Video Resolution:%s*(%d+)x(%d+)') do
+            width, height = tonumber(w), tonumber(h)
+        end
+        if width and (width ~= confirmed_width or height ~= confirmed_height) then
+            status = nil
+        end
     end
+    if not status or status == '' then status = '未读取到当前超分与补帧状态' end
     return status
 end
 
@@ -182,11 +206,21 @@ end
 -- Its stats file may still contain the previous successful configuration.
 mp.enable_messages('v')
 mp.register_event('log-message', function(event)
+    if event.prefix == 'vf' and (event.text or ''):match('^Disabling filter aji because it has failed') then
+        if #filter_errors == 0 then filter_errors[1] = '滤镜已停用，可重新选择配置重试' end
+        status, status_time = nil, -math.huge
+        return
+    end
     if event.prefix ~= 'animejanai' then return end
     local text = (event.text or ''):gsub('[\r\n]+$', '')
     if text == '' then return end
-    if event.level == 'v' and (text:match('^Configured slot %d+:') or
-       text:match('^No chain active for .+ %(passthrough%)$')) then
+    if event.level == 'v' then
+        local slot, w, h = text:match('^Configured slot (%d+): %d+x%d+ %-> (%d+)x(%d+)')
+        if not slot then
+            w, h, slot = text:match('^No chain active for (%d+)x(%d+)@%S+ slot (%d+) %(passthrough%)$')
+        end
+        if not slot then return end
+        confirmed_slot, confirmed_width, confirmed_height = tonumber(slot), tonumber(w), tonumber(h)
         filter_errors = {}
         status, status_time = nil, -math.huge
         return
@@ -198,11 +232,16 @@ mp.register_event('log-message', function(event)
     status, status_time = nil, -math.huge
 end)
 for _, event in ipairs({'start-file', 'end-file'}) do
-    mp.register_event(event, function() filter_errors = {} end)
+    mp.register_event(event, function()
+        filter_errors = {}
+        confirmed_slot, confirmed_width, confirmed_height = nil, nil, nil
+        status, status_time = nil, -math.huge
+    end)
 end
 mp.observe_property('pause', 'bool', function() reset(); if visible then render() end end)
 mp.observe_property('speed', 'number', reset)
 mp.observe_property('vf', 'native', reset)
+mp.observe_property('video-out-params', 'native', reset)
 -- Slot commands reconfigure the existing filter, so the vf property does not
 -- change. Do not mix the previous slot's frames with the new target rate.
 mp.observe_property('user-data/animejanai/requested-slot', 'number', function()

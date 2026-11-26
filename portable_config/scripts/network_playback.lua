@@ -83,7 +83,8 @@ local function record(phase)
     state.has_media=mp.get_property('path','')~=''
     state.playlist_count=mp.get_property_number('playlist-count',0)
     state.position=mp.get_property_number('playlist-pos',-1)
-    state.network_thumbnails=false;state.playlist_prefetch=false
+    state.network_thumbnails=false
+    state.playlist_prefetch=mp.get_property_bool('prefetch-playlist',false)
     history[#history+1]={time=os.date('!%Y-%m-%dT%H:%M:%SZ'),phase=phase,network=state.network,
         has_media=state.has_media,playlist_count=state.playlist_count,position=state.position,http_status=state.http_status,
         file_error=state.file_error,error=state.error,details=phase=='failed' and errors or nil,
@@ -99,16 +100,15 @@ local function set(name,value)
     local ok,err=mp.set_property(name,value)
     if not ok then message.error('Playback policy option '..name..': '..tostring(err)) end
 end
-set('prefetch-playlist','no')
 mp.register_event('start-file',cancel_failure)
 mp.add_hook('on_load',-1000,function()
     cancel_failure()
     state.network=not not remote(mp.get_property('stream-open-filename',mp.get_property('path','')))
     state.http_status=nil;state.file_error=nil;state.error=nil;errors={}
     certificate_failure=false;state.ssl_error=false;state.retry_entry_id=nil
-    set('prefetch-playlist','no')
     if state.network then
-        for name,value in pairs({['sub-auto']='no',['audio-file-auto']='no',['cover-art-auto']='no',
+        for name,value in pairs({['prefetch-playlist']='no',
+            ['sub-auto']='no',['audio-file-auto']='no',['cover-art-auto']='no',
             ['ytdl']='no',['demuxer-cache-wait']='no',['cache-pause-wait']='1',
             -- The pinned curl transport validates only its first response.
             -- Use mpv's lavf transport, which also checks each resumed byte range.
@@ -142,7 +142,7 @@ mp.add_hook('on_load',-1000,function()
             'reconnect_max_retries=3','reconnect_delay_max=4','reconnect_delay_total_max=7'}) do
             mp.commandv('change-list','file-local-options/stream-lavf-o','append',value)
         end
-        mp.commandv('change-list','demuxer-lavf-o','append','http_multiple=0')
+        mp.commandv('change-list','file-local-options/demuxer-lavf-o','append','http_multiple=0')
     end
     record('opening')
 end)

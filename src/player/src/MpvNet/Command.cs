@@ -7,13 +7,17 @@ namespace MpvNet;
 public class Command
 {
     Dictionary<string, Action<IList<string>>>? _commands;
+    string? _quickBookmark;
 
     public static Command Current { get; } = new();
+
+    public Command() => Player.StartFile += () => _quickBookmark = null;
 
     public Dictionary<string, Action<IList<string>>> Commands => _commands ??= new()
     {
         ["open-conf-folder"] = args => ProcessHelp.ShellExecute(Player.ConfigFolder),
         ["play-pause"] = PlayPause,
+        ["quick-bookmark"] = args => QuickBookmark(),
         ["shell-execute"] = args => ProcessHelp.ShellExecute(args[0]),
         ["show-text"] = args => ShowText(args[0], Convert.ToInt32(args[1]), Convert.ToInt32(args[2])),
         ["cycle-audio"] = args => CycleAudio(),
@@ -30,19 +34,37 @@ public class Command
 
     static string FormatTime(double value) => ((int)value).ToString("00");
 
+    void QuickBookmark()
+    {
+        if (_quickBookmark != null)
+        {
+            Player.CommandV("seek", _quickBookmark, "absolute+exact");
+            _quickBookmark = null;
+            return;
+        }
+
+        string position = Player.GetPropertyString("time-pos", false);
+        if (position.Length > 0)
+        {
+            _quickBookmark = position;
+            Player.CommandV("show-text", _("Bookmark saved"));
+        }
+    }
+
     void PlayPause(IList<string> args)
     {
         int count = Player.GetPropertyInt("playlist-count");
 
         if (count > 0)
             Player.Command("cycle pause");
-        else if (App.Settings.RecentFiles.Count > 0)
+        else
         {
-            foreach (string i in App.Settings.RecentFiles)
+            foreach (string entry in App.Settings.GetRecentFiles())
             {
-                if (i.Contains("://") || File.Exists(i))
+                var file = AppClass.GetTitleAndPath(entry);
+                if (file.Path.Contains("://") || File.Exists(file.Path))
                 {
-                    Player.LoadFiles([i], true, false);
+                    Player.LoadFiles([file.Path], true, false);
                     break;
                 }
             }

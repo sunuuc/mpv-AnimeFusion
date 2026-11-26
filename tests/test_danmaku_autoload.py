@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -20,8 +21,10 @@ def quote(value):
     return "[[" + str(value).replace(chr(92), "/") + "]]"
 
 
-def run(install, video, directory, source_config, records, settings=None):
+def run(install, video, directory, source_config, records, settings=None, timeout=45):
     directory.mkdir(parents=True, exist_ok=True)
+    trace_file = directory / "result.json"
+    trace_file.unlink(missing_ok=True)
     local = directory / "localdata"
     local.mkdir(exist_ok=True)
     data = local / "mpv-AnimeFusion" / "Danmaku"
@@ -33,17 +36,18 @@ def run(install, video, directory, source_config, records, settings=None):
         (settings_directory / "mpv-AnimeFusion-DanmakuFactory.json").write_bytes(settings)
     lua = DRIVER.replace("@@FACTORY@@", quote(install / "animejanai/danmaku/DanmakuFactory.exe"))
     lua = lua.replace("@@SOURCE@@", quote(SOURCE))
-    lua = lua.replace("@@OUTPUT@@", quote(directory / "result.json"))
+    lua = lua.replace("@@OUTPUT@@", quote(trace_file))
+    lua = lua.replace("@@TIMEOUT@@", str(timeout))
     (directory / "driver.lua").write_text(lua, encoding="utf-8")
     env = os.environ.copy()
     env["LOCALAPPDATA"] = str(local)
     env["TEMP"] = str(local)
     result = subprocess.run([str(install / "app/mpv.exe"), "--no-config", "--load-scripts=no",
-        "--vo=null", "--ao=null", "--hwdec=no", "--script=" + str(directory / "driver.lua"),
-        str(video)], env=env, capture_output=True, timeout=52)
-    if not (directory / "result.json").exists():
-        raise AssertionError(result.stdout.decode("utf-8", "replace") + result.stderr.decode("utf-8", "replace"))
-    trace = json.loads((directory / "result.json").read_text(encoding="utf-8"))
+        "--vo=null", "--ao=null", "--hwdec=no", "--keep-open=yes", "--script=" + str(directory / "driver.lua"),
+        str(video)], env=env, capture_output=True, timeout=timeout + 7)
+    if not trace_file.exists():
+        raise AssertionError(f"mpv exited with code {result.returncode} before the autoload driver wrote a trace")
+    trace = json.loads(trace_file.read_text(encoding="utf-8"))
     assert all(Path(path).resolve().is_relative_to(data.resolve()) for path in trace["generated_paths"]), "Generated danmaku escaped the product data directory"
     for notice in trace["notices"]:
         motion = re.search(r"\\move\(([-\d.]+),[-\d.]+,([-\d.]+),", notice)
@@ -59,27 +63,55 @@ def run(install, video, directory, source_config, records, settings=None):
     return trace
 
 
+def live_run(install, video, output, config, records, settings):
+    output.mkdir(parents=True, exist_ok=True)
+    trace_output = output / "result.json"
+    trace_output.unlink(missing_ok=True)
+    with tempfile.TemporaryDirectory(prefix="mpv-danmaku-live-") as temporary:
+        isolated = Path(temporary)
+        try:
+            trace = run(install, video, isolated, config, records, settings, timeout=65)
+            source_memory = isolated / "localdata/mpv-AnimeFusion/Danmaku/设置/mpv-AnimeFusion-danmaku-sources.json"
+            return trace, source_memory.read_bytes()
+        finally:
+            if (isolated / "result.json").is_file():
+                shutil.copyfile(isolated / "result.json", trace_output)
+
+
 DRIVER = r"""local mp=require 'mp'
 local utils=require 'mp.utils'
-local trace={requests={},notices={},center_messages=0,states={},generated_paths={},directories={}}
+local trace={requests={},notices={},center_messages=0,states={},generated_paths={}}
+local route_ids={}
+local route_count=0
 local async=mp.command_native_async
 mp.command_native_async=function(spec,callback)
- if spec.args and spec.args[1]=='cmd.exe' then
-  return async(spec,function(ok,result,err)
-   trace.directories[#trace.directories+1]={args=spec.args,ok=ok,status=result and result.status}
-   callback(ok,result,err)
-  end)
- end
  if spec.args and spec.args[1]:find('DanmakuFactory.exe',1,true) then
   for i,arg in ipairs(spec.args) do
    if arg=='-i' or arg=='-o' then trace.generated_paths[#trace.generated_paths+1]=spec.args[i+1] end
   end
  end
  if spec.args and spec.args[1]:find('curl.exe',1,true) then
-  local item={path=spec.args[4]:match('^https?://[^/]+(.*)'),started=mp.get_time()}
+  local base,endpoint=spec.args[4]:match('^(.-)/api/v2/([%a]+)')
+  if base and not route_ids[base] then route_count=route_count+1;route_ids[base]=route_count end
+  local item={endpoint=endpoint or 'other',route=route_ids[base],started=mp.get_time()}
   trace.requests[#trace.requests+1]=item
   return async(spec,function(ok,result,err)
    item.ok=ok;item.code=result and result.status;item.bytes=result and #(result.stdout or '')
+   item.http_error=result and tonumber((result.stderr or ''):match('error: (%d%d%d)'))
+   local body=result and utils.parse_json(result.stdout or '')
+   if type(body)=='table' then
+    if type(body.success)=='boolean' then item.api_success=body.success end
+    item.api_error=tonumber(body.errorCode)
+    local detail=body.errorMessage or body.message or body.error
+    if type(detail)=='string' then
+     detail=detail:lower()
+     if detail:find('unauthorized',1,true) or detail:find('invalid api key',1,true)
+        or detail:find('invalid token',1,true) or detail:find('未授权',1,true) then item.auth_error=true end
+    end
+    for _,name in ipairs({'animes','matches','comments'}) do
+     if type(body[name])=='table' then item[name]=#body[name] end
+    end
+   end
    callback(ok,result,err)
   end)
  end
@@ -105,23 +137,29 @@ mp.commandv=function(...)
  return commandv(...)
 end
 local done=false
-local function finish(code)
+local function finish(code,reason)
  if done then return end;done=true
- trace.state=mp.get_property_native('user-data/player_ui/danmaku',{})
+ local state=mp.get_property_native('user-data/player_ui/danmaku',{})
+ trace.state={autoload_state=state.autoload_state,loaded=state.loaded,count=state.count,track=state.track}
+ trace.finish=reason
+ trace.time_pos=mp.get_property_number('time-pos')
+ trace.presented_frames=mp.get_property_number('vo-presented-frame-count')
  trace.secondary_sid=mp.get_property_native('secondary-sid')
  trace.primary_sid=mp.get_property_native('sid')
  local file=assert(io.open(@@OUTPUT@@,'wb'));file:write(utils.format_json(trace));file:close()
- mp.commandv('quit',code)
+ if reason~='shutdown' then mp.commandv('quit',code) end
 end
 mp.observe_property('user-data/player_ui/danmaku','native',function(_,s)
  if not s then return end
- trace.states[#trace.states+1]={state=s.autoload_state,status=s.status,count=s.count,time=mp.get_time()}
- if s.autoload_state=='loaded' or s.autoload_state=='error' or s.autoload_state=='not-found' or s.autoload_state=='empty' then
-  mp.add_timeout(.5,function()finish(s.loaded and 0 or 1)end)
+ trace.states[#trace.states+1]={state=s.autoload_state,count=s.count,time=mp.get_time()}
+ if s.autoload_state=='loaded' or s.autoload_state=='error' or s.autoload_state=='not-found'
+    or s.autoload_state=='empty' or s.autoload_state=='unconfigured' then
+  mp.add_timeout(.5,function()finish(s.loaded and 0 or 1,'result')end)
  end
 end)
+mp.register_event('shutdown',function()finish(2,'shutdown')end)
 dofile(@@SOURCE@@)
-mp.add_timeout(45,function()finish(2)end)
+mp.add_timeout(@@TIMEOUT@@,function()finish(2,'timeout')end)
 """
 
 
@@ -142,6 +180,9 @@ class Handler(BaseHTTPRequestHandler):
                 time.sleep(server.delay)
                 data = {"comments": [{"p": f"{i * 4},1,16777215,[dandan]", "m": f"弹幕 {i}"}
                     for i in range(server.count)]}
+        elif self.path.endswith("/bangumi/1"):
+            data = {"bangumi": {"animeId": 1, "animeTitle": "星海旅行记 第二季", "episodes": [
+                {"episodeId": getattr(server, "current_episode", 101), "episodeNumber": "1", "episodeTitle": "第1集"}]}}
         elif getattr(server, "catalogue", None) and "/search/anime" in self.path:
             data = {"animes": server.catalogue}
         elif getattr(server, "catalogue", None) and "/bangumi/" in self.path:
@@ -185,11 +226,18 @@ def loopback(install, video, directory):
             if name == "slow":
                 assert any("弹幕准备中~~~" in n for n in trace["notices"]), trace
             if name in ("slow", "retry", "empty"):
-                assert all("/comment/101" in path for path in server.paths), server.paths
+                assert server.paths[0].endswith("/bangumi/1"), server.paths
+                assert all("/comment/101" in path for path in server.paths[1:]), server.paths
                 assert json.loads((directory / name / "localdata/mpv-AnimeFusion/Danmaku/设置/mpv-AnimeFusion-danmaku-sources.json").read_text(
                     encoding="utf-8")) == json.loads(records)
             print("PASS", name, "state", state, "requests", server.comment_requests,
                 "rendered", trace["state"]["count"])
+        server.current_episode, server.failures, server.delay, server.count = 102, 0, 0, 3
+        server.comment_requests, server.paths = 0, []
+        rotated = run(install, sample, directory / "rotated", config, records)
+        assert rotated["state"]["autoload_state"] == "loaded" and rotated["state"]["count"] == 3, rotated
+        assert len(server.paths) == 2 and server.paths[0].endswith("/bangumi/1") and "/comment/102" in server.paths[1], server.paths
+        print("PASS rotated same-platform episode uses fresh show detail and no title search")
         server.catalogue = [{"animeId": 2, "animeTitle": "远方旅行记(2012)",
             "typeDescription": "剧场版", "source": "dandan", "episodeCount": 3}]
         movie = directory / "远方旅行记 (2012).mkv"
@@ -207,7 +255,8 @@ def loopback(install, video, directory):
             server.comment_requests, server.paths = 0, []
             reused = run(install, movie, directory / (name + "-reuse"), movie_config, saved)
             assert reused["state"]["autoload_state"] == state, reused
-            assert server.comment_requests == 1 and all("/comment/201" in path for path in server.paths), server.paths
+            assert server.comment_requests == 1 and len(server.paths) == 2, server.paths
+            assert "/bangumi/2" in server.paths[0] and "/comment/201" in server.paths[1], server.paths
             print("PASS", name, "state", state, "initial empty checks all routes, saved empty source reused")
     finally:
         server.shutdown()
@@ -222,6 +271,7 @@ if __name__ == "__main__":
     parser.add_argument("--video", type=Path, nargs="+", required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--live", action="store_true")
+    parser.add_argument("--fresh", action="store_true", help="Start live matching with empty isolated source records")
     parser.add_argument("--installed", action="store_true")
     args = parser.parse_args()
     args.install = args.install.resolve()
@@ -236,9 +286,21 @@ if __name__ == "__main__":
         settings_path = root / "mpv-AnimeFusion-DanmakuFactory.json"
         settings = settings_path.read_bytes() if settings_path.exists() else None
         for i, video in enumerate(args.video):
-            trace = run(args.install, video, args.output / str(i), *before, settings)
+            sample = args.output / str(i)
+            trace, saved = live_run(args.install, video, sample, before[0], b'{}' if args.fresh else before[1], settings)
             assert trace["state"]["autoload_state"] == "loaded", trace
-            assert len(trace["requests"]) == 1 and "/comment/" in trace["requests"][0]["path"], trace
+            endpoints = [r["endpoint"] for r in trace["requests"]]
+            if endpoints != ["comment"]:
+                assert "comment" in endpoints, trace
+                if all(e == "comment" for e in endpoints):
+                    assert all(r.get("code") != 0 for r in trace["requests"][:-1]), trace
+                else:
+                    assert any(e in ("match", "search", "bangumi") for e in endpoints), trace
+                reused, _ = live_run(args.install, video, args.output / f"{i}-reuse", before[0], saved, settings)
+                assert reused["state"]["autoload_state"] == "loaded", reused
+                assert [r["endpoint"] for r in reused["requests"]] == ["bangumi","comment"], reused
+            if args.fresh:
+                assert any(e in ("match", "search") for e in endpoints), trace
             print("PASS live", video.name, "rendered", trace["state"]["count"], "requests", len(trace["requests"]))
         assert before == [p.read_bytes() for p in paths], "formal source records changed"
     else:

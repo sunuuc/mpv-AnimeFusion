@@ -1,0 +1,18 @@
+{
+  "source_commit": "275f7dea27924cdd34ab2e6c20e448b6bc4fab65",
+  "winbuild_commit": "ca38487e28304e4af70de6cee243469883c0f8b5",
+  "winbuild_toolchain_commit": "cd1edc11dc6887a50f705717619d879f5a93a488",
+  "patches": {
+    "9d2abbb.patch": "3359f2e0781dd88fd8aea817b59d3a4ef020f5b89429c47a534490d9df927bc7",
+    "9a251b0.patch": "723ee0bb61358df3e5362fda9c6c9fb633d28511e5e39db5c55434d611bef515",
+    "e260606.patch": "6b5740010f859e409a0fe84f2544154bb727e893fb9d1624d2649f59587c8d7d",
+    "a83aaeb.patch": "983cb1be3f16888faf9244087af32f8ff4140fdb98734fd998ada7099187a88b",
+    "0e43522.patch": "145c405f858b516c1e22247da276fda8695a2ee40f99bf31966ebe24d4dcd8b9",
+    "63fdd7d.patch": "7dd815c3775a66656109ad777aa0a399cb3e10c4b6b079bb7df77fe4b1868fb5",
+    "libplacebo-present-queue.patch": "170a7f505f5e2aa0bf86f54b4792edfbb4e738fcd1553955a6365500ca8a9573",
+    "libplacebo-nvidia-rtx-hdr.patch": "5125f3f81d3da10a1cdaf304791d48ae3d3c50f41de56b551c36988ea650536a",
+    "libplacebo-nvidia-swapchain-recreate.patch": "9700596ca9f6b241b0fab5e4450e7b231b7134cc2f7cd2d0bf85f973e73164a8",
+    "libplacebo-opaque-composite-alpha.patch": "9582d6d171bd72d5a71ce3afcf2ad9e6636adc225a976628dfe303c1607dc424",
+    "bounded-acquire.patch": "5b2a2dc7ffeedf20890e0b9fa8184892e1b5afaa9f2a31ec914108f4ee0569fb"
+  }
+}

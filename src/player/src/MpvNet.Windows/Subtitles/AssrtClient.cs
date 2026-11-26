@@ -118,9 +118,13 @@ public sealed class AssrtClient(HttpClient http, SubtitleStore store) : ISubtitl
         Add(Text(Object(value, "lang"), "desc"));
         Add(Text(value, "upload_time").Split(' ')[0]);
         var size = Object(value, "size");
-        if (size.ValueKind == JsonValueKind.Number && size.TryGetInt64(out long bytes))
-            Add(bytes >= 1024 * 1024 ? FormattableString.Invariant($"{bytes / (1024d * 1024):0.#} MB")
-                : FormattableString.Invariant($"{bytes / 1024d:0.#} KB"));
+        if (size.ValueKind == JsonValueKind.Number && size.TryGetInt64(out long bytes) && bytes >= 0)
+            Add(bytes switch
+            {
+                < 1024 => FormattableString.Invariant($"{bytes} B"),
+                < 1024 * 1024 => FormattableString.Invariant($"{bytes / 1024d:0.#} KB"),
+                _ => FormattableString.Invariant($"{bytes / (1024d * 1024):0.#} MB")
+            });
         return string.Join(" · ", rows);
     }
 

@@ -18,7 +18,7 @@ public sealed class ScopedCommandLine
     public int EmptyGroupOptionsPromoted { get; private set; }
     public bool LegacyScriptHandoff => EmptyGroupOptionsPromoted > 0 &&
         GlobalOptions.Any(o => BaseName(CanonicalName(o.Name)) is "scripts" or "script-opts");
-    public bool NeedsDedicatedProcess => HasGroups ||
+    public bool NeedsDedicatedProcess => HasGroups || Entries.Any(entry => entry.Path == "-") ||
         GlobalOptions.Any(o => BaseName(CanonicalName(o.Name)) is
             "input-ipc-server" or "input-ipc-client" or "input-commands" or
             "scripts" or "script-opts" or "include" or "config-dir" or

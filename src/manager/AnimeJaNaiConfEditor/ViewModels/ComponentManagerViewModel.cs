@@ -1,5 +1,6 @@
 using Avalonia.Collections;
 using Avalonia.Threading;
+using AnimeJaNai.Components;
 using ReactiveUI;
 using System;
 using System.Collections.Generic;
@@ -21,6 +22,7 @@ namespace AnimeJaNaiConfEditor.ViewModels
         public string? CatalogDescription { get; init; }
         public bool Installed { get; init; }
         public bool Recommended { get; init; }
+        public IReadOnlyList<string> Requires { get; init; } = [];
 
         private bool _selected;
         public bool Selected
@@ -29,7 +31,7 @@ namespace AnimeJaNaiConfEditor.ViewModels
             set => this.RaiseAndSetIfChanged(ref _selected, value);
         }
 
-        public string SizeText => $"{Bytes / 1048576:N0} MB";
+        public string SizeText => ComponentSize.Format(Bytes);
 
         public string StateText => Installed ? AnimeJaNai.Localization.UiText.T("已安装") : AnimeJaNai.Localization.UiText.T("可选");
 
@@ -51,10 +53,51 @@ namespace AnimeJaNaiConfEditor.ViewModels
 
         public bool UpdaterFound => File.Exists(UpdaterPath);
 
-        public AvaloniaList<ComponentItem> Packs { get; } = [];
+        public AvaloniaList<ComponentItem> Packs { get; } = new() { ResetBehavior = ResetBehavior.Remove };
+
+        private bool _settingSelection;
+
+        public ComponentManagerViewModel()
+        {
+            Packs.TrackItemPropertyChanged(change =>
+            {
+                if (_settingSelection || change.Item2.PropertyName != nameof(ComponentItem.Selected)) return;
+                var item = (ComponentItem)change.Item1;
+                var selected = Packs.Where(p => p.Selected).ToHashSet();
+                var related = RelatedPacks([item], item.Selected);
+                if (item.Selected) selected.UnionWith(related);
+                else selected.ExceptWith(related);
+                SetSelection(selected);
+            });
+        }
+
+        private HashSet<ComponentItem> RelatedPacks(IEnumerable<ComponentItem> roots, bool selecting)
+        {
+            var related = new HashSet<ComponentItem>();
+            var pending = new Stack<ComponentItem>(roots);
+            while (pending.TryPop(out var current))
+            {
+                if (!related.Add(current)) continue;
+                foreach (var pack in Packs)
+                    if (selecting ? current.Requires.Contains(pack.Name) : pack.Requires.Contains(current.Name))
+                        pending.Push(pack);
+            }
+            return related;
+        }
+
+        private void SetSelection(HashSet<ComponentItem> selected)
+        {
+            _settingSelection = true;
+            try
+            {
+                foreach (var pack in Packs) pack.Selected = selected.Contains(pack);
+            }
+            finally { _settingSelection = false; }
+        }
 
         // GPU identity from the engine's NVML detection; null until a refresh
         // has completed (callers fall back to disk-state-only behavior).
+        public IReadOnlyList<(string Name, string Uuid)> NvidiaGpus { get; private set; } = [];
         public bool? GpuNvidia { get; private set; }
 
         public bool TrtPackAvailable { get; private set; }
@@ -108,11 +151,11 @@ namespace AnimeJaNaiConfEditor.ViewModels
         }
         public void SelectRecommended()
         {
-            foreach (var item in Packs) item.Selected = item.Installed || item.Recommended;
+            SetSelection(RelatedPacks(Packs.Where(p => p.Installed || p.Recommended), true));
         }
         public void ClearSelection()
         {
-            foreach (var item in Packs) item.Selected = item.Installed;
+            SetSelection(Packs.Where(p => p.Installed).ToHashSet());
         }
 
         private bool _loadFailed;
@@ -151,6 +194,8 @@ namespace AnimeJaNaiConfEditor.ViewModels
                     ? AnimeJaNai.Localization.UiText.F($"GPU：{gpu.GetProperty("name").GetString()}")
                     : AnimeJaNai.Localization.UiText.T("No NVIDIA GPU detected.");
                 GpuNvidia = nvidia;
+                NvidiaGpus = root.GetProperty("gpus").EnumerateArray()
+                    .Select(g => (g.GetProperty("name").GetString()!, g.GetProperty("uuid").GetString()!)).ToList();
 
                 Packs.Clear();
                 foreach (var e in root.GetProperty("packs").EnumerateArray())
@@ -165,6 +210,7 @@ namespace AnimeJaNaiConfEditor.ViewModels
                         CatalogDescription = e.TryGetProperty("description", out var description) ? description.GetString() : null,
                         Installed = installed,
                         Recommended = recommended,
+                        Requires = e.GetProperty("requires").EnumerateArray().Select(r => r.GetString()!).ToArray(),
                     };
                     // checked = currently installed (the checkbox is desired state);
                     // recommended items are highlighted, never pre-checked
@@ -224,13 +270,14 @@ namespace AnimeJaNaiConfEditor.ViewModels
                         return;
                     }
                 }
-                foreach (var name in toRemove.OrderBy(n => n == "trt-runtime" ? 1 : 0))
+                if (toRemove.Count > 0)
                 {
-                    StatusLine = AnimeJaNai.Localization.UiText.F($"正在移除 {name}……");
-                    var (exitCode, output) = await RunUpdaterAsync($"--remove {name}", null);
+                    var names = string.Join(", ", toRemove);
+                    StatusLine = AnimeJaNai.Localization.UiText.F($"正在移除 {names}……");
+                    var (exitCode, output) = await RunUpdaterAsync("--remove " + string.Join(" ", toRemove), null);
                     if (exitCode != 0)
                     {
-                        StatusLine = AnimeJaNai.Localization.UiText.F($"移除 {name} 失败：{TranslateUpdaterText(LastLine(output))}");
+                        StatusLine = AnimeJaNai.Localization.UiText.F($"移除 {names} 失败：{TranslateUpdaterText(LastLine(output))}");
                         return;
                     }
                 }

@@ -7,12 +7,13 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 MPV = Path(os.environ.get('ANIMEFUSION_TEST_MPV', r'D:\Apps\mpv-AnimeFusion\app\mpv.exe'))
+PLAYER_UI = Path(os.environ.get('ANIMEFUSION_TEST_PLAYER_UI', ROOT / 'portable_config/scripts/player_ui.lua'))
 
 
 class PlayerAutoNextTest(unittest.TestCase):
     def test_playlist_stops_by_default_and_advances_when_enabled(self):
         frame = b'FRAME\n' + bytes([100]) * 256 + bytes([128]) * 128
-        with tempfile.TemporaryDirectory(prefix='autonext-headless-', dir=ROOT / '_probe') as path:
+        with tempfile.TemporaryDirectory(prefix='autonext-headless-') as path:
             config = Path(path)
             (config / 'script-opts').mkdir()
             media = []
@@ -38,9 +39,9 @@ end)
                     result = subprocess.run([
                         str(MPV), '--config-dir=' + str(config), '--load-scripts=no',
                         '--osc=no', '--vo=null', '--ao=null', '--terminal=yes',
-                        '--script=' + str(ROOT / 'portable_config/scripts/player_ui.lua'),
+                        '--script=' + str(PLAYER_UI),
                         '--script=' + str(check), *media,
-                    ], capture_output=True, timeout=15)
+                    ], env={**os.environ, 'LOCALAPPDATA': str(config)}, capture_output=True, timeout=15)
                     log = result.stdout + result.stderr
                     self.assertEqual(result.returncode, 0, log.decode('utf-8', errors='replace'))
                     self.assertIn(b'PASS automatic next EOF', log)

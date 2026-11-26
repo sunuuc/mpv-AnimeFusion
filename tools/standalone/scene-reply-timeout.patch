@@ -1,0 +1,87 @@
+--- a/video/filter/ajn_scene.c
++++ b/video/filter/ajn_scene.c
+@@ -613,6 +613,7 @@
+     if (h->epoch != s->processing_epoch || !h->enabled || h->generation != generation || h->lease_until_ms <= now ||
+         h->next_id == INT64_MAX) { leave(s); return -1; }
+     int64_t request = ++h->next_id, deadline = now + budget;
++    int64_t lease = h->lease_until_ms;
+     h->request_id = request; h->response_id = 0;
+     h->deadline_ms = deadline; h->decision = -1; h->status = 1;
+     h->previous_pts = a->pts; h->current_pts = b->pts;
+@@ -638,15 +639,23 @@
+         leave(s);
+         if (wait == WAIT_OBJECT_0) Sleep(1);
+     }
+-    if (enter(s)) {
+-        if (h->request_id == request) {
+-            if (h->timeouts < INT32_MAX) h->timeouts++;
+-            h->consecutive_timeouts++;
+-            h->status = h->consecutive_timeouts >= 3 ? 6 : 3;
+-            h->deadline_ms = 0;
+-        }
+-        leave(s);
+-    }
++    // A late reply can still hold the header when the budget expires. Only
++    // the optional worker waits to record the timeout; playback never waits.
++    while (!enter(s)) {
++        if (scene_cas(&s->stopping, 0, 0) ||
++            scene_load64(&h->request_id) != request ||
++            (int64_t)GetTickCount64() >= lease)
++            return -1;
++        Sleep(10);
++    }
++    if (h->request_id == request && h->epoch == s->processing_epoch &&
++        h->generation == generation && h->enabled) {
++        if (h->timeouts < INT32_MAX) h->timeouts++;
++        h->consecutive_timeouts++;
++        h->status = h->consecutive_timeouts >= 3 ? 6 : 3;
++        h->deadline_ms = 0;
++    }
++    leave(s);
+     return -1;
+ #endif
+ }
+--- a/test/ajn_scene.c
++++ b/test/ajn_scene.c
+@@ -23,10 +23,10 @@
+ {
+     struct responder *r = opaque;
+     mp_require(WaitForSingleObject(r->ready, 3000) == WAIT_OBJECT_0);
++    while (InterlockedCompareExchange((volatile LONG *)&r->h->lock, 1, 0))
++        SwitchToThread();
+     if (r->received) SetEvent(r->received);
+     Sleep(r->delay_ms);
+-    while (InterlockedCompareExchange((volatile LONG *)&r->h->lock, 1, 0))
+-        SwitchToThread();
+     // Samples must be the previous/current original frame, in that order.
+     mp_require(r->h->width == 8 && r->h->height == 4);
+     mp_require(r->h->pixels[0] < 4 && r->h->pixels[32] > 250);
+@@ -121,10 +121,10 @@
+         assert_int_equal(await_decision(s, a, b, decision), decision);
+         assert_int_equal(h->accepted, decision + 1);
+     }
+-    // A responder taking nearly its whole budget must never pace playback.
++    // A responder holding the header beyond its budget must never pace playback.
+     HANDLE received = CreateEventA(NULL, FALSE, FALSE, NULL);
+     struct responder slow = {.h = h, .ready = ready, .reply = reply,
+-                             .decision = 1, .received = received, .delay_ms = 95};
++                             .decision = 1, .received = received, .delay_ms = 250};
+     HANDLE slow_thread = CreateThread(NULL, 0, respond, &slow, 0, NULL);
+     mp_require(received && slow_thread);
+     submit(s, h, a, b);
+@@ -134,13 +134,8 @@
+     mp_require(GetTickCount64() - began < 50);
+     mp_require(WaitForSingleObject(slow_thread, 3000) == WAIT_OBJECT_0);
+     CloseHandle(slow_thread); CloseHandle(received);
+-    // Scheduling can put a 95 ms response beyond the 100 ms deadline.
+-    // Either outcome is allowed; the property under test is no player wait.
+-    ULONGLONG slow_deadline = GetTickCount64() + 3000;
+-    while (InterlockedCompareExchange((volatile LONG *)&h->status, 0, 0) == 1) {
+-        mp_require(GetTickCount64() < slow_deadline);
+-        Sleep(1);
+-    }
++    wait_value(&h->status, 3);
++    assert_int_equal(h->timeouts, 1);
+     h->timeouts = h->consecutive_timeouts = 0;
+     int64_t epoch = h->epoch;
+     h->lock = 1; // Reset must also invalidate a request during host readback.

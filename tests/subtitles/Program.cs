@@ -667,10 +667,37 @@ static class Program
                 if (File.Exists(Path.Combine(directory.FullName, "release.json"))) return directory.FullName;
         throw new InvalidOperationException("Repository source is required.");
     }
+    static async Task SubtitleSizeChecks()
+    {
+        long?[] sizes = [null, -1, 0, 1, 51, 1023, 1024, 1536, 1048576];
+        string[] expected = ["", "", "0 B", "1 B", "51 B", "1023 B", "1 KB", "1.5 KB", "1 MB"];
+        var rows = sizes.Select((size, i) => new { id = i + 1, native_name = "Fixture", size });
+        using var searchHttp = new HttpClient(new Handler((_, _) =>
+            Json(System.Text.Json.JsonSerializer.Serialize(new { status = 0, sub = new { subs = rows } }))));
+        var page = await new AssrtClient(searchHttp, Store("size-search")).SearchAsync(Query with { Language = "" }, 1, default);
+        Check(page.Results.Select(row => row.Details).SequenceEqual(expected), "ASSRT result sizes preserve bytes and normal KB/MB precision");
+
+        var stream = new SlowSubtitleStream(new byte[1075]);
+        using var downloadHttp = new HttpClient(new Handler((_, _) => new(HttpStatusCode.OK) { Content = new StreamContent(stream) }));
+        var library = new SubtitleLibrary(Path.Combine(Root, "size-download"));
+        var result = new SubtitleResult(SubtitleSource.Assrt, "size", "Fixture", "", "", [])
+            { DownloadName = "Fixture.srt", DownloadUrl = "https://download.example/fixture.srt" };
+        var messages = new List<string>();
+        await new SubtitleDownload(downloadHttp, library).DownloadAsync(new("Fixture", null, null, ""), result,
+            null, [], new Messages(messages), default);
+        Check(messages.SequenceEqual(["下载字幕 51 B", "下载字幕 1 KB", "下载字幕 100%"]),
+            "Streaming a subtitle without Content-Length reports actual bytes before crossing the KB boundary");
+    }
     static async Task Main(string[] args)
     {
         try
         {
+            if (args.Contains("--size-only"))
+            {
+                await SubtitleSizeChecks();
+                Console.WriteLine($"Subtitle size checks passed: {_checks}; isolated search and streaming responses.");
+                return;
+            }
             _checks += await SubtitlePreferenceChecks.RunAsync(Root);
             _checks += SubtitleSetRemovalChecks.Run(Root);
             if (args.Contains("--library-set-only"))
@@ -692,6 +719,7 @@ static class Program
             if (args.Contains("--movie-download-only")) { Console.WriteLine($"Movie subtitle download checks passed: {_checks}; isolated mock downloads only."); return; }
             LibraryChecks();
             if (args.Contains("--library-only")) { Console.WriteLine($"Subtitle library checks passed: {_checks}; no desktop interaction or network access."); return; }
+            await SubtitleSizeChecks();
             var rootStore=Store("direct-root");
             Check(rootStore.Root==Path.Combine(Root,"direct-root")&&!Directory.Exists(Path.Combine(rootStore.Root,"Downloads")),"Subtitle storage uses Subtitles directly without a Downloads child");
             var directLibrary=new SubtitleLibrary(rootStore.Root);
@@ -1164,6 +1192,16 @@ static class Program
     }
     sealed class Messages(List<string> messages):IProgress<string>
     { public void Report(string message)=>messages.Add(message); }
+    sealed class SlowSubtitleStream(byte[] data) : MemoryStream(data)
+    {
+        public override bool CanSeek => false;
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken token = default)
+        {
+            if (Position == Length) return 0;
+            await Task.Delay(1050, token);
+            return await base.ReadAsync(Position == 0 ? buffer[..51] : buffer, token);
+        }
+    }
     sealed class Handler(Func<HttpRequestMessage, int, HttpResponseMessage> respond) : HttpMessageHandler
     {
         public int Count { get; private set; }

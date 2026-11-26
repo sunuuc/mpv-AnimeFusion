@@ -89,6 +89,27 @@ def hold_mutex(name):
     return kernel, handle
 
 
+def verify_upgrade(installer, work, silent):
+    config = work / 'upgrade/portable_config'
+    custom = b'\xef\xbb\xbf! cycle mute\r\n# retained binding\nCtrl+x quit'
+    retired = '@    show-text "2x_AnimeJaNai_V3 均衡"; script-message aji-slot 1002\r\n'.encode()
+    write(config / 'input.conf', custom[:3] + retired + custom[3:])
+    newer = 'SHARP  script-message aji-slot 1003 yes "2x_AnimeJaNai_V3 性能优先"\n'.encode()
+    write(config / 'input-animejanai.conf', custom[:3] + newer + custom[3:])
+    vf = next(line for line in (ROOT / 'portable_config/mpv-animejanai.conf').read_bytes().splitlines()
+              if line.startswith(b'vf=@aji:'))
+    custom_section = b'[local]\r\nhwdec=nvdec\r\ngpu-api=opengl'
+    original = b'[animejanai]\nhwdec=nvdec\ngpu-api=vulkan,auto\n[upscale-on]\n'
+    write(config / 'mpv-animejanai.conf', original + vf.removesuffix(b'=0') + b'=1002\n' + custom_section)
+    check(run([installer, *silent, '/DIR=' + str(config.parent), '/LOG=' + str(work / 'upgrade.log')],
+              work / 'upgrade.stdout') == 0, 'Customized upgrade must succeed')
+    for name in ['input.conf', 'input-animejanai.conf']:
+        check((config / name).read_bytes() == custom, 'Customized shortcuts and encoding must survive: ' + name)
+    check((config / 'mpv-animejanai.conf').read_bytes() ==
+          b'[animejanai]\n[upscale-on]\n' + vf + b'\n' + custom_section,
+          'Upgrade must preserve custom profile settings')
+
+
 def main(compiler, work):
     check(os.name == 'nt', 'Native Inno checks require Windows')
     work = work.resolve()
@@ -102,6 +123,8 @@ def main(compiler, work):
                  'animejanai/inference/engine.dll', 'animejanai/animejanai.conf',
                  'portable_config/scripts/script.lua', 'portable_config/script-modules/module.lua',
                  'portable_config/shaders/shader.glsl', 'portable_config/mpv.conf',
+                 'portable_config/input.conf', 'portable_config/input-animejanai.conf',
+                 'portable_config/mpv-animejanai.conf',
                  'portable_config/script-opts/options.conf'):
         write(payload / name)
     mutexes = tuple(name + '_Fixture_' + uuid.uuid4().hex for name in MUTEXES)
@@ -114,6 +137,7 @@ def main(compiler, work):
           'Fixture must compile with the pinned Inno compiler')
     installer = output / ('mpv-AnimeFusion-' + version + '-setup-x64.exe')
     silent = ['/SP-', '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART']
+    verify_upgrade(installer, work, silent)
     install = work / 'installed'
     for i, name in enumerate(mutexes):
         kernel, handle = hold_mutex(name)

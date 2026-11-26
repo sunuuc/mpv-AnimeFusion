@@ -106,6 +106,10 @@ Source: "{#MyAppSourceDir}\portable_config\scripts\*"; DestDir: "{app}\portable_
 Source: "{#MyAppSourceDir}\portable_config\script-modules\*"; DestDir: "{app}\portable_config\script-modules"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#MyAppSourceDir}\portable_config\shaders\*"; DestDir: "{app}\portable_config\shaders"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; Defaults are seeded once and survive both upgrades and uninstall.
+; Upgrade the distributed 1.3.8 shortcuts only when the user kept the original file.
+Source: "{#MyAppSourceDir}\portable_config\input.conf"; DestDir: "{app}\portable_config"; Flags: ignoreversion uninsneveruninstall; Check: IsStockInputConfig('input.conf', '125b03fb5e850efb559298394ade8eee9c012c8d7c7848fd430f9bbe0a224187', '3e1b4f2038be50d1a45bb1c9aa08f57a7f053e5898c700fc146eb5b166dee6a3')
+Source: "{#MyAppSourceDir}\portable_config\input-animejanai.conf"; DestDir: "{app}\portable_config"; Flags: ignoreversion uninsneveruninstall; Check: IsStockInputConfig('input-animejanai.conf', '20a1a27b01262f588bc843b1402f3fe8695005c5e00f7d56043229b4692cb4bd', 'e35dc9abf40d804805623a1278553805e9b5c610a71480c111ed14dd90789cce')
+Source: "{#MyAppSourceDir}\portable_config\mpv-animejanai.conf"; DestDir: "{app}\portable_config"; Flags: ignoreversion uninsneveruninstall; Check: IsStockInputConfig('mpv-animejanai.conf', '83f833e3dfce2ac33f1ab7fa28feca59a6afb720d18e4b8f9680c6d141472933', 'fc04bd124a84e68943d09c25c01d75a2f7c22ecbe9481928c32e27e119fd85a1')
 Source: "{#MyAppSourceDir}\portable_config\*.conf"; DestDir: "{app}\portable_config"; Flags: onlyifdoesntexist uninsneveruninstall
 Source: "{#MyAppSourceDir}\portable_config\script-opts\*"; DestDir: "{app}\portable_config\script-opts"; Flags: onlyifdoesntexist uninsneveruninstall recursesubdirs createallsubdirs
 Source: "{#MyAppSourceDir}\animejanai\animejanai.conf"; DestDir: "{app}\animejanai"; Flags: onlyifdoesntexist uninsneveruninstall
@@ -114,8 +118,114 @@ Source: "{#MyAppSourceDir}\animejanai\animejanai.conf"; DestDir: "{app}\animejan
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall skipifsilent unchecked
 
 [Code]
+const
+  OldFilter = 'vf=@aji:animejanai:lib=~~/../animejanai/inference/aji.dll:conf=~~/../animejanai/animejanai.conf:model-dir=~~/../animejanai/onnx:rife-model-dir=~~/../animejanai/rife:trtexec=~~/../animejanai/inference/trtexec.exe:stats=~~/../animejanai/currentanimejanai.log:slot=1002';
 var
   DeleteUserData: array[0..2] of Boolean;
+
+function IsStockInputConfig(Name, LFHash, CRLFHash: String): Boolean;
+var
+  FileName, Digest: String;
+begin
+  FileName := ExpandConstant('{app}\portable_config\') + Name;
+  Result := False;
+  if FileExists(FileName) then begin
+    Digest := GetSHA256OfFile(FileName);
+    Result := (CompareText(Digest, LFHash) = 0) or (CompareText(Digest, CRLFHash) = 0);
+  end;
+end;
+
+function IsRetiredShortcut(Line, Key, Slot, Caption: String): Boolean;
+var
+  Command: String;
+begin
+  Result := False;
+  if (Copy(Line, 1, Length(Key)) <> Key) or
+     (Length(Line) <= Length(Key)) then Exit;
+  if (Line[Length(Key) + 1] <> ' ') and (Line[Length(Key) + 1] <> #9) then Exit;
+  Command := Trim(Copy(Line, Length(Key) + 1, Length(Line)));
+  Result := (Command = 'script-message aji-slot ' + Slot + ' yes "' + Caption + '"') or
+    (Command = 'show-text "' + Caption + '"; script-message aji-slot ' + Slot) or
+    (Command = 'show-text "' + Caption + '"; apply-profile upscale-on; script-message aji-slot ' + Slot);
+end;
+
+function MoveFileEx(FromPath, ToPath: String; Flags: Cardinal): Boolean;
+  external 'MoveFileExW@kernel32.dll stdcall';
+function MakeTempFile(Directory, Prefix: String; Unique: Cardinal; Buffer: String): Cardinal;
+  external 'GetTempFileNameW@kernel32.dll stdcall';
+
+procedure UpdatePlayerDefaults(Name: String; Shortcuts: Boolean);
+var
+  FileName, Data, Updated, Line, Ending, Section, Pending: String;
+  Bytes: AnsiString;
+  EOL, LineStart: Integer;
+  Drop: Boolean;
+begin
+  FileName := ExpandConstant('{app}\portable_config\') + Name;
+  if not FileExists(FileName) then Exit;
+  if not LoadStringFromFile(FileName, Bytes) then
+    RaiseException('无法读取 ' + FileName);
+  Data := UTF8Decode(Bytes);
+  if UTF8Encode(Data) <> Bytes then Exit;
+  Updated := '';
+  if Copy(Data, 1, 1) = #$FEFF then begin
+    Updated := #$FEFF;
+    Delete(Data, 1, 1);
+  end;
+  Section := '';
+  LineStart := 1;
+  while LineStart <= Length(Data) do begin
+    EOL := LineStart;
+    while (EOL <= Length(Data)) and (Data[EOL] <> #10) do EOL := EOL + 1;
+    Line := Copy(Data, LineStart, EOL - LineStart);
+    LineStart := EOL + 1;
+    if EOL > Length(Data) then begin
+      Ending := '';
+    end else begin
+      Ending := #10;
+      if Copy(Line, Length(Line), 1) = #13 then begin
+        Delete(Line, Length(Line), 1);
+        Ending := #13#10;
+      end;
+    end;
+    Drop := False;
+    if Shortcuts then begin
+      Drop := IsRetiredShortcut(Trim(Line), ')', '0', '2x_AnimeJaNai_V3 已关闭') or
+        IsRetiredShortcut(Trim(Line), '!', '1001', '2x_AnimeJaNai_V3 画质优先') or
+        IsRetiredShortcut(Trim(Line), '@', '1002', '2x_AnimeJaNai_V3 均衡') or
+        IsRetiredShortcut(Trim(Line), 'SHARP', '1003', '2x_AnimeJaNai_V3 性能优先');
+    end else begin
+      if Copy(Trim(Line), 1, 1) = '[' then Section := Trim(Line);
+      Drop := (Section = '[animejanai]') and ((Line = 'hwdec=nvdec') or (Line = 'gpu-api=vulkan,auto'));
+      if (Section = '[upscale-on]') and (Line = OldFilter) then
+        Line := Copy(Line, 1, Length(Line) - 4) + '0';
+    end;
+    if not Drop then Updated := Updated + Line + Ending;
+  end;
+  if UTF8Encode(Updated) = Bytes then Exit;
+  SetLength(Pending, 260);
+  if MakeTempFile(ExtractFileDir(FileName), 'afc', 0, Pending) = 0 then
+    RaiseException('无法创建配置临时文件：' + FileName);
+  EOL := 1;
+  while (EOL <= Length(Pending)) and (Pending[EOL] <> #0) do EOL := EOL + 1;
+  SetLength(Pending, EOL - 1);
+  try
+    if not SaveStringToFile(Pending, UTF8Encode(Updated), False) or
+       not MoveFileEx(Pending, FileName, 1) then
+      RaiseException('无法更新 ' + FileName);
+  finally
+    DeleteFile(Pending);
+  end;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then begin
+    UpdatePlayerDefaults('input.conf', True);
+    UpdatePlayerDefaults('input-animejanai.conf', True);
+    UpdatePlayerDefaults('mpv-animejanai.conf', False);
+  end;
+end;
 
 procedure DeleteDataPath(Path: String; IsDirectory: Boolean);
 var

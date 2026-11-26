@@ -1,5 +1,5 @@
 {
-  "repository": "https://github.com/libass/libass",
+  "repository": "https://github.com/the-database/libass",
   "commit": "896614fa263f9f64944f7b8650ff6806d5328c4d",
   "changes": [
     "Script Info RenderInMargins maps explicit positioned events to the current screen frame with uniform glyph scaling; preserve ordinary subtitle mapping and clipping"

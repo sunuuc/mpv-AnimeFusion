@@ -214,6 +214,45 @@ def dump_case(mode):
     return {'bytes': len(saved), 'requests': data.requests, 'max_concurrent': data.max_active}
 
 
+def policy_scope():
+    # Observe a network entry after the production on_load hook, then redirect
+    # the demuxer to the same local fixture so this scope test needs no HTTP.
+    probe = OUT / 'policy-scope.lua'
+    probe.write_text(
+        "mp.add_hook('on_load', -900, function()\n"
+        "    if mp.get_property('stream-open-filename') == 'http://127.0.0.1:1/scope' then\n"
+        "        mp.set_property('stream-open-filename', mp.get_property_native('user-data/scope-fixture'))\n"
+        "    end\n"
+        "end)\nmp.set_property_bool('user-data/scope-ready', true)\n", encoding='utf-8')
+    url = 'http://127.0.0.1:1/scope'
+    with NativePlayer() as player:
+        player.command('set', 'user-data/scope-fixture', str(LOCAL))
+        player.command('load-script', probe)
+        player.wait(lambda: json.loads(player.get('user-data') or '{}').get('scope-ready'),
+                    'scope probe did not start')
+        player.command('set', 'demuxer-lavf-o', 'http_multiple=1,analyzeduration=1000000')
+        player.command('set', 'stream-lavf-o', 'reconnect=0')
+        player.command('set', 'cache-secs', '13')
+        player.command('set', 'prefetch-playlist', 'yes')
+        original = {name: player.get(name) for name in
+                    ('demuxer-lavf-o', 'stream-lavf-o', 'cache-secs', 'prefetch-playlist')}
+        for item in (url, str(LOCAL), url, str(LOCAL)):
+            loaded = player.events.count(8)
+            player.command('loadfile', item)
+            player.wait(lambda: player.events.count(8) > loaded, 'next entry did not load')
+            if item == url:
+                demux = player.get('demuxer-lavf-o')
+                check('http_multiple=0' in demux and 'analyzeduration=1000000' in demux,
+                      'HTTP entry must override only its own demuxer key')
+                check('reconnect=1' in player.get('stream-lavf-o'), 'entry needs bounded HTTP reconnect')
+                check(float(player.get('cache-secs')) == 180, 'network cache policy missing')
+                check(player.get('prefetch-playlist') == 'no', 'network entry must disable prefetch')
+            else:
+                for name, before in original.items():
+                    check(player.get(name) == before, 'HTTP policy leaked into local playback: ' + name)
+        return {'loaded_entries': player.events.count(8)}
+
+
 def cache_stall():
     data, url = fixture('cache-stall', 'stall')
     try:
@@ -289,6 +328,7 @@ def case(name, action):
 
 
 try:
+    case('policy-scope', policy_scope)
     for mode in ('complete', 'resume', 'ignore-200', 'ignore-206', 'nonseekable', 'denied'):
         case(mode, lambda: dump_case(mode))
     case('cache-stall', cache_stall)

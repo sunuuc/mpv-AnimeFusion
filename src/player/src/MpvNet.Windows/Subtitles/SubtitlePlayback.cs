@@ -42,6 +42,7 @@ public sealed class SubtitlePlayback(SubtitleLibrary library)
                 Current.KnowTracks();
                 Current._loaded = true;
                 Current.Load(Player.GetPropertyString("media-title"));
+                Current.ImportDroppedTracks(Player.TakeDroppedSubtitles());
                 Current.UpdateMetadata();
             }
         };
@@ -64,6 +65,24 @@ public sealed class SubtitlePlayback(SubtitleLibrary library)
     {
         _knownTracks.Clear();
         foreach (var track in LocalTracks()) _knownTracks.Add(TrackKey(track));
+    }
+
+    void ImportDroppedTracks(string[] files)
+    {
+        if (files.Length == 0) return;
+        var tracks = LocalTracks();
+        PlaybackTrack? selected = null;
+        foreach (string file in files)
+        {
+            var track = tracks.FirstOrDefault(item => item.Path.Equals(file, StringComparison.OrdinalIgnoreCase));
+            if (track == null) continue;
+            _knownTracks.Remove(TrackKey(track));
+            selected = track;
+        }
+        if (selected == null) return;
+        Player.SetPropertyString("sid", selected.Id);
+        Player.SetPropertyBool("sub-visibility", true);
+        TracksChanged();
     }
     void TracksChanged()
     {

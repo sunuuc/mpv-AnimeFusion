@@ -3,11 +3,13 @@
   "commit": "d9cbaae5e92a56e71fdf4da5e063ae3e2611e5f7",
   "files": [
     "AnimeJaNaiUpdater/Program.cs",
-    "BuildMpvUpscale2xAnimeJaNai/Downloader.cs"
+    "BuildMpvUpscale2xAnimeJaNai/Downloader.cs",
+    "AnimeJaNaiUpdater/GpuSupport.cs"
   ],
   "adaptations": [
     "Retain component packs and NVML hardware detection; application updates and obsolete-data migrations are excluded.",
     "Pin package sources and archive SHA-256; validate extraction and commit files with rollback.",
     "Keep component discovery offline and make all model downloads optional."
-  ]
+  ],
+  "gpu_and_component_revision": "3.12.5"
 }

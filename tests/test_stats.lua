@@ -5,7 +5,7 @@ local root = real.get_property('script-opts'):match('r2root=([^,]+)')
 assert(root, 'missing test root')
 local now, count, paused, callbacks, events, props, timers, output = 0, 0, false, {}, {}, {}, {}, ''
 local target = 48
-local filters, log_level = {}, nil
+local filters, log_level, actual_size = {}, nil, nil
 local fake = {
     get_time=function() return now end,
     get_property_number=function(name, default)
@@ -15,7 +15,11 @@ local fake = {
         return default
     end,
     get_property_bool=function() return paused end,
-    get_property_native=function(name, default) return name=='vf' and filters or default end,
+    get_property_native=function(name, default)
+        if name=='vf' then return filters end
+        if name=='video-out-params' then return actual_size end
+        return default
+    end,
     get_property=function() return nil end,
     set_osd_ass=function(_,_,s) output=s end,
     command_native=function(command)
@@ -83,18 +87,29 @@ io.open=function(path,...)
 end
 filters={{name='animejanai',enabled=true,params={stats='stats.log'}}}
 props.vf();tick(0,.25)
-assert(output:find(statustext,1,true),output)
+assert(not output:find(statustext,1,true),'old log shown before current-file native confirmation')
 assert(log_level=='v','native completed configuration messages must be observed')
 local function log(level,text,prefix)
     events['log-message']({prefix=prefix or 'animejanai',level=level,text=text..'\n'})
 end
+log('v','Configured slot 1: 1280x720 -> 2560x1440 (depth 1)')
+actual_size={w=1280,h=720};props['video-out-params']();tick(0,.25)
+assert(output:find('1280×720',1,true) and not output:find(statustext,1,true),output)
+actual_size={w=2560,h=1440};props['video-out-params']();tick(0,.25)
+assert(output:find(statustext,1,true),output)
+actual_size=nil
 local function failed()
     assert(output:find('超分与补帧失败：',1,true) and
         output:find('interpolation failed: fixture',1,true) and
         not output:find('Applied RIFE',1,true),output)
 end
+log('error','Disabling filter aji because it has failed.','vf');tick(0,.25)
+assert(output:find('滤镜已停用',1,true) and not output:find('Applied RIFE',1,true),output)
+log('v','Configured slot 1: 1280x720 -> 2560x1440 (depth 1)');tick(0,.25)
 log('error','interpolation failed: fixture')
 tick(0,.25);failed()
+log('error','Disabling filter aji because it has failed.','vf');tick(0,.25);failed()
+assert(not output:find('滤镜已停用',1,true),output)
 tick(0,2.25);failed()
 for _,name in ipairs({'seek','playback-restart','file-loaded'}) do
     events[name]();tick(0,.25);failed()

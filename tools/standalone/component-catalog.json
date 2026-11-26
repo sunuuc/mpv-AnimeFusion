@@ -1,33 +1,53 @@
 {
-  "package_version": "3.6.0",
+  "package_version": "3.12.5",
   "packs": [
     {
       "name": "trt-runtime",
       "dep": "inference_runtime",
-      "asset": "component-trt-runtime.7z",
-      "bytes": 184539468,
-      "installed_bytes": 437219776,
+      "asset": "trt-runtime-windows-x64.7z",
+      "bytes": 167328448,
+      "installed_bytes": 444548993,
       "files": [
+        "animejanai/inference/CUDA_LICENSE.txt",
+        "animejanai/inference/TensorRT_Acknowledgements.txt",
         "animejanai/inference/cudart64_13.dll",
-        "animejanai/inference/DirectML_LICENSE.txt",
         "animejanai/inference/nvinfer_11.dll",
         "animejanai/inference/nvinfer_plugin_11.dll",
         "animejanai/inference/nvonnxparser_11.dll",
         "animejanai/inference/trtexec.exe"
       ],
-      "url": "https://github.com/the-database/mpv-AnimeJaNai/releases/download/3.6.0/component-trt-runtime.7z",
-      "sha256": "5742aad5b5feaa9cc4989b09cccb721445d82cf5178be1d26b2e78cc69f92391",
+      "url": "https://github.com/the-database/animejanai-inference/releases/download/runtime-2/trt-runtime-windows-x64.7z",
+      "sha256": "e90ecfce92ff35af48a595cb16003e4df7a3f77e812737d8e9d14a4a41722d95",
       "requires": [],
       "recommended": false,
       "title": "TensorRT runtime",
-      "description": "Required for TensorRT upscaling and RIFE interpolation on NVIDIA GPUs."
+      "description": "Required for TensorRT upscaling and RIFE interpolation on NVIDIA GPUs.",
+      "archive_root": "animejanai/inference",
+      "file_sha256": {
+        "animejanai/inference/CUDA_LICENSE.txt": "088381bc2d891e719a2a9398645b00bb45f3b24231473a8283ac7e3e66b8a028",
+        "animejanai/inference/TensorRT_Acknowledgements.txt": "175f0eff1102f77a9c84973e5e0cd2b5284b63abd4db379108b4d303189e9844",
+        "animejanai/inference/cudart64_13.dll": "05bfafcb97bd53b0089568a96e1e5bd6921637bd0853ff7f5342bd31a6a16890",
+        "animejanai/inference/nvinfer_11.dll": "24c40791e950e17e44fc777e81dd22fc9da0db856d5f45fc379211d34d384044",
+        "animejanai/inference/nvinfer_plugin_11.dll": "5b9e4e143d2c86978e775f6d08dc2fe0ad4c71ca824ab6427a4e895e338049b1",
+        "animejanai/inference/nvonnxparser_11.dll": "4a426d73970ce3af7fc1a1f1f29f8957933a28ce7e0fee18b7fb0227f71d685e",
+        "animejanai/inference/trtexec.exe": "f57cce2baf75f457b547586daed4e250bb1d64716a76f2f95933901019f47803"
+      },
+      "file_bytes": {
+        "animejanai/inference/CUDA_LICENSE.txt": 68070,
+        "animejanai/inference/TensorRT_Acknowledgements.txt": 327505,
+        "animejanai/inference/cudart64_13.dll": 551024,
+        "animejanai/inference/nvinfer_11.dll": 394814576,
+        "animejanai/inference/nvinfer_plugin_11.dll": 45633136,
+        "animejanai/inference/nvonnxparser_11.dll": 2241648,
+        "animejanai/inference/trtexec.exe": 981104
+      }
     },
     {
       "name": "rife",
       "dep": "rife",
       "asset": "component-rife.7z",
-      "bytes": 462444033,
-      "installed_bytes": 506592464,
+      "bytes": 462444572,
+      "installed_bytes": 506592135,
       "files": [
         "animejanai/rife/rife_v4.10.onnx",
         "animejanai/rife/rife_v4.10_ensemble.onnx",
@@ -77,156 +97,237 @@
         "animejanai/rife/rife_v4.9.onnx",
         "animejanai/rife/rife_v4.9_ensemble.onnx"
       ],
-      "url": "https://github.com/the-database/mpv-AnimeJaNai/releases/download/3.6.0/component-rife.7z",
-      "sha256": "bb002ecc92cb628c1627ba687d5e709d4d201e432e06a94ba0028aff5f631f0f",
+      "url": "https://github.com/the-database/mpv-AnimeJaNai/releases/download/3.12.5/component-rife.7z",
+      "sha256": "6605c66e25286528854dbaa71b28b60ff67607d717ec10d4f253c90868e16d72",
       "requires": [],
       "recommended": true,
       "title": "RIFE interpolation models",
-      "description": "Interpolation models, including Lite and ensemble variants."
+      "description": "Interpolation models, including Lite and ensemble variants.",
+      "file_sha256": {
+        "animejanai/rife/rife_v4.10.onnx": "c942963b522bd431005c328d242b7c860184cac0a1cb9495af5e6b2878e3cd96",
+        "animejanai/rife/rife_v4.10_ensemble.onnx": "a4f74c036ab1255629aabb431379ffd4c8289a34eb88fa3a93310297ec074092",
+        "animejanai/rife/rife_v4.11.onnx": "213b03a3f74182110ca478cc6a293b97d48e50dd1b7875c345dc7fc88b353d07",
+        "animejanai/rife/rife_v4.11_ensemble.onnx": "ec9bca1a881c1fcc91e81bee05dca1a2c78f01e78740ec60a0152e4d0dd7e73b",
+        "animejanai/rife/rife_v4.12.onnx": "68a72c25f7bfb99ba7ace42bda1723f1ca1efe686730e9ba3b01d4d86830d1eb",
+        "animejanai/rife/rife_v4.12_ensemble.onnx": "c215194b75d77257a1a9781c27eb19be21c7c0ead6676e43d705a5d4a24ebcd5",
+        "animejanai/rife/rife_v4.12_lite.onnx": "ee57a6e29779f3628b168d485d0f78e78ea5eb30c67ff168a24de8bd58b97a13",
+        "animejanai/rife/rife_v4.12_lite_ensemble.onnx": "64800a7508e67cf8a0532001ac771a5f7f16dc00fc5dd76a335ff24ce566aa9e",
+        "animejanai/rife/rife_v4.13.onnx": "056fa6c1a1d072563fe487d8c51e82ed0ce1343b9d99f7b4dcd0ebc553dca585",
+        "animejanai/rife/rife_v4.13_ensemble.onnx": "5952ca741d89c6652afaf048da0cc122c88535ded945efa79cf836e3feee6539",
+        "animejanai/rife/rife_v4.13_lite.onnx": "825463032e9350ec8283e8500170c8bc7d343961fc2a9c17ae7b4aae97a182e3",
+        "animejanai/rife/rife_v4.13_lite_ensemble.onnx": "59cd5ab14d2dbda36a2cec545c1c84e65226f5006ea6cc027838631aaf7e05f3",
+        "animejanai/rife/rife_v4.14.onnx": "26bd6edb9e08da001700a1faca092cca170b6c5a8dac3fe534b9cdb8455540be",
+        "animejanai/rife/rife_v4.14_ensemble.onnx": "2d7716878f75a272083ce7de352b2daacd5c648c377429d0badf8dd005eb0ead",
+        "animejanai/rife/rife_v4.14_lite.onnx": "88edb77667bfa741a363ca118d7477ca59a7ed3db60cd15f502d98ea49e359ce",
+        "animejanai/rife/rife_v4.14_lite_ensemble.onnx": "d8834c6a34959936c2ece52e80cb49216ce653b158a3b80e7282c7a75cc6620f",
+        "animejanai/rife/rife_v4.15.onnx": "46ecd3b8017f3a3e090c53d1d6369a28ef83b12f050eb563949b9ffe0386df7f",
+        "animejanai/rife/rife_v4.15_ensemble.onnx": "9f5caeca327e66330bcd85c6a802525cee08168d0121b28ddc71c3be61e112fc",
+        "animejanai/rife/rife_v4.15_lite.onnx": "3df7ab5ff549578d8d6c2d1f929eaba501390884cbf11ee6958c19ecf5d60a50",
+        "animejanai/rife/rife_v4.15_lite_ensemble.onnx": "753b7839cf978098f2a00e6ed0654667b45ff9303c792149d8d56dba065d3404",
+        "animejanai/rife/rife_v4.16_lite.onnx": "bf46120fbabb4365ca20feca200e41b578d22b1710be3279752b1576a87e7388",
+        "animejanai/rife/rife_v4.16_lite_ensemble.onnx": "a83cbe7b4c552293e26c794c0e12ba406a5382676deefa26369d9d81f0d16d57",
+        "animejanai/rife/rife_v4.17.onnx": "ce4fb8308ca9afa84ba3900b46b3254a94cb520ef85e70e05644c0d5111f3396",
+        "animejanai/rife/rife_v4.17_ensemble.onnx": "3ad369facc0e27fd12216752bf74088d99c4a3eb31b33379d3ef76a9eb35a0e3",
+        "animejanai/rife/rife_v4.17_lite.onnx": "417d2319c236f4b2d5166436981da92f6b1b2db0d169126bf5cfec660f7443cc",
+        "animejanai/rife/rife_v4.17_lite_ensemble.onnx": "62a7dcae912b6e0b43342c4f770ffdc9d2bf26b000a77725106fa02523479645",
+        "animejanai/rife/rife_v4.18.onnx": "03682b1ab121970ec529fee54bf1a1d5e5eda0291d7c8b1d87ad25f879d33c6d",
+        "animejanai/rife/rife_v4.18_ensemble.onnx": "9bc09d476a685b2f24f3cf5dbf439157e4e5c6d553694e6426772fa63d066850",
+        "animejanai/rife/rife_v4.19.onnx": "eaf46199ecc262e585500967efe335d6f45e5809707fb5750d3b20225aaf95c4",
+        "animejanai/rife/rife_v4.19_ensemble.onnx": "b4efe5e6016729d1146f14ae6c5dc1cd7954d4d48d9a0e2ef06623210036bb08",
+        "animejanai/rife/rife_v4.20.onnx": "58255bdfec3dedd22fd48afddeb7c1fa9964fa4efb5a7eb45752b32606528cc5",
+        "animejanai/rife/rife_v4.20_ensemble.onnx": "5c32969c1e568d41c8d721d8c28bed792d35fd1e9bb198d5cc5e54a37b9d0dfa",
+        "animejanai/rife/rife_v4.21.onnx": "0ed4d68c41c97bbee497d66eaaa062bc34c353373cea79715854c39c73792578",
+        "animejanai/rife/rife_v4.22.onnx": "77700a2395ac91d88bf1b886fb144e14cfbca9daf9312f2a460ddd2e7e0d0f8e",
+        "animejanai/rife/rife_v4.22_lite.onnx": "a1e22fb7e6efdfdbdf1179c7f203428a1d808083479f0b23fb923ed6467b3995",
+        "animejanai/rife/rife_v4.23.onnx": "f3430c9fa59e796edac32996dbc5f8a9101afe80f7f9baad541598f54fbd3ea9",
+        "animejanai/rife/rife_v4.24.onnx": "453f51021aa427d5ee7c5e90dce34c1b4b9c285e9e6febf7e4a08ee4bdb8c9ee",
+        "animejanai/rife/rife_v4.24_ensemble.onnx": "2449ce05ad8d96b5b585f6863fb77a7e144f99ace455e879bd532999bceefb7e",
+        "animejanai/rife/rife_v4.25.onnx": "137b84ddb2eb7ef814afd418a2d0e681395a401372743b2d192436a03b758216",
+        "animejanai/rife/rife_v4.26.onnx": "3a683f91682a46021f715d7fdf3da46e0a37ee933c176efb0175728aafc977d0",
+        "animejanai/rife/rife_v4.26_heavy.onnx": "418351da11dbb2ea39309fca0f444356e2a403e3854928d119777f9ac772c72f",
+        "animejanai/rife/rife_v4.7.onnx": "51bf5efb8e004c4a07e54ab99ef02de97623db40fe061766f789342dd4c1dbd7",
+        "animejanai/rife/rife_v4.7_ensemble.onnx": "c8debbdcea3945377b1e0b8ac7d695204c5807f13133db863e4d1c070d34b597",
+        "animejanai/rife/rife_v4.8.onnx": "7be3240c709598f5a0085ebfdb456d18259f69aca7e5fea4e26c778db091a9ab",
+        "animejanai/rife/rife_v4.8_ensemble.onnx": "45751ba166880adb0865d0c6fb0d1282c9cffb2ea127f0459ffb6cd69fe71b50",
+        "animejanai/rife/rife_v4.9.onnx": "3c93ad87c40f661a3e59b398599a5c7905f35d302535192138644bc498e85479",
+        "animejanai/rife/rife_v4.9_ensemble.onnx": "8230d28933f4c999b4b7dbb9420bccfc59135660481e25033501464bf96c9547"
+      }
     },
     {
       "name": "trt-ptx",
       "dep": "inference_runtime",
-      "asset": "component-trt-ptx.7z",
-      "bytes": 207236020,
-      "installed_bytes": 241285744,
+      "asset": "trt-ptx-windows-x64.7z",
+      "bytes": 196936312,
+      "installed_bytes": 242597488,
       "files": [
         "animejanai/inference/nvinfer_builder_resource_ptx_11.dll"
       ],
-      "url": "https://github.com/the-database/mpv-AnimeJaNai/releases/download/3.6.0/component-trt-ptx.7z",
-      "sha256": "ec44c7e1efe3d06dc59ddbcda6d858ae9f5a5dc3e3ec8dcfcc8881240eb4f150",
+      "url": "https://github.com/the-database/animejanai-inference/releases/download/runtime-2/trt-ptx-windows-x64.7z",
+      "sha256": "c4638bc45abe061e0e340676828db4334e4aba57c9e2f8e644d0463f70af0752",
       "requires": [
         "trt-runtime"
       ],
       "recommended": false,
       "title": "TensorRT kernels: PTX",
-      "description": "For NVIDIA GPUs without a matching SM kernel pack; requires the TensorRT runtime."
+      "description": "For NVIDIA GPUs without a matching SM kernel pack; requires the TensorRT runtime.",
+      "archive_root": "animejanai/inference",
+      "file_sha256": {
+        "animejanai/inference/nvinfer_builder_resource_ptx_11.dll": "de9c41c6584721101fd57aaa271009e68a59c58a5ccbe860d0b853a9d1169b36"
+      }
     },
     {
       "name": "trt-sm100",
       "dep": "inference_runtime",
-      "asset": "component-trt-sm100.7z",
-      "bytes": 246746820,
-      "installed_bytes": 284336752,
+      "asset": "trt-sm100-windows-x64.7z",
+      "bytes": 229671324,
+      "installed_bytes": 290771568,
       "files": [
         "animejanai/inference/nvinfer_builder_resource_sm100_11.dll"
       ],
-      "url": "https://github.com/the-database/mpv-AnimeJaNai/releases/download/3.6.0/component-trt-sm100.7z",
-      "sha256": "379fdb781e309367f5ef46abc2151f6e6f0744e6e50a0e5f88c1efe069416939",
+      "url": "https://github.com/the-database/animejanai-inference/releases/download/runtime-2/trt-sm100-windows-x64.7z",
+      "sha256": "fb3ed7d0c69838e82ddf40409d54d598c6ed2304d1a32b5db5b339f73427445a",
       "requires": [
         "trt-runtime"
       ],
       "recommended": false,
       "title": "TensorRT kernels: B200 / GB200 (SM100)",
-      "description": "Blackwell data-center GPUs, compute capability 10.0. Requires the TensorRT runtime."
+      "description": "Blackwell data-center GPUs, compute capability 10.0. Requires the TensorRT runtime.",
+      "archive_root": "animejanai/inference",
+      "file_sha256": {
+        "animejanai/inference/nvinfer_builder_resource_sm100_11.dll": "60645872ef25ae16cb893048d88069f46774f75a5ae5547b21cb8e9bdb4ad844"
+      }
     },
     {
       "name": "trt-sm120",
       "dep": "inference_runtime",
-      "asset": "component-trt-sm120.7z",
-      "bytes": 225678405,
-      "installed_bytes": 263028336,
+      "asset": "trt-sm120-windows-x64.7z",
+      "bytes": 207817866,
+      "installed_bytes": 269390448,
       "files": [
         "animejanai/inference/nvinfer_builder_resource_sm120_11.dll"
       ],
-      "url": "https://github.com/the-database/mpv-AnimeJaNai/releases/download/3.6.0/component-trt-sm120.7z",
-      "sha256": "204533a5e1ab1bbe4557902e8b58f83a33ee1c2d0a925a42e00cd9cf42468dec",
+      "url": "https://github.com/the-database/animejanai-inference/releases/download/runtime-2/trt-sm120-windows-x64.7z",
+      "sha256": "f36b2ab932e0ce212a2b612ca14c34981f5f11b37d55b00bccd3565e2ec3d292",
       "requires": [
         "trt-runtime"
       ],
       "recommended": false,
       "title": "TensorRT kernels: RTX 50 / RTX PRO Blackwell (SM120)",
-      "description": "Blackwell, compute capability 12.0. Requires the TensorRT runtime."
+      "description": "Blackwell, compute capability 12.0. Requires the TensorRT runtime.",
+      "archive_root": "animejanai/inference",
+      "file_sha256": {
+        "animejanai/inference/nvinfer_builder_resource_sm120_11.dll": "cb69e038787ddf4f1a15f18517ec158ba9e5d581a4248831db6c35a9d806bec0"
+      }
     },
     {
       "name": "trt-sm75",
       "dep": "inference_runtime",
-      "asset": "component-trt-sm75.7z",
-      "bytes": 88473256,
-      "installed_bytes": 116110960,
+      "asset": "trt-sm75-windows-x64.7z",
+      "bytes": 84624118,
+      "installed_bytes": 118533232,
       "files": [
         "animejanai/inference/nvinfer_builder_resource_sm75_11.dll"
       ],
-      "url": "https://github.com/the-database/mpv-AnimeJaNai/releases/download/3.6.0/component-trt-sm75.7z",
-      "sha256": "c14c491229f94170968a81ad12d2f6c47887b770bb1c58de370b31a82b730108",
+      "url": "https://github.com/the-database/animejanai-inference/releases/download/runtime-2/trt-sm75-windows-x64.7z",
+      "sha256": "4ee3d28dd285c7cd477a3938ded3de8e6391c89f24e7c6e0f6a1cf59ad11abd4",
       "requires": [
         "trt-runtime"
       ],
       "recommended": false,
       "title": "TensorRT kernels: RTX 20 / Quadro RTX / T4 (SM75)",
-      "description": "Turing, compute capability 7.5. Requires the TensorRT runtime."
+      "description": "Turing, compute capability 7.5. Requires the TensorRT runtime.",
+      "archive_root": "animejanai/inference",
+      "file_sha256": {
+        "animejanai/inference/nvinfer_builder_resource_sm75_11.dll": "7b47a94f3b05f83c3af4f4446a78bc811efad7985ce9909b1a45ed02fa73c267"
+      }
     },
     {
       "name": "trt-sm80",
       "dep": "inference_runtime",
-      "asset": "component-trt-sm80.7z",
-      "bytes": 157274709,
-      "installed_bytes": 186796144,
+      "asset": "trt-sm80-windows-x64.7z",
+      "bytes": 153292989,
+      "installed_bytes": 190718576,
       "files": [
         "animejanai/inference/nvinfer_builder_resource_sm80_11.dll"
       ],
-      "url": "https://github.com/the-database/mpv-AnimeJaNai/releases/download/3.6.0/component-trt-sm80.7z",
-      "sha256": "59993958c4f58c39a42b558b5ad532bbaa10c9bc34505f9a0cc1c6a68c56a1e8",
+      "url": "https://github.com/the-database/animejanai-inference/releases/download/runtime-2/trt-sm80-windows-x64.7z",
+      "sha256": "25931eb2ae3c1780aae73f3dbb10773ec57e21457a749d0b8bee8b034ce53458",
       "requires": [
         "trt-runtime"
       ],
       "recommended": false,
       "title": "TensorRT kernels: A100 / A30 (SM80)",
-      "description": "Ampere data-center GPUs, compute capability 8.0. Requires the TensorRT runtime."
+      "description": "Ampere data-center GPUs, compute capability 8.0. Requires the TensorRT runtime.",
+      "archive_root": "animejanai/inference",
+      "file_sha256": {
+        "animejanai/inference/nvinfer_builder_resource_sm80_11.dll": "3aa4e7cf330b5d0b9466d0017dcc01a5777f98aa0c6df10a3f4fccc0df1a4365"
+      }
     },
     {
       "name": "trt-sm86",
       "dep": "inference_runtime",
-      "asset": "component-trt-sm86.7z",
-      "bytes": 146690617,
-      "installed_bytes": 176118896,
+      "asset": "trt-sm86-windows-x64.7z",
+      "bytes": 142865976,
+      "installed_bytes": 180030576,
       "files": [
         "animejanai/inference/nvinfer_builder_resource_sm86_11.dll"
       ],
-      "url": "https://github.com/the-database/mpv-AnimeJaNai/releases/download/3.6.0/component-trt-sm86.7z",
-      "sha256": "62d184244b58a0871d09d9973d34e8b7278a93e5742b350c09d48f60853bd147",
+      "url": "https://github.com/the-database/animejanai-inference/releases/download/runtime-2/trt-sm86-windows-x64.7z",
+      "sha256": "72ab75e4a6edbdc28381c897821e0b01d4b05d027b70e52d62193220274288bc",
       "requires": [
         "trt-runtime"
       ],
       "recommended": false,
       "title": "TensorRT kernels: RTX 30 / RTX A / A40 (SM86)",
-      "description": "Ampere, compute capability 8.6. Requires the TensorRT runtime."
+      "description": "Ampere, compute capability 8.6. Requires the TensorRT runtime.",
+      "archive_root": "animejanai/inference",
+      "file_sha256": {
+        "animejanai/inference/nvinfer_builder_resource_sm86_11.dll": "351cf7eb5fe7b605fa48b1eb811a65b7e6b4746fd2b911c6ca8a768b0434edfd"
+      }
     },
     {
       "name": "trt-sm89",
       "dep": "inference_runtime",
-      "asset": "component-trt-sm89.7z",
-      "bytes": 155521297,
-      "installed_bytes": 185167984,
+      "asset": "trt-sm89-windows-x64.7z",
+      "bytes": 151608988,
+      "installed_bytes": 189072496,
       "files": [
         "animejanai/inference/nvinfer_builder_resource_sm89_11.dll"
       ],
-      "url": "https://github.com/the-database/mpv-AnimeJaNai/releases/download/3.6.0/component-trt-sm89.7z",
-      "sha256": "ad3b2523e8c51ba53536ee30fd5d18f4a8971eb443fb39c72f6cb2807d308d3c",
+      "url": "https://github.com/the-database/animejanai-inference/releases/download/runtime-2/trt-sm89-windows-x64.7z",
+      "sha256": "0983741bb6fc64a7e991fb4a53c73c051bf127b5a13f4faf0f1ec6b572752833",
       "requires": [
         "trt-runtime"
       ],
       "recommended": false,
       "title": "TensorRT kernels: RTX 40 / RTX Ada / L4 / L40 (SM89)",
-      "description": "Ada, compute capability 8.9. Requires the TensorRT runtime."
+      "description": "Ada, compute capability 8.9. Requires the TensorRT runtime.",
+      "archive_root": "animejanai/inference",
+      "file_sha256": {
+        "animejanai/inference/nvinfer_builder_resource_sm89_11.dll": "7aced8ca0208605eda8cdd77840ddab2eb5a91b3e3a568571be12c0549c61ac2"
+      }
     },
     {
       "name": "trt-sm90",
       "dep": "inference_runtime",
-      "asset": "component-trt-sm90.7z",
-      "bytes": 413913999,
-      "installed_bytes": 454195824,
+      "asset": "trt-sm90-windows-x64.7z",
+      "bytes": 398376462,
+      "installed_bytes": 462014576,
       "files": [
         "animejanai/inference/nvinfer_builder_resource_sm90_11.dll"
       ],
-      "url": "https://github.com/the-database/mpv-AnimeJaNai/releases/download/3.6.0/component-trt-sm90.7z",
-      "sha256": "c41e754b6eb5cae25b486fd197f6ecf89be45755ec9dc5ae19b494a33dde2e1f",
+      "url": "https://github.com/the-database/animejanai-inference/releases/download/runtime-2/trt-sm90-windows-x64.7z",
+      "sha256": "0704ac813447716a19afcea567840e08b13e24bf4d1491d61bcc0948f07251b3",
       "requires": [
         "trt-runtime"
       ],
       "recommended": false,
       "title": "TensorRT kernels: H100 / H200 / GH200 (SM90)",
-      "description": "Hopper data-center GPUs, compute capability 9.0. Requires the TensorRT runtime."
+      "description": "Hopper data-center GPUs, compute capability 9.0. Requires the TensorRT runtime.",
+      "archive_root": "animejanai/inference",
+      "file_sha256": {
+        "animejanai/inference/nvinfer_builder_resource_sm90_11.dll": "6fd7167a7a7ac76b60a0d32b4d722f734bb303bba6d00f98c0ba3f17cebfd028"
+      }
     },
     {
       "name": "upscale-model-1",
@@ -239,9 +340,12 @@
         "animejanai/onnx/2x_AnimeJaNai_HD_V3.1_Balanced_SPANF3_b8f64_unshuffle_fp16.onnx"
       ],
       "requires": [],
-      "recommended": false,
+      "recommended": true,
       "title": "HD upscaling: balanced",
-      "description": "2x_AnimeJaNai_HD_V3.1_Balanced_SPANF3_b8f64_unshuffle_fp16"
+      "description": "2x_AnimeJaNai_HD_V3.1_Balanced_SPANF3_b8f64_unshuffle_fp16",
+      "file_sha256": {
+        "animejanai/onnx/2x_AnimeJaNai_HD_V3.1_Balanced_SPANF3_b8f64_unshuffle_fp16.onnx": "b308e93c3dda3c4f9f968295b2b7b8d1c0583a711bca53a08d51134d9d1cbd5c"
+      }
     },
     {
       "name": "upscale-model-2",
@@ -254,9 +358,12 @@
         "animejanai/onnx/2x_AnimeJaNai_HD_V3.1_Performance_SPANF3_b5f48_unshuffle_fp16.onnx"
       ],
       "requires": [],
-      "recommended": false,
+      "recommended": true,
       "title": "HD upscaling: fast",
-      "description": "2x_AnimeJaNai_HD_V3.1_Performance_SPANF3_b5f48_unshuffle_fp16"
+      "description": "2x_AnimeJaNai_HD_V3.1_Performance_SPANF3_b5f48_unshuffle_fp16",
+      "file_sha256": {
+        "animejanai/onnx/2x_AnimeJaNai_HD_V3.1_Performance_SPANF3_b5f48_unshuffle_fp16.onnx": "7b804d87320f37b7269d6e27796046fbd975e95e2aa1f65d5557f52a36282716"
+      }
     },
     {
       "name": "upscale-model-3",
@@ -271,7 +378,10 @@
       "requires": [],
       "recommended": false,
       "title": "HD upscaling: balanced (sharp)",
-      "description": "2x_AnimeJaNai_HD_V3.1Sharp1_Balanced_SPANF3_b8f64_unshuffle_fp16"
+      "description": "2x_AnimeJaNai_HD_V3.1Sharp1_Balanced_SPANF3_b8f64_unshuffle_fp16",
+      "file_sha256": {
+        "animejanai/onnx/2x_AnimeJaNai_HD_V3.1Sharp1_Balanced_SPANF3_b8f64_unshuffle_fp16.onnx": "dde763c8202cfebac5ec030ea6644f3ee339ea35bbda8a76e257405399552f0f"
+      }
     },
     {
       "name": "upscale-model-4",
@@ -286,7 +396,10 @@
       "requires": [],
       "recommended": false,
       "title": "HD upscaling: fast (sharp)",
-      "description": "2x_AnimeJaNai_HD_V3.1Sharp1_Performance_SPANF3_b5f48_unshuffle_fp16"
+      "description": "2x_AnimeJaNai_HD_V3.1Sharp1_Performance_SPANF3_b5f48_unshuffle_fp16",
+      "file_sha256": {
+        "animejanai/onnx/2x_AnimeJaNai_HD_V3.1Sharp1_Performance_SPANF3_b5f48_unshuffle_fp16.onnx": "72246eded3aab52f8d1a71613c0a1d900734b358d1820b62eb36f1ed376e1cf4"
+      }
     },
     {
       "name": "upscale-model-5",
@@ -299,9 +412,66 @@
         "animejanai/onnx/2x_AnimeJaNai_SD_V1beta34_Compact_1x3xHxW_dyn-HW_strong_fp16_op21_dynamo.onnx"
       ],
       "requires": [],
-      "recommended": false,
+      "recommended": true,
       "title": "SD upscaling model",
-      "description": "2x_AnimeJaNai_SD_V1beta34_Compact_1x3xHxW_dyn-HW_strong_fp16_op21_dynamo"
+      "description": "2x_AnimeJaNai_SD_V1beta34_Compact_1x3xHxW_dyn-HW_strong_fp16_op21_dynamo",
+      "file_sha256": {
+        "animejanai/onnx/2x_AnimeJaNai_SD_V1beta34_Compact_1x3xHxW_dyn-HW_strong_fp16_op21_dynamo.onnx": "ded46591ddfaeb22b3daaf84ad7b36838335aa3efca66acfa36177ce4ab21eb5"
+      }
+    },
+    {
+      "name": "temporalfix-s1",
+      "asset": "temporalfix_s1_v1.1_op18_fp16.onnx",
+      "url": "https://raw.githubusercontent.com/the-database/mpv-AnimeJaNai/6b700f2954e80045e1d890a57a9cbab1327c49e2/BuildMpvUpscale2xAnimeJaNai/mpv-upscale-2x_animejanai/animejanai/onnx/temporalfix_s1_v1.1_op18_fp16.onnx",
+      "sha256": "90deed0d4b672c918e112a760107455a9a1689db22b5b45311b23953ab3dd35f",
+      "bytes": 1200722,
+      "installed_bytes": 1200722,
+      "files": [
+        "animejanai/onnx/temporalfix_s1_v1.1_op18_fp16.onnx"
+      ],
+      "requires": [],
+      "recommended": false,
+      "title": "TemporalFix S1",
+      "description": "Reduce flicker and shimmer across frames.",
+      "file_sha256": {
+        "animejanai/onnx/temporalfix_s1_v1.1_op18_fp16.onnx": "90deed0d4b672c918e112a760107455a9a1689db22b5b45311b23953ab3dd35f"
+      }
+    },
+    {
+      "name": "temporalfix-s2",
+      "asset": "temporalfix_s2_v1_op18_fp16.onnx",
+      "url": "https://raw.githubusercontent.com/the-database/mpv-AnimeJaNai/6b700f2954e80045e1d890a57a9cbab1327c49e2/BuildMpvUpscale2xAnimeJaNai/mpv-upscale-2x_animejanai/animejanai/onnx/temporalfix_s2_v1_op18_fp16.onnx",
+      "sha256": "9d6c7f6f3d63ebe5b4db0d715f9760c949d7dc1fe8142fce48ccfedcca62a477",
+      "bytes": 1200722,
+      "installed_bytes": 1200722,
+      "files": [
+        "animejanai/onnx/temporalfix_s2_v1_op18_fp16.onnx"
+      ],
+      "requires": [],
+      "recommended": false,
+      "title": "TemporalFix S2",
+      "description": "Reduce flicker and shimmer across frames.",
+      "file_sha256": {
+        "animejanai/onnx/temporalfix_s2_v1_op18_fp16.onnx": "9d6c7f6f3d63ebe5b4db0d715f9760c949d7dc1fe8142fce48ccfedcca62a477"
+      }
+    },
+    {
+      "name": "temporalfix-s3",
+      "asset": "temporalfix_s3_v1_op18_fp16.onnx",
+      "url": "https://raw.githubusercontent.com/the-database/mpv-AnimeJaNai/6b700f2954e80045e1d890a57a9cbab1327c49e2/BuildMpvUpscale2xAnimeJaNai/mpv-upscale-2x_animejanai/animejanai/onnx/temporalfix_s3_v1_op18_fp16.onnx",
+      "sha256": "671aa090c89fa048dd3051551fe34f081291a902713831afedafa17fb7dda333",
+      "bytes": 1200722,
+      "installed_bytes": 1200722,
+      "files": [
+        "animejanai/onnx/temporalfix_s3_v1_op18_fp16.onnx"
+      ],
+      "requires": [],
+      "recommended": false,
+      "title": "TemporalFix S3",
+      "description": "Reduce flicker and shimmer across frames.",
+      "file_sha256": {
+        "animejanai/onnx/temporalfix_s3_v1_op18_fp16.onnx": "671aa090c89fa048dd3051551fe34f081291a902713831afedafa17fb7dda333"
+      }
     }
   ]
 }

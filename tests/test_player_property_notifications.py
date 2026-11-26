@@ -11,25 +11,31 @@ ROOT = Path(__file__).resolve().parents[1]
 class PlayerPropertyNotificationsTest(unittest.TestCase):
     def test_progress_never_waits_for_native_properties(self):
         source = (ROOT / 'src/player/src/MpvNet.Windows/WinForms/MainForm.cs').read_text(encoding='utf-8-sig')
-        self.assertIn('ObservePropertyDouble("time-pos", value => Volatile.Write(ref _playbackPosition, value))', source)
+        self.assertNotIn('ObservePropertyDouble("time-pos"', source)
         progress = source[source.index('    void UpdateProgressBar()'):source.index('    void PropChangeOnTop(')]
         program = r'''
 using System.Diagnostics;
 using System.Threading;
 var form = new TestForm();
-form.Position(42.5); form.Progress();
-if (form.PositionShown != 42.5) throw new Exception("notification not displayed");
-form.Position(3); form.Progress();
-if (form.PositionShown != 3) throw new Exception("backward seek not displayed");
+form.Progress();
 var clock = Stopwatch.StartNew();
 for (int i = 0; i < 20000; i++) form.Progress();
-if (clock.ElapsedMilliseconds > 1000) throw new Exception("progress callback blocked");
-form.Stop(); form.Position(8); form.Progress();
-if (form.PositionShown != 3)
-    throw new Exception("callback used a closing window");
-Console.WriteLine($"PASS progress, seek, shutdown; 20000 updates {clock.ElapsedMilliseconds} ms; zero native queries");
+if (clock.ElapsedMilliseconds > 1000 || TestForm.Player.Requests != 1)
+    throw new Exception("multiple pending or blocking requests");
+form.Position(42.5);
+if (form.PositionShown != 42.5) throw new Exception("reply not displayed");
+form.Progress(); form.Position(3);
+if (TestForm.Player.Requests != 2 || form.PositionShown != 3) throw new Exception("backward seek not displayed");
+TestForm.Player.TaskbarProgress = false; form.Progress();
+if (TestForm.Player.Requests != 2) throw new Exception("disabled taskbar requested playback time");
+TestForm.Player.TaskbarProgress = true; form.Progress(); form.Stop(); form.Position(8); form.Progress();
+if (form.PositionShown != 3 || TestForm.Player.Requests != 3)
+    throw new Exception("request or reply used a closing window");
+Console.WriteLine($"PASS progress, seek, disabled taskbar, shutdown; 20000 updates {clock.ElapsedMilliseconds} ms; one outstanding native request");
 class FakePlayer {
     public bool TaskbarProgress = true;
+    public int Requests;
+    public bool RequestPropertyDouble(string name) { Requests++; return name == "time-pos"; }
     public TimeSpan Duration = TimeSpan.FromMinutes(24);
     public double GetPropertyDouble(string name, bool errors) => throw new Exception("native core is blocked");
     public bool GetPropertyBool(string name) => throw new Exception("native core is blocked");
@@ -39,9 +45,12 @@ class Taskbar { public double Position; public void SetValue(double position, do
 class TestForm {
     public static readonly FakePlayer Player = new();
     Taskbar? _taskbar = new();
-    double _playbackPosition;
+    bool _progressUpdatePending;
+    public bool IsDisposed => false;
+    public bool Disposing => false;
+    void BeginInvoke(Action action) => action();
     bool _shutdownStarted;
-    public void Position(double value) => Volatile.Write(ref _playbackPosition, value);
+    public void Position(double value) => Player_DoublePropertyReply("time-pos", value);
     public void Progress() => UpdateProgressBar();
     public double PositionShown => _taskbar!.Position;
     public void Stop() => _shutdownStarted = true;

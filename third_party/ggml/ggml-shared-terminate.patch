@@ -1,0 +1,21 @@
+diff --git a/src/ggml.cpp b/src/ggml.cpp
+--- a/src/ggml.cpp
++++ b/src/ggml.cpp
+@@ -3,6 +3,11 @@
+ #include <cstdlib>
+ #include <exception>
+ 
++// An unloadable Windows DLL must not leave a process-wide terminate handler
++// pointing into its code. Let the application own that handler; ggml's explicit
++// assertion/backtrace paths remain available. Static builds keep the hook.
++#if !defined(_WIN32) || !defined(GGML_SHARED)
++
+ static std::terminate_handler previous_terminate_handler;
+ 
+ GGML_NORETURN static void ggml_uncaught_exception() {
+@@ -24,3 +29,5 @@
+     std::set_terminate(ggml_uncaught_exception);
+     return true;
+ }();
++
++#endif

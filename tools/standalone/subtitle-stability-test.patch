@@ -1,0 +1,246 @@
+diff --git a/TOOLS/subtest/STABILITY.md b/TOOLS/subtest/STABILITY.md
+index da76f1c..a7a5335 100644
+--- a/TOOLS/subtest/STABILITY.md
++++ b/TOOLS/subtest/STABILITY.md
+@@ -40,11 +40,14 @@ from `video/out/vo_gpu_next.c`. `stability_stubs.c` supplies CPU resource and
+ transfer substitutes. The extracted code is compiled and run in separate
+ processes so allocation failures in an old revision cannot stop later cases.
+ 
+-Nineteen processes check 25 scenarios:
++On revisions with mapped upload rings, 23 processes check 29 scenarios:
+ 
+ - Successful pool preallocation and failure of each work/edge texture allocation.
+ - Ordinary overlays, staged textures and glyph batches with buffer transfers
+   unavailable, existing buffers, allocation failure and successful allocation.
++- Mapped staging preallocation, upload alignment, reuse of idle slots, growth
++  up to the ring limit, and fallback uploads when all slots or staging buffers
++  are busy.
+ - Nanosecond frame duration, display-sync seconds, playback speed, approximate
+   frame duration, fallback, disabled and explicit presentation deadlines.
+ 
+diff --git a/TOOLS/subtest/stability_stubs.c b/TOOLS/subtest/stability_stubs.c
+index ee64eeb..5b559d0 100644
+--- a/TOOLS/subtest/stability_stubs.c
++++ b/TOOLS/subtest/stability_stubs.c
+@@ -11,6 +11,7 @@
+ #endif
+ #define MPMAX(a,b) ((a)>(b)?(a):(b))
+ #define MPMIN(a,b) ((a)<(b)?(a):(b))
++#define MP_ALIGN_UP(v,a) (((v)+(a)-1)&~((a)-1))
+ #define MP_TIME_S_TO_NS(s) ((s) * INT64_C(1000000000))
+ #define HAVE_ASS_OUTLINE_DEFERRED 1
+ #define PL_FMT_CAP_STORABLE 1
+@@ -21,14 +22,14 @@
+ #define RASTER_SEGS_PER_TILE 8
+ #define WORK_TEX_W 8192
+ #define EDGE_TEX_W 8192
+-#define NUM_OVERLAY_BUFS 3
+ struct fmt { int caps; }; typedef const struct fmt *pl_fmt;
+-struct gpu { struct { int max_tex_2d_dim; bool buf_transfer,callbacks; } limits; };
++struct gpu { struct { int max_tex_2d_dim; bool buf_transfer,callbacks; size_t max_mapped_size,max_ssbo_size; } limits; };
+ typedef const struct gpu *pl_gpu;
+ struct pl_tex_params { pl_fmt format; int w,h; bool storable,sampleable,blit_src,blit_dst,host_writable; };
+ struct texture { struct pl_tex_params params; }; typedef const struct texture *pl_tex;
+-struct bufpar { size_t size; bool host_writable; };
+-struct buffer { struct bufpar params; }; typedef const struct buffer *pl_buf;
++struct bufpar { size_t size; bool host_writable,host_mapped,storable; };
++struct buffer { struct bufpar params; void *data; }; typedef const struct buffer *pl_buf;
++/* PRODUCTION_RING */
+ #define pl_tex_params(...) (&(struct pl_tex_params){__VA_ARGS__})
+ #define pl_buf_params(...) (&(struct bufpar){__VA_ARGS__})
+ struct pl_tex_transfer_params {
+@@ -45,7 +46,14 @@ struct priv {
+     pl_gpu gpu; pl_fmt osd_fmt[1],osd_acc_fmt; struct { int w,h; } osd_res;
+     pl_tex run_acc,run_tmp,run_cov_f,run_cov_b,work_tex,edge_tex;
+     struct { struct { struct entry entries[2]; } states[2]; } osd_guard;
+-    pl_buf edge_stage,work_stage,overlay_bufs[3],glyph_stage[3];
++    pl_buf overlay_bufs[NUM_OVERLAY_BUFS],glyph_stage[NUM_OVERLAY_BUFS];
++#ifdef STREAM_RING_MAX
++    pl_buf edge_stage[RASTER_STAGE_RING],work_stage[RASTER_STAGE_RING];
++    struct stream_ring raster_stream;
++    int64_t cnt_stream_full;
++#else
++    pl_buf edge_stage,work_stage;
++#endif
+     int overlay_buf_idx,glyph_stage_idx,stage_frame_base;
+     int64_t cnt_staging_grow,cnt_overlay_buf_grow,cnt_staging_wrap;
+     size_t gstage_cpu_sz; unsigned char *gstage_cpu; void *stats;
+@@ -54,6 +62,8 @@ struct priv {
+ struct vo_frame { double duration,approx_duration,ideal_frame_duration; bool display_synced; };
+ static struct texture textures[64]; static struct buffer buffers[64];
+ static int nt,nb,tex_calls,buf_calls,fail_tex,fail_buf,uploads,buffer_uploads,pointer_uploads;
++static bool buffers_busy;
++static struct pl_tex_transfer_params last_upload;
+ static struct fmt format={1};
+ static bool pl_tex_recreate(pl_gpu gpu,pl_tex *t,const struct pl_tex_params *params) {
+     if (++tex_calls==fail_tex) return false;
+@@ -64,11 +74,26 @@ static bool pl_buf_recreate(pl_gpu gpu,pl_buf *b,const struct bufpar *params) {
+     if (++buf_calls==fail_buf) return false;
+     buffers[nb].params=*params; *b=&buffers[nb++]; return true;
+ }
++static pl_buf pl_buf_create(pl_gpu gpu,const struct bufpar *params) {
++    pl_buf b=NULL;
++    if (!pl_buf_recreate(gpu,&b,params)) return NULL;
++    if (params->host_mapped) buffers[nb-1].data=calloc(1,params->size);
++    return b;
++}
++static void pl_buf_destroy(pl_gpu gpu,pl_buf *b) {
++    if (*b) free((*b)->data);
++    *b=NULL;
++}
++static bool pl_buf_poll(pl_gpu gpu,pl_buf b,uint64_t timeout) {
++    assert(b && timeout==0);
++    return buffers_busy;
++}
+ static void pl_buf_write(pl_gpu gpu,pl_buf b,size_t offset,const void *src,size_t size) {
+     assert(b && b->params.size>=offset+size && src);
+ }
+ static bool pl_tex_upload(pl_gpu gpu,const struct pl_tex_transfer_params *tp) {
+     uploads++;
++    last_upload=*tp;
+     assert((tp->buf!=NULL) != (tp->ptr!=NULL));
+     if (tp->buf) { assert(gpu->limits.buf_transfer); buffer_uploads++; }
+     else pointer_uploads++;
+@@ -102,11 +127,58 @@ int main(int argc,char **argv) {
+     struct gpu gpu={.limits={16384,true,false}};
+     struct priv p={.gpu=&gpu,.osd_fmt={&format},.osd_acc_fmt=&format,.osd_res={1920,1080}};
+     if (!strncmp(argv[1],"prealloc",8)) {
++#ifdef STREAM_RING_MAX
++        bool mapped=!strcmp(argv[1],"prealloc-mapped");
++        if (mapped) gpu.limits.max_mapped_size=SIZE_MAX;
++#endif
+         if (!strcmp(argv[1],"prealloc-work-fail")) fail_tex=9;
+         if (!strcmp(argv[1],"prealloc-edge-fail")) fail_tex=10;
+         gc_prealloc_pools(&p);
+         if (fail_tex) assert(buf_calls==0);
+-        else assert(p.work_tex && p.edge_tex && buf_calls==2);
++        else {
++            assert(p.work_tex && p.edge_tex);
++#ifdef STREAM_RING_MAX
++            assert(p.raster_stream.num==(mapped ? 3 : 0));
++            assert(buf_calls==2*RASTER_STAGE_RING+p.raster_stream.num);
++            stream_ring_destroy(&p,&p.raster_stream);
++#else
++            assert(buf_calls==2);
++#endif
++        }
++#ifdef STREAM_RING_MAX
++    } else if (!strncmp(argv[1],"stream-",7) || !strcmp(argv[1],"staged-busy")) {
++        unsigned char pixels[8]={1,2,3,4,5,6,7,8};
++        struct texture tex={.params={.w=4,.h=2}};
++        struct stream_ring *r=&p.raster_stream;
++        gpu.limits.max_mapped_size=512;
++        if (!strcmp(argv[1],"stream-aligned")) {
++            stream_ring_prealloc(&p,r,512,false,1);
++            for (int i=0;i<2;i++) {
++                assert(gc_staged_tex_upload(&p,p.edge_stage,&tex,4,2,4,pixels));
++                assert(last_upload.buf==r->slot[0] && last_upload.buf_offset==256*i);
++                assert(!memcmp((uint8_t *)last_upload.buf->data+last_upload.buf_offset,pixels,8));
++            }
++            assert(gc_staged_tex_upload(&p,p.edge_stage,&tex,4,2,4,pixels));
++            assert(r->num==1 && last_upload.buf_offset==0 && !p.cnt_stream_full);
++        } else if (!strcmp(argv[1],"stream-full")) {
++            stream_ring_prealloc(&p,r,8,false,1);
++            buffers_busy=true;
++            for (int i=0;i<STREAM_RING_MAX;i++) {
++                assert(gc_staged_tex_upload(&p,p.edge_stage,&tex,4,2,4,pixels));
++                assert(last_upload.buf==r->slot[i] && last_upload.buf_offset==0);
++            }
++            assert(gc_staged_tex_upload(&p,p.edge_stage,&tex,4,2,4,pixels));
++            assert(r->num==STREAM_RING_MAX && p.cnt_stream_full==1);
++            assert(last_upload.buf==p.edge_stage[0] && p.cnt_staging_grow==1);
++        } else {
++            struct buffer existing={.params={128,true}};
++            buffers_busy=true;
++            p.edge_stage[0]=&existing;
++            assert(gc_staged_tex_upload(&p,p.edge_stage,&tex,4,2,4,pixels));
++            assert(last_upload.buf==&existing && p.cnt_staging_wrap==1 && buf_calls==0);
++        }
++        stream_ring_destroy(&p,r);
++#endif
+     } else if (!strcmp(argv[1],"timing")) {
+         struct options opts={-1}; p.next_opts=&opts;
+         struct vo_frame frames[]={
+@@ -126,7 +198,12 @@ int main(int argc,char **argv) {
+         gpu.limits.buf_transfer=mode>=2;
+         if (mode==2) fail_buf=1;
+         struct buffer existing={.params={128,true}};
+-        if (mode==1 || mode==4) p.overlay_bufs[0]=p.glyph_stage[0]=p.edge_stage=&existing;
++#ifdef STREAM_RING_MAX
++        pl_buf *stage=p.edge_stage;
++#else
++        pl_buf *stage=&p.edge_stage;
++#endif
++        if (mode==1 || mode==4) p.overlay_bufs[0]=p.glyph_stage[0]=*stage=&existing;
+         unsigned char pixels[8]={1,2,3,4,5,6,7,8};
+         struct texture tex={.params={.w=4,.h=2}};
+         if (!strncmp(argv[1],"overlay",7)) {
+@@ -135,7 +212,7 @@ int main(int argc,char **argv) {
+             struct entry entry={.tex=&tex};
+             assert(upload_overlay(&p,&item,&entry));
+         } else if (!strncmp(argv[1],"staged",6)) {
+-            assert(gc_staged_tex_upload(&p,&p.edge_stage,&tex,4,2,4,pixels));
++            assert(gc_staged_tex_upload(&p,stage,&tex,4,2,4,pixels));
+         } else {
+             struct gmiss miss={.w=4,.h=2,.src=pixels};
+             gc_flush_misses(&p,&miss,1,8,4,&tex);
+diff --git a/TOOLS/subtest/test_stability.py b/TOOLS/subtest/test_stability.py
+index 6973d75..c425d5c 100755
+--- a/TOOLS/subtest/test_stability.py
++++ b/TOOLS/subtest/test_stability.py
+@@ -9,6 +9,7 @@ from pathlib import Path
+ import argparse
+ import json
+ import os
++import re
+ import subprocess
+ import sys
+ 
+@@ -40,9 +41,28 @@ def function(signature: str) -> str:
+     return src[a:b]
+ 
+ 
++def define(name: str) -> str:
++    return re.search(r"^#define " + name + r"\s+\d+", src, re.M)[0]
++
++
++has_stream_ring = "static pl_buf stream_reserve(" in src
++ring_source = define("NUM_OVERLAY_BUFS")
++ring_functions = ()
++if has_stream_ring:
++    ring_source += "\n" + "\n".join(
++        define(name)
++        for name in ("RASTER_STAGE_RING", "RASTER_STAGE_EXTRA_DIV", "STREAM_RING_MAX")
++    ) + "\n" + function("struct stream_ring {") + ";"
++    ring_functions = (
++        "static bool stream_slot_add(",
++        "static pl_buf stream_reserve(",
++        "static void stream_ring_prealloc(",
++        "static void stream_ring_destroy(",
++    )
++
+ functions = "\n".join(
+     function(s)
+-    for s in (
++    for s in ring_functions + (
+         "static bool gc_ensure(pl_gpu",
+         "static void gc_prealloc_pools(",
+         "static bool gc_staged_tex_upload(",
+@@ -57,7 +77,8 @@ b = src.index("    p->guard_deadline_ns = gdl;", a)
+ timing = src[a:b] + "\n    return gdl;"
+ template = (HERE / "stability_stubs.c").read_text(encoding="utf-8")
+ generated = (
+-    template.replace("/* PRODUCTION_FUNCTIONS */", functions)
++    template.replace("/* PRODUCTION_RING */", ring_source)
++    .replace("/* PRODUCTION_FUNCTIONS */", functions)
+     .replace("/* PRODUCTION_OVERLAY_UPLOAD */", overlay)
+     .replace("/* PRODUCTION_DEADLINE */", timing)
+ )
+@@ -89,6 +110,7 @@ if build.returncode == 0:
+         ["prealloc-ok", "prealloc-work-fail", "prealloc-edge-fail"]
+         + [f"{kind}-{mode}" for kind in ("overlay", "staged", "glyph") for mode in range(5)]
+         + ["timing"]
++        + (["prealloc-mapped", "stream-aligned", "stream-full", "staged-busy"] if has_stream_ring else [])
+     ):
+         p = subprocess.run(
+             [str(exe), name],

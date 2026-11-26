@@ -193,6 +193,25 @@ listHost.MouseDown(headerPoint, MouseButton.Left);
 listHost.MouseUp(headerPoint, MouseButton.Left);
 Dispatcher.UIThread.RunJobs();
 Check(!expander.IsExpanded && !mediaItem.IsExpanded, "clicking the record again collapses its metadata");
+void Press(PhysicalKey key)
+{
+    listHost.KeyPressQwerty(key, RawInputModifiers.None);
+    listHost.KeyReleaseQwerty(key, RawInputModifiers.None);
+    Dispatcher.UIThread.RunJobs();
+}
+list.SelectedIndex = 0;
+containers[0].Focus(NavigationMethod.Directional);
+Press(PhysicalKey.Enter);
+Check(expander.IsExpanded && mediaItem.IsExpanded, "Enter on the focused record opens its details");
+Press(PhysicalKey.Enter);
+Check(!expander.IsExpanded, "Enter again closes the focused record");
+Press(PhysicalKey.ArrowRight);
+Press(PhysicalKey.ArrowRight);
+Check(expander.IsExpanded && list.SelectedIndex == 0, "Right expands without toggling or changing the selected record");
+Press(PhysicalKey.ArrowLeft);
+Check(!expander.IsExpanded && list.SelectedIndex == 0, "Left collapses without changing the selected record");
+Press(PhysicalKey.ArrowDown);
+Check(list.SelectedIndex == 1 && !rows[0].IsExpanded, "Down still navigates to the next record without expanding it");
 HistoryLayoutChecks.Run(listHost, list, Check);
 listHost.Close();
 

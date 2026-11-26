@@ -142,7 +142,11 @@ internal static class SubtitleHttp
                 response.Dispose();
                 if (redirects >= 3 || location == null || !Uri.TryCreate(current.RequestUri, location, out var next)
                     || next.Scheme != Uri.UriSchemeHttps || next.Host != origin.Host || next.Port != origin.Port
-                    || next.UserInfo.Length > 0 || next.Fragment.Length > 0 || next.AbsolutePath != origin.AbsolutePath)
+                    || next.UserInfo.Length > 0 || next.Fragment.Length > 0)
+                    throw new SubtitleServiceException("服务地址异常，请稍后重试。");
+                if (source == "ameNZB" && next.AbsolutePath == "/login")
+                    throw new SubtitleServiceException("ameNZB 需要登录，暂无法搜索字幕。");
+                if (next.AbsolutePath != origin.AbsolutePath)
                     throw new SubtitleServiceException("服务地址异常，请稍后重试。");
 
                 if (current != request) current.Dispose();

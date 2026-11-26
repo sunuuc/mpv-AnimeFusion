@@ -9,7 +9,9 @@
 | mpv / mpv contributors | <https://github.com/mpv-player/mpv> | `docs/THIRD_PARTY_LICENSES/mpv-source/`；具体构建包含 GPL/LGPL 组件，保留原声明 |
 | mpv.net / stax76 及贡献者 | <https://github.com/mpvnet-player/mpvnet> | `docs/THIRD_PARTY_LICENSES/mpv.net-LICENSE.txt` |
 | DanmakuFactory / hihkm 及贡献者 | <https://github.com/hihkm/DanmakuFactory> | MIT，`docs/THIRD_PARTY_LICENSES/DanmakuFactory-MIT.txt`；转换源码在 `third_party/danmaku-factory` |
-| libass / libass contributors | <https://github.com/libass/libass> | ISC，`docs/THIRD_PARTY_LICENSES/libass-ISC.txt`；修改源码在 `third_party/libass` |
+| libass / libass contributors、the-database | <https://github.com/the-database/libass> | ISC，`docs/THIRD_PARTY_LICENSES/libass-ISC.txt`；AnimeJaNai 分支与本项目弹幕坐标改动在 `third_party/libass` |
+| AnimeJaNai MVTools 切镜检测器 | <https://github.com/the-database/mpv/tree/41868e1757bea768b07b0e020aa11b9654772c22/video/filter/mvtools> | GPL-2.0-or-later，`docs/THIRD_PARTY_LICENSES/ajn-mvtools` |
+| ggml / ggml contributors | <https://github.com/ggml-org/ggml> | MIT，`docs/THIRD_PARTY_LICENSES/MSYS2/ggml/LICENSE`；Windows 卸载修复见 `third_party/ggml` |
 | PCRE2 / Philip Hazel 及贡献者 | <https://github.com/PCRE2Project/pcre2> | BSD，`docs/THIRD_PARTY_LICENSES/PCRE2-BSD.txt` |
 | Inno Setup / Jordan Russell、Martijn Laan 及贡献者 | <https://github.com/jrsoftware/issrc> | 安装与卸载程序，6.7.3，`docs/THIRD_PARTY_LICENSES/Inno-Setup.txt` |
 
@@ -66,3 +68,5 @@ EXE 安装定义位于 `src/player/src/Setup/Inno`。简体中文安装界面采
 Bangumi 收藏和剧集观看状态交互参考 [czy0729/Bangumi](https://github.com/czy0729/Bangumi)，MIT；许可证见 `THIRD_PARTY_LICENSES/czy0729-Bangumi-MIT.txt`。
 
 历史方案的 aidly 与 hooks-plugin 许可证保留在许可目录；当前弹幕渲染采用 DanmakuFactory 与 mpv/libass，不加载这些历史弹幕组件。
+
+TemporalFix 时序去闪烁模型来自 [vs_temporalfix](https://github.com/pifroggi/vs_temporalfix)，采用 Apache-2.0 许可证。三个可选 ONNX 文件采用 mpv-AnimeJaNai 3.12.5 的版本。

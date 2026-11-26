@@ -232,11 +232,13 @@ end
 function M.inside(b,x,y) return b and x>=b.x0 and x<=b.x1 and y>=b.y0 and y<=b.y1 end
 function M.parse_presets(text)
     local out,section={},''
-    for line in tostring(text):gmatch('[^\r\n]+') do
-        local s=line:match('^%s*%[([^%]]+)%]'); if s then section=s end
+    text=tostring(text):gsub('^\239\187\191','')
+    for line in text:gmatch('[^\r\n]+') do
+        local s=line:match('^%s*%[%s*(.-)%s*%]%s*$')
+        if s then section=s:lower() end
         local id=section:match('^slot_(%d+)$')
-        local name=line:match('^%s*profile_name%s*=%s*(.-)%s*$')
-        if id and name and tonumber(id)>=1 and tonumber(id)<=9 then out[tonumber(id)]=name end
+        local key,name=line:match('^%s*([%w_]+)%s*=%s*(.-)%s*$')
+        if id and key and key:lower()=='profile_name' and tonumber(id)>=1 and tonumber(id)<=9 then out[tonumber(id)]=name end
     end
     return out
 end
@@ -395,6 +397,7 @@ local state={visible=false,x=-1,y=-1,hover=nil,menu=nil,scroll=0,drag=nil,presse
 local playback_ready=false
 local loading=false
 local tls_failure,tls_prompt_id
+local tls_retry={}
 local remember_tls_choice=true
 local layout,buttons,menu_box,menu_items,menus
 local bangumi_account={}
@@ -420,6 +423,25 @@ local function prop(name,default) return mp.get_property_native(name,default) en
 local function num(name,default) return mp.get_property_number(name,default) end
 local function bool(name,default) return mp.get_property_bool(name,default or false) end
 local function cmd(...) return mp.commandv(...) end
+mp.add_hook('on_load',-1000,function()
+    local entry=tls_retry.entry
+    tls_retry.entry=nil
+    if not entry then return end
+    local pos=num('playlist-playing-pos',-1)
+    if pos>=0 and num('playlist/'..pos..'/id')==entry then
+        mp.set_property_bool('file-local-options/tls-verify',false)
+    end
+end)
+mp.add_hook('on_after_end_file',0,function()
+    if tls_retry.apply_setting then
+        mp.set_property_bool('tls-verify',not o.skip_tls_verify)
+        tls_retry.apply_setting=nil
+    end
+end)
+local function open_manager()
+    cmd("run", mp.command_native({"expand-path", "~~/../mpv-AnimeFusionManager.exe"}))
+end
+mp.register_script_message("animefusion-manager", open_manager)
 local function save_option(key,value)
     local path=mp.command_native({'expand-path','~~/script-opts/player_ui.conf'})
     local f=io.open(path,'rb');local content=f and f:read('*a') or ''
@@ -1211,10 +1233,12 @@ end)()({
             menus.invalidate();request_render()
         end
     end,
-    skip_tls_verify=function()return not bool('tls-verify',true) end,
+    skip_tls_verify=function()return o.skip_tls_verify end,
     toggle_skip_tls_verify=function()
-        local skip=bool('tls-verify',true)
+        local skip=not o.skip_tls_verify
         if save_option('skip_tls_verify',skip) then
+            -- mpv restores the previous global value when a file-local option expires.
+            tls_retry.apply_setting=bool('option-info/tls-verify/set-locally')
             mp.set_property_bool('tls-verify',not skip)
             save_option('ask_skip_tls_verify',true)
             menus.invalidate();request_render()
@@ -1240,10 +1264,13 @@ end)()({
             if entry.id==failure.retry_entry_id then index=i-1;break end
         end
         if index==nil then menus.close();request_render();return end
-        if remember_tls_choice and not save_option('skip_tls_verify',true) then return end
-        if not mp.set_property_bool('tls-verify',false) then return end
+        if remember_tls_choice then
+            if not save_option('skip_tls_verify',true) or not mp.set_property_bool('tls-verify',false) then return end
+        else
+            tls_retry.entry=failure.retry_entry_id
+        end
         menus.close();mp.osd_message('',0)
-        cmd('playlist-play-index',index,'yes')
+        if not cmd('playlist-play-index',index,'yes') then tls_retry.entry=nil end
         request_render()
     end,
     mirror=mirror_enabled,
@@ -1270,7 +1297,7 @@ end)()({
     end,
     open_file=open_file,info=info_data,after=mp.add_timeout,on_close=function()if show then show()end end,
     open=function(kind,parent)open_menu(kind,parent)end,
-    manager=function()cmd('run',mp.command_native({'expand-path','~~/../mpv-AnimeFusionManager.exe'}))end
+    manager=open_manager
 })
 open_menu=function(kind,parent)
     if not playback_ready and kind~='playback-settings' and kind~='ssl-error' then return end
@@ -1402,9 +1429,30 @@ end
 local function cancel_pointer()
     state.drag=nil;state.menu_drag=nil;state.pressed=nil;state.pressed_key=nil;state.hover=nil
 end
+local function window_size_check()
+    if mp.get_property('platform')~='windows' then return end
+    local ok,ffi=pcall(require,'ffi')
+    if not ok then return end
+    local host=mp.get_property_number('wid',0)
+    if host<=0 then return end
+    ffi.cdef[[
+        typedef struct { long left, top, right, bottom; } PLAYER_UI_CLIENT_RECT;
+        int __stdcall GetClientRect(void *window, PLAYER_UI_CLIENT_RECT *rect);
+    ]]
+    local user32=ffi.load('user32')
+    local hwnd=ffi.cast('void *',host)
+    local rect=ffi.new('PLAYER_UI_CLIENT_RECT[1]')
+    return function(w,h)
+        return user32.GetClientRect(hwnd,rect)~=0 and rect[0].right==w and rect[0].bottom==h
+    end
+end
+local window_size_matches=window_size_check()
 local function layout_current()
     local w,h=mp.get_osd_size()
+    -- The host can already be sending mouse coordinates in the new client area
+    -- while the video output and the drawn controls still use the previous size.
     return layout and w==layout.w*layout.scale and h==layout.h*layout.scale
+        and (not window_size_matches or window_size_matches(w,h))
 end
 local function mouse_button(event)
     if event and event.canceled then cancel_pointer();request_render();return end

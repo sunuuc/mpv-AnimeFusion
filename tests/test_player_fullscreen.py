@@ -21,7 +21,7 @@ class PlayerFullscreenTest(unittest.TestCase):
         self.assertEqual(hashlib.sha256(handler.encode()).hexdigest(),
                          '5e3c6f35d5bbd40b9e9f7878c2fd6270282926b94673456a21c0998bd1a34a42')
         self.assertIn('bool IsFullscreen => WindowState == FormWindowState.Maximized && FormBorderStyle == FormBorderStyle.None;', source)
-        self.assertIn('RECT rect = Marshal.PtrToStructure<RECT>(m.LParam);', source)
+        self.assertIn('FitFullscreenToScreen(Screen.FromRectangle(e.SuggestedRectangle));', source)
         self.assertNotIn('_changingFullscreen', source)
         self.assertNotIn('_isFullscreen', source)
         self.assertNotIn('_windowedBounds', source)

@@ -115,9 +115,18 @@ public class CommandLine
                 SetStartupOption(pair.Name, pair.Value);
         }
 
-        if (TryBuildStartupList("script-opts", ',', out string scriptOptions))
+        bool hasScriptOptions = TryBuildStartupList("script-opts", ',', out string scriptOptions);
+        // libmpv option setters do not mark values as set-from-commandline.
+        // Preserve explicit host options when the inference backend supplies defaults.
+        foreach (var name in new[] { "display-rate-match", "hwdec", "gpu-api", "video-sync" })
+        {
+            if (!Contains(name)) continue;
+            if (scriptOptions.Length > 0) scriptOptions += ",";
+            scriptOptions += "animejanai_backend-" + name.Replace('-', '_') + "=explicit";
+            hasScriptOptions = true;
+        }
+        if (hasScriptOptions)
             SetStartupOption("script-opts", scriptOptions);
-
     }
 
     public static void ProcessCommandLineArgsPostInit()

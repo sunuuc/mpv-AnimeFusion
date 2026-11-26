@@ -70,6 +70,11 @@ internal static class PagingChecks
         Wait(vm.NextPageAsync());
         check(vm.Items.Count == 20 && vm.Items[0].Title == "第 9979 次观看" && vm.CanPreviousPage,
             "an append does not shift the existing snapshot's next page");
+        var expanded = vm.Items[0];
+        expanded.IsExpanded = true;
+        Wait(vm.RefreshAsync());
+        check(vm.CanPreviousPage && ReferenceEquals(vm.Items[0], expanded) && expanded.IsExpanded,
+            "reactivating the manager retains the open history page and expanded record after an append");
         Wait(vm.PreviousPageAsync());
         check(vm.Items.Select(item => item.Title).SequenceEqual(firstPage) && !vm.CanPreviousPage,
             "going back restores exactly the previous page after an append");

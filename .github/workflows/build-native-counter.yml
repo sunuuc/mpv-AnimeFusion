@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: the-database/mpv-winbuild
-          ref: 19a2e58e6de47af6711161ed4fc1294a191f40bf
+          ref: ca38487e28304e4af70de6cee243469883c0f8b5
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
@@ -24,13 +24,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: the-database/mpv
-          ref: d4c06dd3424dc06d90d4ea15b0fa92fa3ceeb62f
+          ref: 41868e1757bea768b07b0e020aa11b9654772c22
           path: mpv-source
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
           repository: haasn/libplacebo
-          ref: cee9b076f2c63104ccfd497fa79c39a867293ec4
+          ref: 275f7dea27924cdd34ab2e6c20e448b6bc4fab65
           path: libplacebo-source
           submodules: recursive
           persist-credentials: false
@@ -53,6 +53,7 @@ jobs:
           install: >-
             git
             mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
             mingw-w64-ucrt-x86_64-gdb
             mingw-w64-ucrt-x86_64-meson
             mingw-w64-ucrt-x86_64-mpv
@@ -79,16 +80,19 @@ jobs:
           prefix="$(cygpath -m "$PWD/native-prefix")"
           export PKG_CONFIG_PATH="$prefix/lib/pkgconfig"
           export PATH="$PWD/native-prefix/bin:$PATH"
-          meson setup build-placebo libplacebo-source --prefix="$prefix" --buildtype=release --default-library=shared --wrap-mode=nodownload -Ddemos=false -Dtests=false -Dbench=false -Dfuzz=false -Dvulkan=enabled -Dd3d11=enabled -Dopengl=enabled -Dshaderc=enabled -Dxxhash=enabled
+          curl -fLsS --retry 3 https://github.com/ggml-org/ggml/archive/refs/tags/v1.0.0.tar.gz -o ggml-source.tar.gz
+          python project/tools/standalone/build_ggml.py --stock "$(cygpath -m /ucrt64/bin/ggml-base-1.dll)" --source-archive ggml-source.tar.gz --work build-ggml --output "$prefix/bin"
+          meson setup build-placebo libplacebo-source --prefix="$prefix" --buildtype=release --default-library=shared --wrap-mode=nodownload -Ddebug=true -Db_ndebug=true -Dvulkan-registry="$MINGW_PREFIX/share/vulkan/registry/vk.xml" -Ddemos=false -Dtests=false -Dbench=false -Dfuzz=false -Dvulkan=enabled -Dd3d11=enabled -Dopengl=enabled -Dshaderc=enabled -Dxxhash=enabled
           meson compile -C build-placebo -j 4
           meson install -C build-placebo
           meson setup build-ass libass-source --prefix="$prefix" --buildtype=release --default-library=shared --wrap-mode=nodownload -Ddebug=true -Dthreads=enabled -Ddirectwrite=enabled -Dfontconfig=disabled -Dlibunibreak=enabled -Dtest=disabled -Dcompare=disabled -Dprofile=disabled -Dcheckasm=disabled
           meson compile -C build-ass -j 4
           meson install -C build-ass
-          meson setup build-mpv mpv-source --prefix="$prefix" --buildtype=release --wrap-mode=nodownload -Dlibmpv=true -Dcplayer=true -Dtests=true -Ddebug=true -Dcuda-hwaccel=enabled -Dcuda-interop=enabled -Dlua=luajit -Djavascript=enabled -Dd3d11=enabled -Dvulkan=enabled -Dmanpage-build=disabled -Dhtml-build=disabled -Dpdf-build=disabled
+          meson setup build-mpv mpv-source --prefix="$prefix" --buildtype=release --wrap-mode=nodownload -Dlibmpv=true -Dcplayer=true -Dtests=true -Ddebug=true -Dcuda-hwaccel=enabled -Dcuda-interop=enabled -Dajn-mvtools=true -Dlua=luajit -Djavascript=enabled -Dd3d11=enabled -Dvulkan=enabled -Dmanpage-build=disabled -Dhtml-build=disabled -Dpdf-build=disabled
           meson compile -C build-mpv -j 4
           meson install -C build-mpv
           python test-build/stage-native.py "$prefix" "$(cygpath -m /ucrt64)" native-output
+          cp "$prefix/bin/ggml-reload.json" native-output/build-info/
           python test-build/prepare-test-runtime.py
           meson test -C build-mpv --print-errorlogs
           (cd mpv-source && python TOOLS/subtest/test_stability.py --cc gcc --out ../native-output/build-info/subtitle-stability)
@@ -98,6 +102,7 @@ jobs:
           python -c "import json; print(json.load(open('project/third_party/libass/UPSTREAM.json'))['commit'])" > native-output/build-info/libass-commit.txt
           cp project/third_party/libass/UPSTREAM.json native-output/build-info/libass-source.json
           git -C libplacebo-source rev-parse HEAD > native-output/build-info/libplacebo-commit.txt
+          python project/tools/apply_libplacebo_fixes.py libplacebo-source --record-build build-placebo --output native-output/build-info/libplacebo-source.json
           cp mpv-source/Copyright native-output/build-info/mpv-Copyright.txt
       - name: Test native FPS, repeated shutdown and short-lived client thread
         shell: python

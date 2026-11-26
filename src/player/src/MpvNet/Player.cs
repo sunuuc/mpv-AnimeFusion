@@ -52,6 +52,8 @@ public class MainPlayer : MpvClient
 
     public AutoResetEvent ShutdownAutoResetEvent { get; } = new AutoResetEvent(false);
     readonly ManualResetEventSlim _mainEventLoopStopped = new(true);
+    readonly ManualResetEventSlim _stopping = new();
+    readonly CountdownEvent _pendingFileTasks = new(1);
     public nint MainHandle { get; set; }
     public List<MediaTrack> MediaTracks { get; set; } = new List<MediaTrack>();
     public List<TimeSpan> BluRayTitles { get; } = new List<TimeSpan>();
@@ -205,13 +207,17 @@ public class MainPlayer : MpvClient
                 if (GetPropertyString("keep-open") == "no" && App.Exit)
                     CommandV("quit");
         });
+        ObserveProperty("playlist", PruneDroppedSubtitles);
 
         Initialized?.Invoke();
     }
 
     public void Destroy()
     {
+        _stopping.Set();
         _mainEventLoopStopped.Wait();
+        _pendingFileTasks.Signal();
+        _pendingFileTasks.Wait();
         mpv_destroy(MainHandle);
         mpv_destroy(Handle);
 
@@ -425,7 +431,8 @@ public class MainPlayer : MpvClient
     {
         Path = GetPropertyString("path");
         base.OnStartFile();
-        TaskHelp.Run(LoadFolder);
+        if (App.AutoLoadFolder)
+            RunFileTask(LoadFolder);
     }
 
     // executed after OnStartFile
@@ -436,9 +443,20 @@ public class MainPlayer : MpvClient
         if (App.StartSize == "video")
             WasInitialSizeSet = false;
 
-        TaskHelp.Run(UpdateTracks);
+        RunFileTask(UpdateTracks);
 
         base.OnFileLoaded();
+    }
+
+    // These workers query libmpv. Drain them before destroying its handles.
+    void RunFileTask(Action action)
+    {
+        _pendingFileTasks.AddCount();
+        TaskHelp.Run(() =>
+        {
+            try { action(); }
+            finally { _pendingFileTasks.Signal(); }
+        });
     }
 
     void ProcessBluRayLogMessage(string msg)
@@ -462,6 +480,73 @@ public class MainPlayer : MpvClient
     public void SetBluRayTitle(int id) => LoadFiles(new[] { @"bd://" + id }, false, false);
 
     public DateTime LastLoad;
+    readonly Dictionary<long, string[]> _droppedSubtitles = new();
+
+    public long PlayingEntryId()
+    {
+        int index = GetPropertyInt("playlist-playing-pos");
+        if (index < 0) return -1;
+        string json = GetPropertyString($"playlist/{index}", false);
+        if (json.Length == 0) return -1;
+        using var entry = JsonDocument.Parse(json);
+        return entry.RootElement.TryGetProperty("playing", out var playing) && playing.GetBoolean()
+            ? entry.RootElement.GetProperty("id").GetInt64() : -1;
+    }
+
+    public void AddExternalTracks(long entryId, string command, string[] files)
+    {
+        foreach (var file in files)
+        {
+            if (entryId < 0 || PlayingEntryId() != entryId) return;
+            CommandV(command, file);
+        }
+    }
+
+    public string[] TakeDroppedSubtitles()
+    {
+        lock (_droppedSubtitles)
+            return _droppedSubtitles.Count > 0 && _droppedSubtitles.Remove(PlayingEntryId(), out var files) ? files : [];
+    }
+
+    void PruneDroppedSubtitles()
+    {
+        lock (_droppedSubtitles)
+        {
+            if (_droppedSubtitles.Count == 0) return;
+            string json = GetPropertyString("playlist", false);
+            if (json.Length == 0) return;
+            using var playlist = JsonDocument.Parse(json);
+            var ids = playlist.RootElement.EnumerateArray().Select(entry => entry.GetProperty("id").GetInt64()).ToHashSet();
+            foreach (var id in _droppedSubtitles.Keys.Where(id => !ids.Contains(id)).ToArray())
+                _droppedSubtitles.Remove(id);
+        }
+    }
+
+    static int SubtitleMediaIndex(string subtitle, IReadOnlyList<string> media)
+    {
+        if (media.Count == 1) return 0;
+        string name = System.IO.Path.GetFileNameWithoutExtension(subtitle);
+        string? directory = System.IO.Path.GetDirectoryName(subtitle);
+        int bestIndex = 0, bestLength = 0;
+        bool bestInDirectory = false;
+        for (int i = 0; i < media.Count; i++)
+        {
+            string file = media[i];
+            if (file.Contains("://") && Uri.TryCreate(file, UriKind.Absolute, out var uri)) file = uri.LocalPath;
+            string stem = System.IO.Path.GetFileNameWithoutExtension(file);
+            if (stem.Length == 0 || !name.StartsWith(stem, StringComparison.OrdinalIgnoreCase)
+                || name.Length > stem.Length && !". -_[".Contains(name[stem.Length])) continue;
+            bool inDirectory = string.Equals(System.IO.Path.GetDirectoryName(file), directory, StringComparison.OrdinalIgnoreCase);
+            if (stem.Length > bestLength || stem.Length == bestLength && inDirectory && !bestInDirectory)
+            {
+                bestIndex = i;
+                bestLength = stem.Length;
+                bestInDirectory = inDirectory;
+            }
+        }
+        // Without a matching name, keep the manual attachment with the first opened media.
+        return bestIndex;
+    }
 
     public void LoadFiles(string[]? files, bool loadFolder, bool append)
     {
@@ -470,9 +555,10 @@ public class MainPlayer : MpvClient
 
         LastLoad = DateTime.Now;
 
-        for (int i = 0; i < files.Length; i++)
+        List<string> media = [], subtitles = [];
+        foreach (string input in files)
         {
-            string file = files[i];
+            string file = input;
 
             if (string.IsNullOrEmpty(file))
                 continue;
@@ -489,24 +575,46 @@ public class MainPlayer : MpvClient
                 switch (ext)
                 {
                     case "avs": LoadAviSynth(); break;
-                    case "lnk": file = GetShortcutTarget(file); break;
+                    case "lnk": file = GetShortcutTarget(file); ext = file.Ext(); break;
                 }
             }
 
-            if (ext == "iso")
-                LoadISO(file);
-            else if(FileTypes.Subtitle.Contains(ext))
-                CommandV("sub-add", file);
-            else
-            {
-                if (i == 0 && !append)
-                    CommandV("loadfile", file);
-                else
-                    CommandV("loadfile", file, i == 0 && GetPropertyInt("playlist-count") == 0 ? "append-play" : "append");
-            }
+            (FileTypes.Subtitle.Contains(ext) ? subtitles : media).Add(file);
         }
 
-        // loadfile replace starts playback itself; never reopen while path is still initializing.
+        if (media.Count == 0)
+        {
+            AddExternalTracks(PlayingEntryId(), "sub-add", subtitles.ToArray());
+            return;
+        }
+
+        var attachments = subtitles.ToLookup(path => SubtitleMediaIndex(path, media));
+        for (int index = 0; index < media.Count; index++)
+        {
+            string file = media[index];
+            string flags = index == 0 && !append ? "replace"
+                : index == 0 && GetPropertyInt("playlist-count") == 0 ? "append+play" : "append";
+            List<ScopedCommandLine.Option> options = [];
+            if (!file.Contains("://") && file.Ext() == "iso")
+            {
+                using var info = new MediaInfo(file);
+                bool dvd = info.GetGeneral("Format") == "ISO 9660 / DVD Video";
+                options.Add(new(dvd ? "dvd-device" : "bluray-device", file));
+                file = dvd ? "dvd://" : "bd://";
+            }
+            if (attachments.Contains(index))
+            {
+                var dropped = attachments[index].ToArray();
+                options.AddRange(dropped.Select(path => new ScopedCommandLine.Option("sub-file", path)));
+                lock (_droppedSubtitles)
+                {
+                    long id = LoadPlaylistEntry(file, flags, ScopedCommandLine.FileOptions(options));
+                    if (id >= 0) _droppedSubtitles[id] = dropped;
+                }
+            }
+            else if (options.Count > 0) CommandV("loadfile", file, flags, "-1", ScopedCommandLine.FileOptions(options));
+            else CommandV("loadfile", file, flags);
+        }
     }
 
     public static string ConvertFilePath(string path)
@@ -520,25 +628,7 @@ public class MainPlayer : MpvClient
         return path;
     }
 
-    public void LoadISO(string path)
-    {
-        using var mi = new MediaInfo(path);
-        
-        if (mi.GetGeneral("Format") == "ISO 9660 / DVD Video")
-        {
-            Command("stop");
-            Thread.Sleep(500);
-            SetPropertyString("dvd-device", path);
-            LoadFiles([@"dvd://"], false, false);
-        }
-        else
-        {
-            Command("stop");
-            Thread.Sleep(500);
-            SetPropertyString("bluray-device", path);
-            LoadFiles([@"bd://"], false, false);
-        }
-    }
+    public void LoadISO(string path) => LoadFiles([path], false, false);
 
     public void LoadDiskFolder(string path)
     {
@@ -564,7 +654,8 @@ public class MainPlayer : MpvClient
         if (!App.AutoLoadFolder)
             return;
 
-        Thread.Sleep(1000);
+        if (_stopping.Wait(1000))
+            return;
 
         lock (LoadFolderLockObject)
         {

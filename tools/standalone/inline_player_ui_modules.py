@@ -19,6 +19,7 @@ def wrapped(module_name: str) -> str:
 
 def inline_module(path: Path, module_name: str, loader: str) -> None:
     text = path.read_text(encoding="utf-8-sig")
+    original = text
     marker = "-- inlined module: " + module_name
     replacement = wrapped(module_name)
     if marker in text:
@@ -36,10 +37,20 @@ def inline_module(path: Path, module_name: str, loader: str) -> None:
         if text.count(loader) != 1:
             raise RuntimeError(f"Ambiguous Player UI module inclusion: {path.name}: {module_name}")
         text = text.replace(loader, replacement)
-    path.write_text(text, encoding="utf-8")
+    if text != original:
+        raw = path.read_bytes()
+        newline = "\r\n" if b"\r\n" in raw else "\n"
+        encoding = "utf-8-sig" if raw.startswith(b"\xef\xbb\xbf") else "utf-8"
+        path.write_text(text, encoding=encoding, newline=newline)
 
 
 player_ui = SCRIPTS / "player_ui.lua"
+for controller in ("animejanai_backend.lua", "animejanai_slot.lua"):
+    inline_module(
+        SCRIPTS / controller,
+        "animejanai_route.lua",
+        "dofile(mp.command_native({'expand-path','~~/script-modules/animejanai_route.lua'}))",
+    )
 inline_module(
     SCRIPTS / "animejanai_slot.lua",
     "player_ui_core.lua",

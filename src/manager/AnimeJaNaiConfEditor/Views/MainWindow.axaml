@@ -137,11 +137,20 @@
             <Grid ColumnDefinitions="Auto,*" VerticalAlignment="Center" Margin="10,10,0,10">
               <StackPanel Grid.Column="0" Orientation="Horizontal">
                 <TextBlock Margin="0,0,5,0" VerticalAlignment="Center"><Run Text="{local:Text Key=s87836266b6367adf}" /></TextBlock>
-                <ToggleButton IsChecked="{Binding AnimeJaNaiConf.TensorRtSelected}" Content="TensorRT" Command="{Binding AnimeJaNaiConf.UserSelectTensorRt}" IsEnabled="{Binding TrtSelectable}" />
-                <ToggleButton IsVisible="{Binding DirectMlAvailable}" IsChecked="{Binding AnimeJaNaiConf.DirectMlSelected}" Content="DirectML" Command="{Binding AnimeJaNaiConf.UserSelectDirectMl}" />
+                <ToggleButton IsChecked="{Binding AnimeJaNaiConf.TensorRtSelected, Mode=OneWay}" Content="TensorRT" Command="{Binding AnimeJaNaiConf.UserSelectTensorRt}" IsEnabled="{Binding TrtSelectable}" />
+                <ToggleButton IsVisible="{Binding DirectMlAvailable}" IsChecked="{Binding AnimeJaNaiConf.DirectMlSelected, Mode=OneWay}" Content="DirectML" Command="{Binding AnimeJaNaiConf.UserSelectDirectMl}" />
+                <ToggleButton IsChecked="{Binding AnimeJaNaiConf.VulkanSelected, Mode=OneWay}" Content="Vulkan" Command="{Binding AnimeJaNaiConf.UserSelectVulkan}" />
               </StackPanel>
               <TextBlock IsVisible="{Binding DirectMlAvailable}" Grid.Column="1" Classes="help" Margin="40,0,0,0" xml:space="preserve"><Bold>TensorRT</Bold><Run Text="{local:Text Key=s4b4ec4c00b8c23e1}" /><Bold>DirectML</Bold><Run Text="{local:Text Key=s054e15e57a7560ed}" /></TextBlock>
             </Grid>
+
+            <StackPanel Orientation="Horizontal" Margin="10,0,0,10" IsVisible="{Binding GpuChoiceVisible}">
+              <TextBlock VerticalAlignment="Center" Margin="0,0,10,0" Text="{local:Text Key=s916e6781341be683}" />
+              <ComboBox MinWidth="220" ItemsSource="{Binding GpuChoices}" SelectedIndex="{Binding SelectedGpuChoiceIndex, Mode=TwoWay}" IsEnabled="{Binding GpuChoiceEnabled}" />
+            </StackPanel>
+            <CheckBox Margin="10,0,0,10" IsVisible="{Binding AnimeJaNaiConf.TensorRtSelected}" IsChecked="{Binding AnimeJaNaiConf.UseNativeKernels}" Content="{local:Text Key=s73feb6347e420024}" />
+            <CheckBox Margin="10,0,0,10" IsChecked="{Binding AnimeJaNaiConf.AutoDisplayRefresh}" Content="{local:Text Key=s89d885345a0a202f}" />
+            <CheckBox Margin="10,0,0,10" IsChecked="{Binding AnimeJaNaiConf.ReuseHeldFrames}" Content="{local:Text Key=s0e7d90c28a6e59b6}" />
 
             <TextBlock Margin="10,0,0,10" TextWrapping="Wrap" Foreground="Orange" IsVisible="{Binding HasBackendNotice}" Text="{Binding BackendNotice}" />
 
@@ -321,7 +330,8 @@
 
 
 
-                                <ItemsControl ItemsSource="{Binding Models}">
+                                <CheckBox Margin="10" IsChecked="{Binding EnableUpscale}" Content="{local:Text Key=s6a0e5122d5db66ae}" />
+                                <ItemsControl IsEnabled="{Binding EnableUpscale}" ItemsSource="{Binding Models}">
                                   <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="vm:UpscaleModel">
                                       <StackPanel>
@@ -362,6 +372,10 @@
                                                 </Button>
                                                 <TextBlock Grid.Column="3" Classes="help" Margin="20,0,0,0"><Run Text="{local:Text Key=s7944867eb03f34c4}" /></TextBlock>
                                               </Grid>
+                                              <StackPanel Orientation="Horizontal" Margin="10" IsVisible="{Binding IsTemporal}">
+                                                <TextBlock VerticalAlignment="Center" Margin="0,0,6,0" Text="{local:Text Key=s5d2c276ff612a1ce}" />
+                                                <ui:FANumberBox Value="{Binding TemporalSceneThreshold}" Minimum="0" Maximum="1" SmallChange="0.01" />
+                                              </StackPanel>
                                             </StackPanel>
 
                                             <Button Grid.Row="0" HorizontalAlignment="Right" VerticalAlignment="Top" Command="{Binding $parent[ItemsControl].((vm:UpscaleChain)DataContext).DeleteModel}" CommandParameter="{Binding}">
@@ -383,6 +397,18 @@
                                     <TextBlock Margin="5,0,0,0"><Run Text="{local:Text Key=s7060e8240675f8ae}" /></TextBlock>
                                   </StackPanel>
                                 </Button>
+
+                                <CheckBox Margin="10,8" IsChecked="{Binding EnableTemporalFix}" IsEnabled="{Binding TemporalFixToggleEnabled}" Content="{local:Text Key=sbe034cbb6a03e543}" />
+                                <TextBlock Margin="10,0" Classes="help" IsVisible="{Binding !TemporalFixToggleEnabled}" Text="{local:Text Key=sb979885cdb3f06cf}" />
+                                <StackPanel Margin="10,0" Spacing="6" IsVisible="{Binding EnableTemporalFix}">
+                                  <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock VerticalAlignment="Center" Text="{local:Text Key=s63ee3a1b965a7bd2}" />
+                                    <ComboBox ItemsSource="{Binding TemporalFixStrengths}" SelectedValue="{Binding TemporalFixStrength}" />
+                                    <TextBlock VerticalAlignment="Center" Text="{local:Text Key=s4c38fc6cabbde10a}" />
+                                    <NumericUpDown Value="{Binding TemporalFixSceneThreshold}" Minimum="0" Maximum="1" Increment="0.01" FormatString="0.000" />
+                                  </StackPanel>
+                                  <CheckBox IsEnabled="{Binding EnableUpscale}" IsChecked="{Binding TemporalFixBeforeUpscale}" Content="{local:Text Key=s438187396ca4db1a}" />
+                                </StackPanel>
 
                                 <Grid ColumnDefinitions="Auto,*" Margin="10,10,0,10">
                                   <CheckBox Grid.Column="0" IsChecked="{Binding EnableRife}" Content="{local:Text Key=s0505b30c271d8d2e}" IsEnabled="{Binding RifeToggleEnabled}" />
@@ -422,9 +448,11 @@
                                   <TextBlock Grid.Column="1" Classes="help" Foreground="Gray" Margin="20,0,0,0" Text="{local:Text Key=sa22bcf19957e42f0}" />
                                 </Grid>
 
+                                <CheckBox Margin="10" IsVisible="{Binding EnableRife}" IsChecked="{Binding RifeEnhancedSceneDetection}" Content="{local:Text Key=sf563063d9090684a}" />
                                 <Grid ColumnDefinitions="Auto,*" Margin="10,10,0,10" IsVisible="{Binding EnableRife}">
-                                  <CheckBox Grid.Column="0" IsChecked="{Binding RifeBeforeUpscale}" Content="{local:Text Key=s66c266b0dc313abe}" />
-                                  <TextBlock Grid.Column="1" Classes="help" Foreground="Gray" Margin="20,0,0,0" Text="{local:Text Key=s6711188961701c75}" />
+                                  <TextBlock IsVisible="{Binding !CanInterpolateFirst}" Text="{local:Text Key=s814b5867be1cf128}" />
+                                  <CheckBox Grid.Column="0" IsVisible="{Binding CanInterpolateFirst}" IsChecked="{Binding RifeBeforeUpscale}" Content="{local:Text Key=s66c266b0dc313abe}" />
+                                  <TextBlock Grid.Column="1" IsVisible="{Binding CanInterpolateFirst}" Classes="help" Foreground="Gray" Margin="20,0,0,0" Text="{local:Text Key=s6711188961701c75}" />
                                 </Grid>
 
                               </StackPanel>

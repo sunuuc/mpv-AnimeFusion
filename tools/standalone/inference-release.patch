@@ -1,0 +1,107 @@
+--- a/src/core/trt_engine.cpp
++++ b/src/core/trt_engine.cpp
+@@ -391,7 +391,7 @@
+ #elif defined(_WIN32)
+     SECURITY_ATTRIBUTES sa = {sizeof(sa), nullptr, TRUE};
+     HANDLE log = CreateFileW(win_long_path(spec.log_path).c_str(), GENERIC_WRITE,
+-                             FILE_SHARE_READ, &sa, CREATE_ALWAYS,
++                             FILE_SHARE_READ | FILE_SHARE_WRITE, &sa, OPEN_EXISTING,
+                              FILE_ATTRIBUTE_NORMAL, nullptr);
+     if (log == INVALID_HANDLE_VALUE)
+         return -1;
+@@ -691,7 +691,11 @@
+ #endif
+     spec->engine_path = engine_path;
+     spec->tmp_path = engine_path + ".tmp";
+-    spec->log_path = engine_path + ".build.log";
++#ifdef _WIN32
++    spec->log_path = R"(\\.\NUL)";
++#else
++    spec->log_path = "/dev/null";
++#endif
+     spec->name = name;
+     spec->res = shapes_label(settings);
+     spec->onnx_path = onnx_path;
+@@ -1003,7 +1007,6 @@
+         return run_warm_inprocess(spec);
+     FileLogger log;
+     log.path = spec.log_path;
+-    remove_file(spec.log_path);
+     auto fail = [&](const std::string &msg) {
+         log.log(nvinfer1::ILogger::Severity::kERROR, msg.c_str());
+         return 1;
+--- a/src/aji_trt.cpp
++++ b/src/aji_trt.cpp
+@@ -372,11 +372,10 @@
+                            " (first play at this resolution)");
+     if (!run_build_spec(spec, &c->build.child)) {
+ #ifdef AJI_TRTRTX
+-        c->set_error("TensorRT-RTX engine build failed for %s (see %s)",
++        c->set_error("TensorRT-RTX engine build failed for %s", onnx_name.c_str());
+ #else
+-        c->set_error("trtexec failed building engine for %s (see %s)",
++        c->set_error("trtexec failed building engine for %s", onnx_name.c_str());
+ #endif
+-                     onnx_name.c_str(), spec.log_path.c_str());
+         return false;
+     }
+ #ifdef AJI_TRTRTX
+@@ -578,7 +577,7 @@
+             c->reported_failures.count(*p)) {
+             c->log_steps.push_back(
+                 "Engine FAILED for " + name + " for " + shapes_label(settings) +
+-                " (see " + *p + ".build.log); playing without this chain");
++                "; playing without this chain");
+             return 0;
+         }
+     }
+@@ -671,8 +670,7 @@
+             // an error once, so the dispatcher can fall back to TensorRT;
+             // after that (no fallback possible) the passthrough below
+             if (c->reported_failures.insert(build_epath).second) {
+-                c->set_error("TensorRT-RTX engine build failed for %s (see "
+-                             "%s.build.log)", name.c_str(), build_epath.c_str());
++                c->set_error("TensorRT-RTX engine build failed for %s", name.c_str());
+                 return -1;
+             }
+ #endif
+@@ -680,8 +678,7 @@
+             // play passthrough instead of failing the filter
+             c->log_steps.push_back(
+                 "Engine build FAILED for " + name + " for " +
+-                shapes_label(settings) + " (see " + build_epath +
+-                ".build.log); playing without this chain");
++                shapes_label(settings) + "; playing without this chain");
+             return 0;
+         }
+         if (c->build.running.load()) {
+@@ -2869,7 +2866,7 @@
+ #endif
+     if (!c->build.ok.load()) {
+         c->failed_builds.insert(c->build.epath);
+-        c->verbose("background engine build failed: %s (see .build.log)",
++        c->verbose("background engine build failed: %s",
+                    c->build.epath.c_str());
+     }
+ #ifdef AJI_TRTRTX
+--- a/src/aji_img_trt.cpp
++++ b/src/aji_img_trt.cpp
+@@ -459,8 +459,7 @@
+         if (c->build.ok.load())
+             become_ready(m);
+         else
+-            fail(m, AJI_TRT_PRODUCT " engine build failed for " + m->name + " (see " +
+-                        m->engine_path + ".build.log)");
++            fail(m, AJI_TRT_PRODUCT " engine build failed for " + m->name);
+     }
+     while (!c->building && !c->build_queue.empty()) {
+         aji_img_model *m = c->build_queue.front();
+@@ -789,7 +788,6 @@
+         std::atomic<intptr_t> child{0};
+         if (!run_build_spec(spec, &child)) {
+-            c->set_error(AJI_TRT_PRODUCT " engine build failed for " + m->name + " (see " +
+-                         spec.log_path + ")");
++            c->set_error(AJI_TRT_PRODUCT " engine build failed for " + m->name);
+             return nullptr;
+         }
+         become_ready(m.get());

@@ -1,0 +1,54 @@
+--- a/src/aji_conf.cpp
++++ b/src/aji_conf.cpp
+@@ -6,7 +6,7 @@
+  *  - chain_{c}_min/max_resolution "WxH"; "" -> 0x0 / infxinf; a 0 component
+  *    in max_resolution means inf for that axis. min_px = w*h of min, etc.
+  *  - chain_{c}_max_fps: missing -> inf, 0 -> inf. min_fps: missing -> 0.
+- *  - models are chain_{c}_model_{m}_*, m = 1..count(distinct m).
++ *  - models are chain_{c}_model_{m}_*, positive m in numeric order.
+  *  - built-in default profiles in slots 1001-1003 (Quality/Balanced/
+  *    Performance) and 1010/1011 (benchmarks); a [slot_X] section in the
+  *    file replaces the built-in for that slot entirely.
+@@ -92,7 +92,11 @@
+     if (!f)
+         return false;
+     std::string line, cur;
++    bool first_line = true;
+     while (std::getline(f, line)) {
++        if (first_line && line.compare(0, 3, "\xEF\xBB\xBF") == 0)
++            line.erase(0, 3);
++        first_line = false;
+         std::string t = strip(line);
+         if (t.empty() || t[0] == ';' || t[0] == '#')
+             continue;
+@@ -153,7 +157,7 @@
+         if (id > 0)
+             model_ids.insert(id);
+     }
+-    for (int m = 1; m <= (int)model_ids.size(); m++) {
++    for (int m : model_ids) {
+         AjiModelConf mc;
+         std::string mp = mpre + std::to_string(m) + "_";
+         auto mget = [&](const std::string &k, const char *dflt) -> std::string {
+--- a/sanity/rife_conf_test.cpp
++++ b/sanity/rife_conf_test.cpp
+@@ -30,6 +30,19 @@
+         throw std::runtime_error("Held-frame reuse must default to on");
+     std::puts("PASS RIFE enhanced setting: explicit opt-in, omitted/no and built-in defaults");
+ 
++    // An editor may save a UTF-8 signature, and imported model IDs need not be consecutive.
++    std::ofstream(path) << "\xEF\xBB\xBF" "[global]\nbackend=DirectML\nreuse_held_frames=no\n"
++        "[slot_1]\nchain_1_model_10_name=last\nchain_1_model_2_name=first\n";
++    AjiConf imported;
++    loaded = aji_conf_load(path, &imported, &error);
++    std::remove(path);
++    if (!loaded || imported.backend != "DirectML" || imported.reuse_held_frames)
++        throw std::runtime_error("UTF-8 signature obscures the global section");
++    const auto &models = imported.slots.at(1).chains.at(0).models;
++    if (models.size() != 2 || models[0].name != "first" || models[1].name != "last")
++        throw std::runtime_error("Sparse model IDs lost their values or order");
++    std::puts("PASS BOM-prefixed global section and sparse numeric model order");
++
+     // [global] reuse_held_frames: on unless no/off/false/0
+     for (const auto &[value, want] : {std::pair<const char *, bool>{"no", false}, {"OFF", false},
+                                       {"false", false}, {"0", false}, {"yes", true}, {"", true}}) {

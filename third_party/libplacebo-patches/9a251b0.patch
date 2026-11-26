@@ -1,0 +1,54 @@
+From 9a251b04bf298d4404eb213cd87d80439fe010b3 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Kacper=20Michaj=C5=82ow?= <kasper93@gmail.com>
+Date: Thu, 29 Oct 2026 04:53:21 +0100
+Subject: [PATCH] utils/frame_queue: don't overwrite the locks in
+ pl_queue_reset
+
+pl_queue_reset assigned the whole struct while holding both locks, writing
+the copies of lock_strong, lock_weak and wakeup it took a moment earlier back
+over them. A pl_queue_push_* that blocks on lock_weak in between marks the
+mutex as contended, the write-back drops that mark, and the unlock may then
+not wake the pusher. Mutex object is not safe to be copied around like
+that. Reset the queue members one by one instead.
+---
+ src/utils/frame_queue.c | 27 +++++++++++----------------
+ 1 file changed, 11 insertions(+), 16 deletions(-)
+
+diff --git a/src/utils/frame_queue.c b/src/utils/frame_queue.c
+index c16092f894..c89cbee2b9 100644
+--- a/src/utils/frame_queue.c
++++ b/src/utils/frame_queue.c
+@@ -225,22 +225,17 @@ void pl_queue_reset(pl_queue p)
+             pl_tex_destroy(p->gpu, &p->cache.elem[n].tex[i]);
+     }
+ 
+-    *p = (struct pl_queue_t) {
+-        .gpu = p->gpu,
+-        .log = p->log,
+-
+-        // Reuse lock objects
+-        .lock_strong = p->lock_strong,
+-        .lock_weak = p->lock_weak,
+-        .wakeup = p->wakeup,
+-
+-        // Explicitly preserve allocations
+-        .queue.elem = p->queue.elem,
+-        .tmp_sig.elem = p->tmp_sig.elem,
+-        .tmp_ts.elem = p->tmp_ts.elem,
+-        .tmp_frame.elem = p->tmp_frame.elem,
+-        .cache.elem = p->cache.elem,
+-    };
++    // Reuse lock objects and preserve allocations, reset only the state
++    p->queue.num = 0;
++    p->signature = 0;
++    p->threshold_frames = 0;
++    p->total_fields = 0;
++    p->status = PL_QUEUE_OK;
++    p->vps = p->fps = (struct pool) {0};
++    p->reported_vps = p->reported_fps = 0;
++    p->prev_pts = p->pts_offset = 0;
++    p->tmp_sig.num = p->tmp_ts.num = p->tmp_frame.num = 0;
++    p->cache.num = 0;
+ 
+     pl_cond_signal(&p->wakeup);
+     pl_mutex_unlock(&p->lock_weak);

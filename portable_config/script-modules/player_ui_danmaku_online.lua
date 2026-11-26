@@ -653,6 +653,10 @@ function M.search_results(text, keyword, parse_json, clean)
 end
 
 local PLATFORM_PREFIXES={tencent='qq',iqiyi='qiyi',bilibili='bilibili',migu='migu'}
+local function known_platform(value)
+    local key=tostring(value or ''):lower()
+    if PLATFORM_NAMES[key] or key=='renren' then return PLATFORM_PREFIXES[key] or key end
+end
 local function is_extra_episode(title,number)
     local lower=title_width(title):lower():gsub('^%s*【.-】%s*',''):gsub('^%s*%[.-%]%s*','')
     local short=trim(title_width(number)):lower()
@@ -669,11 +673,24 @@ local function is_extra_episode(title,number)
         or lower:match('%f[%a]pv%f[%A]')
 end
 
-function M.bangumi_episodes(text, parse_json, clean, platform_key)
+function M.bangumi_episodes(text, parse_json, clean, platform_key, expected_show)
     local data, err = decode_json(text, parse_json)
     if not data then return nil, err end
     local bangumi=data.bangumi
     if type(bangumi)~='table' or type(bangumi.episodes)~='table' then return {},nil end
+    if expected_show then
+        local id=M.episode_id(bangumi.animeId)
+        if id and id~=M.episode_id(expected_show.id) then return nil,'作品信息已变化' end
+        local wanted=M.show_info(expected_show.label or '',clean)
+        local actual=M.show_info(bangumi.animeTitle or '',clean)
+        if wanted.series~='' and actual.series~='' and
+            (identity(wanted.series)~=identity(actual.series) or
+             wanted.year and actual.year and wanted.year~=actual.year or
+             wanted.season and actual.season and wanted.season~=actual.season or
+             wanted.part and actual.part and wanted.part~=actual.part) then
+            return nil,'作品信息已变化'
+        end
+    end
     local out={}
     local selected_prefix=PLATFORM_PREFIXES[platform_key] or tostring(platform_key or ''):lower()
     for _,episode in ipairs(bangumi.episodes) do
@@ -910,13 +927,15 @@ function M.auto_episode(episodes,media_name,show)
     return selected
 end
 
-function M.parse_comments(text, parse_json, core)
+function M.parse_comments(text, parse_json, core, expected_key)
     if type(text) ~= 'string' or text == '' then return nil, '服务器响应为空' end
     text = text:gsub('^\239\187\191', '')
     local data, err = decode_json(text, parse_json)
     if not data then return nil, err end
     if type(data.comments) ~= 'table' then return nil, '响应中没有弹幕列表' end
     local out, scanned = {}, 0
+    local expected=known_platform(expected_key)
+    local observed,ambiguous=nil,false
     for _, comment in ipairs(data.comments) do
         scanned = scanned + 1
         if type(comment) == 'table' then
@@ -930,12 +949,20 @@ function M.parse_comments(text, parse_json, core)
                 and core.finite(mode) and mode>=1 and mode<=9 and mode==math.floor(mode) then
                 local value = core.clean(tostring(comment.m or '')):gsub('[\r\n]+', ' ')
                 if value ~= '' then
+                    if expected and not ambiguous then
+                        local platform=known_platform((fields[4] or ''):match('^%[([%w_-]+)%]'))
+                        if not platform or observed and platform~=observed then ambiguous=true end
+                        observed=platform
+                    end
                     out[#out + 1] = {t = time, mode = mode, text = value,
                         color = core.finite(color) and core.clamp(math.floor(color), 0, 16777215) or 16777215}
                 end
             end
         end
         if #out >= 50000 or scanned >= 50000 then break end
+    end
+    if expected and observed and not ambiguous and observed~=expected then
+        return nil,'弹幕平台与所选来源不符',true
     end
     table.sort(out, function(a, b) return a.t < b.t end)
     return out

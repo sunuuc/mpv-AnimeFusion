@@ -62,10 +62,16 @@ public static class LibMpv
     public static extern mpv_error mpv_get_property(nint mpvHandle, byte[] name, mpv_format format, out double data);
 
     [DllImport("libmpv-2.dll", CallingConvention = CallingConvention.Cdecl)]
+    public static extern mpv_error mpv_get_property_async(nint mpvHandle, ulong replyUserdata, byte[] name, mpv_format format);
+
+    [DllImport("libmpv-2.dll", CallingConvention = CallingConvention.Cdecl)]
     public static extern mpv_error mpv_set_property(nint mpvHandle, byte[] name, mpv_format format, ref byte[] data);
 
     [DllImport("libmpv-2.dll", CallingConvention = CallingConvention.Cdecl)]
     public static extern mpv_error mpv_set_property(nint mpvHandle, byte[] name, mpv_format format, ref long data);
+
+    [DllImport("libmpv-2.dll", CallingConvention = CallingConvention.Cdecl)]
+    public static extern mpv_error mpv_set_property_async(nint mpvHandle, ulong reply_userdata, byte[] name, mpv_format format, ref int data);
 
     [DllImport("libmpv-2.dll", CallingConvention = CallingConvention.Cdecl)]
     public static extern mpv_error mpv_set_property(nint mpvHandle, byte[] name, mpv_format format, ref double data);

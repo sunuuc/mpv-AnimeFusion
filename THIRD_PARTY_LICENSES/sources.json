@@ -1,4 +1,8 @@
 {
+  "mpv-winbuild-MIT.txt": {
+    "source": "https://raw.githubusercontent.com/the-database/mpv-winbuild/ca38487e28304e4af70de6cee243469883c0f8b5/LICENSE",
+    "sha256": "616a0cefb333ddeafb45d46919f8f9037efa958742b48eba03ac5aae2b90b195"
+  },
   "Avalonia-MIT.txt": {
     "source": "https://raw.githubusercontent.com/AvaloniaUI/Avalonia/12.0.4/licence.md",
     "sha256": "213814d306090074d234d760239ff0f67eb9b8d20eefb4d5631bb39dbe0b769b"
