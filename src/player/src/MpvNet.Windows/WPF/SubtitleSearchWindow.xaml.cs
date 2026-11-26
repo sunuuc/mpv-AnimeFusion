@@ -24,6 +24,7 @@ namespace MpvNet.Windows.WPF;
 public partial class SubtitleSearchWindow : Window
 {
     readonly HttpClient _api = new(new HttpClientHandler { AllowAutoRedirect = false, AutomaticDecompression = System.Net.DecompressionMethods.All }) { Timeout = TimeSpan.FromSeconds(20) };
+    readonly HttpClient _amenzbApi = AmenzbClient.CreateHttpClient();
     readonly SubtitleStore _store;
     readonly AssrtClient _assrt;
     readonly SubtitleLibrary _library;
@@ -75,7 +76,7 @@ public partial class SubtitleSearchWindow : Window
         Player.Shutdown += Media_Changed;
     }
 
-    SubtitleSearch CreateSearch() => new(_assrt, new AmenzbClient(_api), new TsukihimeClient(_api));
+    SubtitleSearch CreateSearch() => new(_assrt, new AmenzbClient(_amenzbApi, _store), new TsukihimeClient(_api));
 
     void Media_Changed()
     {
@@ -145,6 +146,7 @@ public partial class SubtitleSearchWindow : Window
         CancelDetails();
         _search.Dispose(); _searchLifetime.Cancel(); _lifetime.Cancel();
         _api.Dispose();
+        _amenzbApi.Dispose();
     }
 
     void Empty(string heading, string description = "")
@@ -603,7 +605,7 @@ public partial class SubtitleSearchWindow : Window
                 ISubtitleClient client = result.Source switch
                 {
                     SubtitleSource.Assrt => _assrt,
-                    SubtitleSource.Amenzb => new AmenzbClient(_api),
+                    SubtitleSource.Amenzb => new AmenzbClient(_amenzbApi, _store),
                     _ => new TsukihimeClient(_api)
                 };
                 detail = result.DownloadUrl.Length > 0 && (result.Files.Count > 0 || result.Individual)

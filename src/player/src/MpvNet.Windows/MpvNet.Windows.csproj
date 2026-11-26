@@ -49,6 +49,7 @@
         <PackageReference Include="SharpCompress" />
 		<PackageReference Include="CommunityToolkit.Mvvm" />
 		<PackageReference Include="Microsoft.Xaml.Behaviors.Wpf" />
+		<PackageReference Include="Microsoft.Web.WebView2" />
 	</ItemGroup>
 
 

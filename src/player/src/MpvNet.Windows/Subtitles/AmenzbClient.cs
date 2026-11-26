@@ -11,12 +11,73 @@ using static MpvNet.Windows.Subtitles.SubtitleHttp;
 
 namespace MpvNet.Windows.Subtitles;
 
-public sealed class AmenzbClient(HttpClient http) : ISubtitleClient
+public sealed record AmenzbSession(string Name, string Value, DateTimeOffset? Expires)
+{
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsValid => Name == "mysession" && Value is { Length: > 0 and <= 4096 }
+        && Value.All(c => c is >= '!' and <= '~' && c is not ('"' or ',' or ';' or '\\'))
+        && (Expires == null || Expires > DateTimeOffset.UtcNow);
+
+    public override string ToString() => "ameNZB";
+}
+
+internal sealed class AmenzbLoginRequiredException() : SubtitleServiceException("请在来源设置中登录 ameNZB。");
+
+public sealed class AmenzbClient(HttpClient http, SubtitleStore? store = null) : ISubtitleClient
 {
     const string Origin = "https://amenzb.moe";
     static readonly TimeSpan MatchTimeout = TimeSpan.FromSeconds(2);
     public SubtitleSource Source => SubtitleSource.Amenzb;
-    public ISubtitleClient BeginSearch() => new AmenzbClient(http);
+    public ISubtitleClient BeginSearch() => new AmenzbClient(http, store);
+
+    public static HttpClient CreateHttpClient() => new(new HttpClientHandler
+    {
+        AllowAutoRedirect = false, UseCookies = false, AutomaticDecompression = DecompressionMethods.All
+    }) { Timeout = TimeSpan.FromSeconds(20) };
+
+    public static async Task ValidateSessionAsync(HttpClient http, AmenzbSession session, CancellationToken token)
+    {
+        if (!session.IsValid) throw new AmenzbLoginRequiredException();
+        using var request = new HttpRequestMessage(HttpMethod.Get, Origin + "/profile");
+        request.Headers.Accept.ParseAdd("text/html");
+        await ReadSessionAsync(http, request, null, async (response, readToken) =>
+        {
+            if (response.StatusCode != HttpStatusCode.OK || response.Content.Headers.ContentType?.MediaType != "text/html"
+                || response.Headers.Contains("cf-mitigated"))
+                throw new SubtitleServiceException("ameNZB 登录验证失败，请重试。");
+            using var stream = await response.Content.ReadAsStreamAsync(readToken).ConfigureAwait(false);
+            string html = Encoding.UTF8.GetString(await ReadBytesAsync(stream, 1024 * 1024, readToken).ConfigureAwait(false));
+            // /profile redirects guests to /login. Its navigation links vary by deployment.
+            EnsureSignedInPage(html);
+            string pageTitle = Plain(Match(html, @"<title\b[^>]*>(?<title>.*?)</title>").Groups["title"].Value);
+            if (pageTitle.Length == 0 || pageTitle.StartsWith("Just a moment", StringComparison.OrdinalIgnoreCase))
+                throw new SubtitleServiceException("无法确认 ameNZB 账号状态，请稍后重试。");
+            return true;
+        }, token, session: session).ConfigureAwait(false);
+    }
+
+    internal static async Task<T> ReadSessionAsync<T>(HttpClient http, HttpRequestMessage request, SubtitleStore? store,
+        Func<HttpResponseMessage, CancellationToken, Task<T>> read, CancellationToken token,
+        bool rateLimited = true, AmenzbSession? session = null)
+    {
+        session ??= store?.Credentials.AmenzbSession;
+        if (session != null)
+        {
+            var uri = request.RequestUri!;
+            if (uri.Scheme != Uri.UriSchemeHttps || uri.IdnHost != "amenzb.moe" || !uri.IsDefaultPort || uri.UserInfo.Length != 0)
+                throw new SubtitleServiceException("ameNZB 服务地址异常。");
+            if (session.IsValid) request.Headers.Add("Cookie", session.Name + "=" + session.Value);
+        }
+        try
+        {
+            return await ReadAsync(http, request, "ameNZB", read, token, rateLimited).ConfigureAwait(false);
+        }
+        catch (AmenzbLoginRequiredException) when (session != null && store != null)
+        {
+            store.RejectAmenzbSession(session);
+            throw;
+        }
+    }
 
     sealed record Release(string Id, string Title, int? Season, int? Episode, string Languages, string Date);
     sealed record Track(string ReleaseId, string Id, string Language, string Name, string Format, string Size, bool Forced);
@@ -170,14 +231,31 @@ public sealed class AmenzbClient(HttpClient http) : ISubtitleClient
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, Origin + path);
         request.Headers.Accept.ParseAdd("text/html");
-        return await ReadAsync(http, request, "ameNZB", async (response, readToken) =>
+        return await ReadSessionAsync(http, request, store, async (response, readToken) =>
         {
-            if (!response.IsSuccessStatusCode)
+            if (!response.IsSuccessStatusCode || response.Headers.Contains("cf-mitigated"))
                 throw new SubtitleServiceException(response.StatusCode == HttpStatusCode.TooManyRequests
                     ? "ameNZB：请求太频繁，请稍后重试。" : "ameNZB：服务暂时不可用，请稍后重试。");
             using var stream = await response.Content.ReadAsStreamAsync(readToken).ConfigureAwait(false);
-            return Encoding.UTF8.GetString(await ReadBytesAsync(stream, 4 * 1024 * 1024, readToken).ConfigureAwait(false));
+            string html = Encoding.UTF8.GetString(await ReadBytesAsync(stream, 4 * 1024 * 1024, readToken).ConfigureAwait(false));
+            EnsureSignedInPage(html);
+            return html;
         }, token).ConfigureAwait(false);
+    }
+
+    static void EnsureSignedInPage(string html)
+    {
+        var forms = Matches(html, @"<form\b(?<attrs>[^>]*)>(?<body>.*?)</form>");
+        foreach (var form in forms)
+        {
+            string action = Attribute(form.Groups["attrs"].Value, "action");
+            if (action is "/login" or "/login/2fa") throw new AmenzbLoginRequiredException();
+            // The production login form posts back to the page and omits its action.
+            if (action.Length == 0 && Matches(form.Groups["body"].Value, @"<input\b(?<attrs>[^>]*)>").Any(input =>
+                    Attribute(input.Groups["attrs"].Value, "autocomplete") is "current-password" or "one-time-code")
+                && Matches(html, @"<a\b(?<attrs>[^>]*)>").Any(link => Attribute(link.Groups["attrs"].Value, "href") == "/login"))
+                throw new AmenzbLoginRequiredException();
+        }
     }
 
     static IEnumerable<Release> Releases(string html)

@@ -553,6 +553,99 @@ static class Program
     static string SubtitleTrack(string owner, string id, string language, string name, string format = "ass") =>
         $"<tr data-lang=\"{language}\"><td>{language}</td><td>{name}</td><td>{format}</td><td>36 KB</td><td><a href=\"/release/{owner}/subtitles/{id}\">Download</a></td></tr>";
 
+    static async Task AmenzbSessionChecks()
+    {
+        const string owner = "172986325", title = "Fixture S04E08";
+        var session = new AmenzbSession("mysession", "fixture-session-42", DateTimeOffset.UtcNow.AddDays(1));
+        var store = new SubtitleStore(Path.Combine(Root, "amenzb-session"));
+        store.SetAmenzbSession(session);
+        Check(new SubtitleStore(store.Root).Credentials.AmenzbSession == session
+            && !Encoding.UTF8.GetString(File.ReadAllBytes(Path.Combine(store.Root, "account.bin"))).Contains(session.Value),
+            "The locally encrypted session survives reopening the store.");
+        Check(!session.ToString().Contains(session.Value) && !new AmenzbSession("csrf_token", "sample", null).IsValid
+            && !(session with { Value = "bad; extra=value" }).IsValid && !(session with { Expires = DateTimeOffset.UtcNow.AddMinutes(-1) }).IsValid,
+            "Only a valid unexpired provider session cookie is usable.");
+        var calls = new List<string>();
+        using var http = new HttpClient(new Handler(request =>
+        {
+            string path = request.RequestUri!.AbsolutePath;
+            calls.Add(path);
+            Check(request.RequestUri.Host == "amenzb.moe"
+                && request.Headers.GetValues("Cookie").Single() == "mysession=" + session.Value,
+                "Authenticated requests send only the provider session to its HTTPS origin.");
+            return path switch
+            {
+                "/profile" => Content("<html><head><title>Member profile</title></head><body>Profile</body></html>", "text/html"),
+                "/browse" => Content(BrowseRow(owner, title, "chi", "S4 E08"), "text/html"),
+                "/release/" + owner => Content("<h1>" + title + "</h1><table id=\"subs-table\">"
+                    + SubtitleTrack(owner, "91", "chi", "Chinese") + "</table>", "text/html"),
+                "/release/" + owner + "/subtitles/91" => Content(Ass, "text/plain"),
+                _ => throw new InvalidOperationException("Unexpected route.")
+            };
+        }));
+        await AmenzbClient.ValidateSessionAsync(http, session, default);
+        var client = new AmenzbClient(http, store).BeginSearch();
+        var result = (await client.SearchAsync(Query, 1, default)).Results.Single();
+        var detail = await client.DetailAsync(result, default);
+        var library = new SubtitleLibrary(Path.Combine(Root, "session-attachments"));
+        var downloader = new SubtitleDownload(http, library, store);
+        string? file = await downloader.DownloadAsync(Query, detail, null, [], null, default);
+        Check(file != null && File.ReadAllText(file) == Ass && calls.SequenceEqual(
+            ["/profile", "/browse", "/release/" + owner, "/release/" + owner + "/subtitles/91"]),
+            "A verified session supports browse, detail and a separately requested subtitle attachment.");
+        int before = calls.Count;
+        await downloader.DownloadAsync(Query, detail, null, [], null, default);
+        Check(calls.Count == before, "A locally cached subtitle requires no authenticated request.");
+        foreach (string html in new[] {
+            "<title>Login - ameNZB</title><a href='/login'>Login</a><form method='post'><input type='password' autocomplete='current-password'></form>",
+            "<title>Verify - ameNZB</title><a href='/login'>Login</a><form method='post'><input autocomplete='one-time-code'></form>",
+            "<title>Login - ameNZB</title><form action='/login'></form>",
+            "<title>Verify - ameNZB</title><form action='/login/2fa'></form>",
+            "<html><title>Just a moment...</title></html>", "<html>Please wait</html>" })
+        {
+            using var unverified = new HttpClient(new Handler(_ => Content(html, "text/html")));
+            await Rejected(() => AmenzbClient.ValidateSessionAsync(unverified, session, default),
+                "A login page, incomplete two-factor login or challenge never verifies a session.");
+        }
+        using (var challenged = new HttpClient(new Handler(_ =>
+        {
+            var response = Content("<title>ameNZB</title>", "text/html");
+            response.Headers.Add("cf-mitigated", "challenge");
+            return response;
+        })))
+            await Rejected(() => AmenzbClient.ValidateSessionAsync(challenged, session, default),
+                "An interstitial response never validates the account, even with a branded title.");
+
+        foreach (string location in new[] { "/login?next=%2Fprofile", "/login/2fa", "https://other.example/profile" })
+        {
+            var handler = new Handler(_ => new HttpResponseMessage(HttpStatusCode.SeeOther)
+                { Headers = { Location = new Uri(location, UriKind.RelativeOrAbsolute) } });
+            using var denied = new HttpClient(handler);
+            await Rejected(() => AmenzbClient.ValidateSessionAsync(denied, session, default), "A redirected profile never authenticates the user.");
+            Check(handler.Count == 1, "The client does not forward the cookie to the sign-in page or another host.");
+        }
+        var away = new Handler(_ => throw new InvalidOperationException("Unexpected outgoing credential."));
+        using var other = new HttpClient(away);
+        var rejectedLibrary = new SubtitleLibrary(Path.Combine(Root, "rejected-session"));
+        await Rejected(() => new SubtitleDownload(other, rejectedLibrary, store)
+            .DownloadAsync(Query, Result(SubtitleSource.Amenzb), null, [], null, default), "Foreign attachment URLs cannot receive the session.");
+        Check(away.Count == 0, "A foreign destination is rejected before transmission.");
+        using var expired = new HttpClient(new Handler(_ => new HttpResponseMessage(HttpStatusCode.Found)
+            { Headers = { Location = new Uri("/login", UriKind.Relative) } }));
+        await Rejected(() => new SubtitleDownload(expired, rejectedLibrary, store).DownloadAsync(Query, detail, null, [], null, default),
+            "A login redirect on an attachment is reported as expired authentication.");
+        Check(new SubtitleStore(store.Root).Credentials.AmenzbSession == null && rejectedLibrary.Results(title).Count == 0,
+            "An expired session is cleared without saving or indexing a login page.");
+        var oldWindow = new SubtitleStore(store.Root);
+        oldWindow.SetAmenzbSession(session);
+        var renewed = session with { Value = "replacement-session" };
+        store.SetAmenzbSession(renewed);
+        await Rejected(() => new AmenzbClient(expired, oldWindow).SearchAsync(Query, 1, default),
+            "An old player receives its own expired-session response.");
+        Check(new SubtitleStore(store.Root).Credentials.AmenzbSession == renewed,
+            "The old response does not remove a newer login from the settings file.");
+    }
+
     static async Task AmenzbSearchChecks()
     {
         const string keyword = "Tensei shitara Slime";
@@ -1611,6 +1704,8 @@ static class Program
                 Console.WriteLine($"Special provider checks passed: {_checks}; isolated mock responses only.");
                 return;
             }
+            await AmenzbSessionChecks();
+            if (args.Contains("--amenzb-session-only")) return;
             await SearchChecks();
             await TitleChecks();
             await ExactSearchChecks();

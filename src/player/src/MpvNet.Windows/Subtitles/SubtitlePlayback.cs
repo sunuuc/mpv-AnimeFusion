@@ -241,8 +241,9 @@ public sealed class SubtitlePlayback(SubtitleLibrary library)
             request = _download = new(); generation = _generation;
             finished = _downloadFinished = new(TaskCreationOptions.RunContinuationsAsynchronously);
         }
-        using var api = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, AutomaticDecompression = System.Net.DecompressionMethods.All }) { Timeout = TimeSpan.FromSeconds(20) };
-        using var filesClient = new HttpClient(new HttpClientHandler { AutomaticDecompression = System.Net.DecompressionMethods.All }) { Timeout = TimeSpan.FromSeconds(60) };
+        bool amenzb = result.Source == SubtitleSource.Amenzb;
+        using var api = new HttpClient(new HttpClientHandler { UseCookies = !amenzb, AllowAutoRedirect = false, AutomaticDecompression = System.Net.DecompressionMethods.All }) { Timeout = TimeSpan.FromSeconds(20) };
+        using var filesClient = new HttpClient(new HttpClientHandler { UseCookies = !amenzb, AllowAutoRedirect = !amenzb, AutomaticDecompression = System.Net.DecompressionMethods.All }) { Timeout = TimeSpan.FromSeconds(60) };
         try
         {
             MpvNet.Diagnostics.Write("subtitle.playback", "start", new { generation, source = result.Source.ToString(),
@@ -253,7 +254,7 @@ public sealed class SubtitlePlayback(SubtitleLibrary library)
             {
                 ISubtitleClient source = result.Source switch
                 {
-                    SubtitleSource.Amenzb => new AmenzbClient(api),
+                    SubtitleSource.Amenzb => new AmenzbClient(api, store),
                     SubtitleSource.Tsukihime => new TsukihimeClient(api),
                     _ => new AssrtClient(api, store)
                 };
@@ -272,7 +273,7 @@ public sealed class SubtitlePlayback(SubtitleLibrary library)
             if (selected == null && result.Local)
                 throw new SubtitleServiceException("没有当前集的字幕。");
             var progress = new DownloadProgress(this, generation);
-            string? path = await new SubtitleDownload(filesClient, Library)
+            string? path = await new SubtitleDownload(filesClient, Library, store)
                 { ChooseArchiveNamesAsync = WPF.SubtitleArchiveNamesWindow.ChooseAsync }
                 .DownloadAsync(query, result, selected, result.Files, progress, request.Token).ConfigureAwait(false);
             request.Token.ThrowIfCancellationRequested();

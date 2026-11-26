@@ -33,6 +33,10 @@ public partial class SubtitleSourcesWindow : Window
         AmenzbEnabledToggle.IsChecked = _store.Credentials.AmenzbEnabled;
         TsukihimeEnabledToggle.IsChecked = _store.Credentials.TsukihimeEnabled;
         AssrtSettings.Visibility = _store.Credentials.AssrtEnabled ? Visibility.Visible : Visibility.Collapsed;
+        AmenzbAccount.Visibility = _store.Credentials.AmenzbEnabled ? Visibility.Visible : Visibility.Collapsed;
+        bool signedIn = _store.Credentials.AmenzbSession?.IsValid == true;
+        AmenzbLoginButton.Content = signedIn ? "重新登录" : "登录";
+        AmenzbLogoutButton.Visibility = signedIn ? Visibility.Visible : Visibility.Collapsed;
     }
     void Source_Click(object sender, RoutedEventArgs e)
     {
@@ -40,7 +44,7 @@ public partial class SubtitleSourcesWindow : Window
         bool saved = false;
         try
         {
-            _store.Save(_store.Credentials with
+            _store.Update(credentials => credentials with
             {
                 AssrtEnabled = AssrtEnabledToggle.IsChecked == true,
                 AmenzbEnabled = AmenzbEnabledToggle.IsChecked == true,
@@ -81,7 +85,7 @@ public partial class SubtitleSourcesWindow : Window
             string key = AssrtTokenBox.Password.Trim();
             await new AssrtClient(_http, _store).ValidateTokenAsync(key, verification.Token);
             if (_closed || verification.IsCancellationRequested || _verification != verification || !_store.Credentials.AssrtEnabled) return;
-            _store.Save(_store.Credentials with { AssrtToken = key });
+            _store.Update(credentials => credentials with { AssrtToken = key });
             Saved = saved = true; AssrtStatus.Text = "验证成功";
         }
         catch (OperationCanceledException) when (verification.IsCancellationRequested) { }
@@ -94,6 +98,23 @@ public partial class SubtitleSourcesWindow : Window
         if (saved) SettingsChanged?.Invoke(this, EventArgs.Empty);
     }
     void Website_Click(object sender, RoutedEventArgs e) => ProcessHelp.ShellExecute((string)((Button)sender).Tag);
+    void AmenzbLogin_Click(object sender, RoutedEventArgs e)
+    {
+        if (_closed || !_store.Credentials.AmenzbEnabled) return;
+        var window = new AmenzbLoginWindow { Owner = this };
+        if (window.ShowDialog() == true && window.Session is { IsValid: true } session)
+            SaveAmenzbSession(session);
+    }
+    void AmenzbLogout_Click(object sender, RoutedEventArgs e) => SaveAmenzbSession(null);
+    void SaveAmenzbSession(AmenzbSession? session)
+    {
+        if (_closed || !_store.Credentials.AmenzbEnabled) return;
+        try { _store.SetAmenzbSession(session); }
+        catch (Exception) { SourcesStatus.Text = "登录信息保存失败，请重试。"; return; }
+        Saved = true; SourcesStatus.Text = "";
+        RefreshSources();
+        SettingsChanged?.Invoke(this, EventArgs.Empty);
+    }
     void Close_Click(object sender, RoutedEventArgs e) => Close();
     void Window_Closed(object? sender, EventArgs e)
     { _closed = true; _lifetime.Cancel(); AssrtTokenBox.Clear(); }

@@ -10,7 +10,7 @@ using System.Text.RegularExpressions;
 
 namespace MpvNet.Windows.Subtitles;
 
-public sealed class SubtitleDownload(HttpClient http, SubtitleLibrary library)
+public sealed class SubtitleDownload(HttpClient http, SubtitleLibrary library, SubtitleStore? store = null)
 {
     public Func<IReadOnlyList<SubtitleArchiveName>, CancellationToken,
         Task<IReadOnlyDictionary<string, string>?>>? ChooseArchiveNamesAsync { get; init; }
@@ -444,7 +444,11 @@ public sealed class SubtitleDownload(HttpClient http, SubtitleLibrary library)
             throw new SubtitleServiceException("字幕下载链接无效。");
         using var request = new HttpRequestMessage(HttpMethod.Get, uri);
         request.Headers.Accept.ParseAdd("*/*");
-        return await SubtitleHttp.ReadAsync(http, request, source.ToString(), async (response, readToken) =>
+        return source == SubtitleSource.Amenzb
+            ? await AmenzbClient.ReadSessionAsync(http, request, store, ReadFile, token, rateLimited: false).ConfigureAwait(false)
+            : await SubtitleHttp.ReadAsync(http, request, source.ToString(), ReadFile, token, rateLimited: false).ConfigureAwait(false);
+
+        async Task<byte[]> ReadFile(HttpResponseMessage response, CancellationToken readToken)
         {
             if (!response.IsSuccessStatusCode) throw new SubtitleServiceException("字幕下载失败，请稍后重试。");
             string type = response.Content.Headers.ContentType?.MediaType ?? "";
@@ -471,7 +475,7 @@ public sealed class SubtitleDownload(HttpClient http, SubtitleLibrary library)
             if (lastPercent != 100) progress?.Report("下载字幕 100%");
             if (bytes.Length == 0) throw new SubtitleServiceException("下载的字幕文件为空。");
             return bytes;
-        }, token, rateLimited: false).ConfigureAwait(false);
+        }
     }
 
     static async Task WriteAsync(string target, byte[] bytes, CancellationToken token)

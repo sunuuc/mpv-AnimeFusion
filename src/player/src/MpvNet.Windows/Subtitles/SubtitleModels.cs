@@ -291,6 +291,7 @@ public sealed record SubtitlePage(IReadOnlyList<SubtitleResult> Results, bool Ha
 }
 public sealed record SubtitleCredentials(string AssrtToken)
 {
+    public AmenzbSession? AmenzbSession { get; init; }
     public bool AssrtEnabled { get; init; } = true;
     public bool AmenzbEnabled { get; init; } = true;
     public bool TsukihimeEnabled { get; init; } = true;

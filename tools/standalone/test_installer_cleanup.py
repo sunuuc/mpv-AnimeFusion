@@ -68,6 +68,9 @@ def definition(work, mutexes):
                              flags=re.MULTILINE | re.DOTALL)
         check(count == 1, 'Fixture must remove only the ' + section + ' section')
     text = text.replace('{localappdata}\\mpv-AnimeFusion', str(work / 'user-data'))
+    temp_folder = "GetTempDir + 'mpv-AnimeFusion\\ameNZB-WebView2'"
+    check(text.count(temp_folder) == 1, 'Fixture must isolate the WebView2 temporary profile')
+    text = text.replace(temp_folder, "'" + str(work / 'temp/mpv-AnimeFusion/ameNZB-WebView2').replace("'", "''") + "'")
     old = 'if UninstallSilent() then\n    Result := True'
     choices = '\n'.join(f"    DeleteUserData[{i}] := ExpandConstant('{{param:test-{i}|0}}') = '1';"
                         for i in range(3))
@@ -170,7 +173,10 @@ def main(compiler, work):
         userdata = work / 'user-data'
         personal_data = ['Bangumi/account.json', 'Trakt/account.json',
                          'MyAnimeList/account.json', 'watch_history.jsonl']
-        subtitle_data = ['Subtitles/title/sub.ass', 'Danmaku/title/comments.xml']
+        subtitle_data = ['Subtitles/account.bin', 'Subtitles/title/sub.ass', 'Danmaku/title/comments.xml']
+        webview_temp = work / 'temp/mpv-AnimeFusion'
+        write(webview_temp / 'ameNZB-WebView2/Default/Cache/data')
+        write(webview_temp / 'neighbor/keep')
         for name in personal_data + subtitle_data:
             write(userdata / name)
         expected_models = {name: hashlib.sha256((install / name).read_bytes()).hexdigest()
@@ -195,6 +201,8 @@ def main(compiler, work):
         while uninstaller.exists() and time.monotonic() < deadline:
             time.sleep(.1)
         check(not uninstaller.exists(), 'Native uninstall cleanup must finish before the next install')
+        check(not (webview_temp / 'ameNZB-WebView2').exists(), 'Temporary WebView2 profile survived uninstall')
+        check((webview_temp / 'neighbor/keep').is_file(), 'Uninstall removed an unrelated temporary directory')
         for name in disposable_names + ['mpv-AnimeFusion.exe', 'mpv-AnimeFusionManager.exe',
                                         'app/runtime.dll', 'animejanai/danmaku/converter.exe']:
             check(not (install / name).exists(), 'Program or diagnostic residue: ' + name)

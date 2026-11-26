@@ -1,0 +1,22 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wv="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        x:Class="MpvNet.Windows.WPF.AmenzbLoginWindow"
+        Title="登录 ameNZB · amenzb.moe" Width="640" Height="660" MinWidth="400" MinHeight="360"
+        ShowInTaskbar="False" WindowStartupLocation="CenterOwner"
+        Background="{Binding Theme.Background}" Foreground="{Binding Theme.Foreground}"
+        Loaded="Window_Loaded" Closed="Window_Closed">
+    <DockPanel>
+        <DockPanel DockPanel.Dock="Bottom" Margin="14,8">
+            <Button DockPanel.Dock="Right" Content="取消" IsCancel="True" />
+            <Button x:Name="FinishButton" DockPanel.Dock="Right" Content="完成登录" IsEnabled="False"
+                    Click="Finish_Click" Margin="0,0,8,0" />
+            <Button x:Name="RuntimeButton" DockPanel.Dock="Right" Content="下载 WebView2" Visibility="Collapsed"
+                    Click="Runtime_Click" Margin="0,0,8,0" />
+            <Button x:Name="RetryButton" DockPanel.Dock="Right" Content="重试" Visibility="Collapsed"
+                    Click="Retry_Click" Margin="0,0,8,0" />
+            <TextBlock x:Name="Status" Text="正在打开登录页…" VerticalAlignment="Center" TextWrapping="Wrap" />
+        </DockPanel>
+        <wv:WebView2 x:Name="Browser" />
+    </DockPanel>
+</Window>

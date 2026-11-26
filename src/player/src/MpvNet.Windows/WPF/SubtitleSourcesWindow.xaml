@@ -28,13 +28,20 @@
                     <Button DockPanel.Dock="Right" Content="获取密钥" Tag="https://secure.assrt.net/usercp.php" Click="Website_Click" />
                     <TextBlock Text="API 密钥" VerticalAlignment="Center" />
                 </DockPanel>
-                <PasswordBox x:Name="AssrtTokenBox" MaxLength="128" />
-                <Button x:Name="VerifyButton" Content="验证" HorizontalAlignment="Left" Margin="0,10,0,0" Click="Verify_Click" />
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <PasswordBox x:Name="AssrtTokenBox" MaxLength="128" />
+                    <Button x:Name="VerifyButton" Grid.Column="1" Content="验证" Margin="10,0,0,0" Click="Verify_Click" />
+                </Grid>
                 <TextBlock x:Name="AssrtStatus" Style="{StaticResource MatchStatusText}" Margin="0,8,0,0" />
             </StackPanel>
             <DockPanel Margin="0,20,0,0">
                 <ToggleButton x:Name="AmenzbEnabledToggle" DockPanel.Dock="Right" Style="{StaticResource MatchToggleSwitch}"
                               AutomationProperties.Name="启用 ameNZB" Click="Source_Click" />
+                <StackPanel x:Name="AmenzbAccount" DockPanel.Dock="Right" Orientation="Horizontal" Margin="8,0,10,0">
+                    <Button x:Name="AmenzbLoginButton" Content="登录" Click="AmenzbLogin_Click" />
+                    <Button x:Name="AmenzbLogoutButton" Content="退出登录" Margin="6,0,0,0" Click="AmenzbLogout_Click" />
+                </StackPanel>
                 <TextBlock Text="ameNZB（测试）" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center" />
             </DockPanel>
             <DockPanel Margin="0,14,0,0">

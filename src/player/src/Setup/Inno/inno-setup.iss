@@ -78,6 +78,7 @@ Type: filesandordirs; Name: "{app}\docs"
 Type: filesandordirs; Name: "{app}\build-info"
 Type: filesandordirs; Name: "{app}\portable_config\cache"
 Type: filesandordirs; Name: "{app}\portable_config\logs"
+Type: filesandordirs; Name: "{code:AmenzbWebViewData}"
 Type: files; Name: "{app}\animejanai\currentanimejanai.log"
 Type: files; Name: "{app}\animejanai\onnx\*.build.log"
 Type: files; Name: "{app}\animejanai\rife\*.build.log"
@@ -122,6 +123,11 @@ const
   OldFilter = 'vf=@aji:animejanai:lib=~~/../animejanai/inference/aji.dll:conf=~~/../animejanai/animejanai.conf:model-dir=~~/../animejanai/onnx:rife-model-dir=~~/../animejanai/rife:trtexec=~~/../animejanai/inference/trtexec.exe:stats=~~/../animejanai/currentanimejanai.log:slot=1002';
 var
   DeleteUserData: array[0..2] of Boolean;
+
+function AmenzbWebViewData(Param: String): String;
+begin
+  Result := GetTempDir + 'mpv-AnimeFusion\ameNZB-WebView2';
+end;
 
 function IsStockInputConfig(Name, LFHash, CRLFHash: String): Boolean;
 var

@@ -27,6 +27,8 @@
 
 字幕包解压使用未修改的 [SharpCompress](https://github.com/adamhathcock/sharpcompress) 0.50.5（MIT），支持 ZIP、RAR 与 7z；许可证原文保留于 `docs/THIRD_PARTY_LICENSES/NuGet/SharpCompress-MIT.txt`。
 
+ameNZB 登录窗口使用 Microsoft Edge WebView2 SDK 1.0.4258.31，调用系统共享的 Evergreen 运行时。安装包内的 SDK 许可与第三方声明位于 `docs/THIRD_PARTY_LICENSES/Microsoft/WebView2-LICENSE.txt` 和同目录的 `WebView2-NOTICE.txt`。[微软 SDK](https://www.nuget.org/packages/Microsoft.Web.WebView2/1.0.4258.31) · [运行时分发说明](https://learn.microsoft.com/microsoft-edge/webview2/concepts/distribution)
+
 搜索列表沿用 mpv.net 内附的 [HandyControl](https://github.com/HandyOrg/HandyControl) 滚动控件（MIT），在原控件源码中通过 WPF `IScrollInfo` 直接处理像素输入，不逐次添加滚动动画；许可证见 `THIRD_PARTY_LICENSES/HandyControl-MIT.txt`。
 
 ## Bangumi 同步

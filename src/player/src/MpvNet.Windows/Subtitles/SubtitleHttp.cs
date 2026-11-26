@@ -134,8 +134,13 @@ internal static class SubtitleHttp
                 var response = await http.SendAsync(current, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
                 MpvNet.Diagnostics.Write("subtitle.http", "received", new { id, attempt, redirects,
                     status = (int)response.StatusCode, elapsedMs = Stopwatch.GetElapsedTime(sent).TotalMilliseconds });
+                if (source == "ameNZB" && response.StatusCode == HttpStatusCode.Unauthorized)
+                {
+                    response.Dispose();
+                    throw new AmenzbLoginRequiredException();
+                }
                 if (request.Method != HttpMethod.Get || response.StatusCode is not (HttpStatusCode.MovedPermanently
-                    or HttpStatusCode.Found or HttpStatusCode.TemporaryRedirect or HttpStatusCode.PermanentRedirect)) return response;
+                    or HttpStatusCode.Found or HttpStatusCode.SeeOther or HttpStatusCode.TemporaryRedirect or HttpStatusCode.PermanentRedirect)) return response;
 
                 var location = response.Headers.Location;
                 var origin = request.RequestUri!;
@@ -144,9 +149,9 @@ internal static class SubtitleHttp
                     || next.Scheme != Uri.UriSchemeHttps || next.Host != origin.Host || next.Port != origin.Port
                     || next.UserInfo.Length > 0 || next.Fragment.Length > 0)
                     throw new SubtitleServiceException("服务地址异常，请稍后重试。");
-                if (source == "ameNZB" && next.AbsolutePath == "/login")
-                    throw new SubtitleServiceException("ameNZB 需要登录，暂无法搜索字幕。");
-                if (next.AbsolutePath != origin.AbsolutePath)
+                if (source == "ameNZB" && next.AbsolutePath.TrimEnd('/') is "/login" or "/login/2fa")
+                    throw new AmenzbLoginRequiredException();
+                if (next.AbsolutePath != origin.AbsolutePath || source == "ameNZB" && request.Headers.Contains("Cookie"))
                     throw new SubtitleServiceException("服务地址异常，请稍后重试。");
 
                 if (current != request) current.Dispose();

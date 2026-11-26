@@ -11,6 +11,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
+using Microsoft.Web.WebView2.Core;
 using MpvNet;
 using MpvNet.Native;
 using MpvNet.Windows.Subtitles;
@@ -79,6 +80,7 @@ static class Checks
         var window=new SubtitleSearchWindow();
         try
         {
+            RunLoginNavigationChecks();
             RunSourceSettingsChecks(temporary);
             var type=window.GetType();
             var media=TraktMedia.Parse("事件回归 S4E1","",new Dictionary<string,string>());
@@ -143,6 +145,92 @@ static class Checks
         }
     }
 
+    sealed class PendingLogin
+    {
+        public int Checks { get; private set; }
+        public TaskCompletionSource<AmenzbSession> Reply { get; private set; } = new();
+        public CancellationToken Token { get; private set; }
+
+        public Task<AmenzbSession> VerifyAsync(CancellationToken token)
+        {
+            Checks++;
+            Token = token;
+            Reply = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            return Reply.Task;
+        }
+    }
+
+    static void RunLoginNavigationChecks()
+    {
+        var pending = new PendingLogin();
+        Func<CancellationToken, Task<AmenzbSession>> verify = pending.VerifyAsync;
+        var window = (AmenzbLoginWindow)Activator.CreateInstance(typeof(AmenzbLoginWindow), Fields, null, [verify], null)!;
+        try
+        {
+            var type = typeof(AmenzbLoginWindow);
+            var status = (TextBlock)window.FindName("Status");
+            var retry = (Button)window.FindName("RetryButton");
+            var finish = (Button)window.FindName("FinishButton");
+            void Begin(ulong id) => type.GetMethod("BeginNavigation", Fields)!.Invoke(window, [id]);
+            void Complete(ulong id, bool success, int httpStatus, CoreWebView2WebErrorStatus error) =>
+                type.GetMethod("CompleteNavigation", Fields)!.Invoke(window, [id, success, httpStatus, error]);
+            Task Document(ulong id, string url) =>
+                (Task)type.GetMethod("DocumentReadyAsync", Fields)!.Invoke(window, [id, url])!;
+
+            Check(finish.Visibility == Visibility.Visible && !finish.IsEnabled && (string)finish.Content == "完成登录",
+                "Manual confirmation is visible and waits for the browser to initialize");
+            Begin(1);
+            Complete(1, false, 401, CoreWebView2WebErrorStatus.ValidAuthenticationCredentialsRequired);
+            Check(status.Text == "" && retry.Visibility == Visibility.Collapsed,
+                "The provider's rejected-password page remains usable without a native failure or restart");
+            Complete(1, false, 403, CoreWebView2WebErrorStatus.UnexpectedError);
+            Click(retry);
+            Pump();
+            Check(status.Text == "" && retry.Visibility == Visibility.Collapsed,
+                "A provider verification page has no active native retry action");
+            Begin(2);
+            Complete(1, false, 0, CoreWebView2WebErrorStatus.HostNameNotResolved);
+            Complete(2, false, 0, CoreWebView2WebErrorStatus.OperationCanceled);
+            Check(status.Text == "" && retry.Visibility == Visibility.Collapsed,
+                "An obsolete or canceled navigation cannot add an error to the current page");
+            Complete(2, false, 0, CoreWebView2WebErrorStatus.HostNameNotResolved);
+            Check(status.Text.Contains("无法连接") && retry.Visibility == Visibility.Visible,
+                "An active navigation with a network failure offers manual recovery");
+            Begin(3);
+            Complete(3, true, 200, CoreWebView2WebErrorStatus.Unknown);
+            Check(status.Text == "" && retry.Visibility == Visibility.Collapsed
+                && new WindowInteropHelper(window).Handle == IntPtr.Zero,
+                "A fresh login form clears the prior failure without opening a desktop window");
+
+            Begin(4);
+            Click(finish);
+            Check(pending.Checks == 1 && !finish.IsEnabled && status.Text == "正在确认登录…",
+                "Clicking Finish starts confirmation before the page or its resources finish loading");
+            Click(finish);
+            Document(4, "https://amenzb.moe/").GetAwaiter().GetResult();
+            Complete(4, true, 200, CoreWebView2WebErrorStatus.Unknown);
+            Check(pending.Checks == 1 && !pending.Token.IsCancellationRequested,
+                "Manual and automatic confirmation share the in-flight request");
+            pending.Reply.SetException(new SubtitleServiceException("请先在网页中完成登录。"));
+            Wait(() => finish.IsEnabled);
+            Check(status.Text == "请先在网页中完成登录。" && window.Session == null && retry.Visibility == Visibility.Collapsed,
+                "An incomplete login leaves the website open with Finish available");
+            Begin(5);
+            Document(4, "https://amenzb.moe/").GetAwaiter().GetResult();
+            Document(5, "https://amenzb.moe/login/2fa").GetAwaiter().GetResult();
+            Check(pending.Checks == 1, "Old pages and the site's two-factor form never initiate automatic confirmation");
+            Task automatic = Document(5, "https://amenzb.moe/");
+            Click(finish);
+            Check(pending.Checks == 2 && !finish.IsEnabled, "The authenticated document can start confirmation before onload");
+            Begin(6);
+            Check(pending.Token.IsCancellationRequested && finish.IsEnabled, "A new navigation cancels the previous confirmation");
+            pending.Reply.SetResult(new("mysession", "fixture", null));
+            Wait(() => automatic.IsCompleted);
+            Check(window.Session == null && status.Text == "", "An old success cannot close a new login page");
+        }
+        finally { window.Close(); }
+    }
+
     static void RunSourceSettingsChecks(string temporary)
     {
         var sources=Enum.GetValues<SubtitleSource>();
@@ -155,11 +243,21 @@ static class Checks
         try
         {
             Layout((FrameworkElement)window.Content);
+            var tokenBox=(PasswordBox)window.FindName("AssrtTokenBox");
+            var verify=(Button)window.FindName("VerifyButton");
+            var content=(UIElement)window.Content;
+            var fieldEnd=tokenBox.TranslatePoint(new Point(tokenBox.ActualWidth,tokenBox.ActualHeight/2),content);
+            var buttonStart=verify.TranslatePoint(new Point(0,verify.ActualHeight/2),content);
+            Check(tokenBox.ActualWidth>0&&verify.ActualWidth>0&&buttonStart.X>fieldEnd.X&&Math.Abs(fieldEnd.Y-buttonStart.Y)<=1,
+                "ASSRT verification is to the right of the API key on the same row");
             Check(!Directory.Exists(store.Root)&&!window.Saved&&handler.Requests==0,
                 "Constructing and laying out source settings neither writes settings nor requests a service");
             Check(new[]{"AssrtEnabledToggle","AmenzbEnabledToggle","TsukihimeEnabledToggle"}
                 .All(name=>((ToggleButton)window.FindName(name)).IsChecked==true),
                 "A new source settings window displays all sources enabled");
+            Check(Equals(((Button)window.FindName("AmenzbLoginButton")).Content,"登录")
+                &&((Button)window.FindName("AmenzbLogoutButton")).Visibility==Visibility.Collapsed,
+                "A signed-out ameNZB account offers sign-in separately from the ASSRT key");
             Check(Children<TextBlock>((FrameworkElement)window.Content).Any(text=>text.Text=="ameNZB（测试）")
                 &&Children<TextBlock>((FrameworkElement)window.Content).Any(text=>text.Text=="TsukiHime（测试）"),
                 "The two experimental source labels are present in the settings layout");
@@ -170,6 +268,8 @@ static class Checks
 
         const string fixtureKey="isolated-source-settings-key";
         store.Save(new(fixtureKey));
+        var session=new AmenzbSession("mysession","test-session",DateTimeOffset.UtcNow.AddDays(1));
+        store.SetAmenzbSession(session);
         string savedPath=Path.Combine(store.Root,"account.bin");
         byte[] before=File.ReadAllBytes(savedPath);
         window=new SubtitleSourcesWindow(store,http);
@@ -180,6 +280,11 @@ static class Checks
             Layout((FrameworkElement)window.Content);
             Check(File.ReadAllBytes(savedPath).SequenceEqual(before)&&!window.Saved,
                 "Opening settings with a saved API key does not rewrite its encrypted account file");
+            var amenLogin=(Button)window.FindName("AmenzbLoginButton");
+            var amenLogout=(Button)window.FindName("AmenzbLogoutButton");
+            var amenAccount=(FrameworkElement)window.FindName("AmenzbAccount");
+            Check(Equals(amenLogin.Content,"重新登录")&&amenLogout.Visibility==Visibility.Visible,
+                "A saved ameNZB session offers reauthentication and sign-out");
             foreach(var (name,source) in new[]{("AssrtEnabledToggle",SubtitleSource.Assrt),
                 ("AmenzbEnabledToggle",SubtitleSource.Amenzb),("TsukihimeEnabledToggle",SubtitleSource.Tsukihime)})
             {
@@ -192,6 +297,9 @@ static class Checks
                 Check(sources.Where(other=>other!=source).All(other=>store.Credentials.IsEnabled(other)==expected.IsEnabled(other))
                     &&store.Credentials.AssrtToken==fixtureKey&&reloaded.Credentials.AssrtToken==fixtureKey,
                     "Changing one source preserves the other switches and the saved ASSRT key");
+                Check(reloaded.Credentials.AmenzbSession==session&&amenAccount.Visibility==
+                    (store.Credentials.AmenzbEnabled?Visibility.Visible:Visibility.Collapsed),
+                    "Source switches retain the ameNZB account and hide its actions only when disabled");
                 Check(((TextBlock)window.FindName("SourcesStatus")).Text==""&&handler.Requests==0,
                     "Saving a source switch succeeds without any API request");
             }
@@ -216,6 +324,14 @@ static class Checks
                         ==(toggle.IsChecked==true?HorizontalAlignment.Right:HorizontalAlignment.Left),
                     "Each rendered switch places its thumb on the side indicated by its saved state");
             }
+            var amen=(ToggleButton)window.FindName("AmenzbEnabledToggle");
+            amen.IsChecked=true;Click(amen);Click(amenLogout);
+            var signedOut=new SubtitleStore(store.Root).Credentials;
+            Check(signedOut.AmenzbSession==null&&signedOut.AssrtToken==fixtureKey&&signedOut.AmenzbEnabled
+                &&Equals(amenLogin.Content,"登录")&&amenLogout.Visibility==Visibility.Collapsed
+                &&changes==6&&handler.Requests==0,
+                "Signing out clears only ameNZB credentials, updates the actions and does not search");
+            amen.IsChecked=false;Click(amen);
         }
         finally{window.Close();}
 
